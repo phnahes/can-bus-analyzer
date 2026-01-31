@@ -12,6 +12,7 @@ class ConfigManager:
     
     DEFAULT_CONFIG = {
         'language': 'en',
+        'theme': 'system',
         'baudrate': 500000,
         'interface': 'socketcan',
         'channel': 'can0',

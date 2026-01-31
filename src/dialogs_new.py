@@ -15,6 +15,7 @@ from PyQt6.QtGui import QFont, QColor
 from .models import CANMessage, CANConfig
 from .utils import calculate_baudrate_divisor
 from .i18n import get_i18n, t
+from .theme import get_adaptive_colors, get_bit_style, should_use_dark_mode
 
 
 class SettingsDialog(QDialog):
@@ -32,6 +33,10 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(450)
         
         layout = QVBoxLayout(self)
+        
+        # Get theme preference from config
+        theme_pref = self.config.get('theme', 'system')
+        colors = get_adaptive_colors(theme_pref)
         
         # CAN Connection Settings
         can_group = QGroupBox("CAN Connection")
@@ -115,7 +120,7 @@ class SettingsDialog(QDialog):
         
         # Info text
         info_label = QLabel("<BRGCON1>;<BRGCON2>;<BRGCON3> (canhack)\n<BTR0>;<BTR1> (Lawicel, Peak)")
-        info_label.setStyleSheet("color: gray; font-size: 10px;")
+        info_label.setStyleSheet(colors['info_text'])
         can_layout.addWidget(info_label)
         
         # Close CAN group
@@ -140,6 +145,32 @@ class SettingsDialog(QDialog):
         language_layout.addWidget(self.language_combo)
         language_group.setLayout(language_layout)
         layout.addWidget(language_group)
+        
+        # Theme Selection
+        theme_group = QGroupBox(t('theme_group'))
+        theme_layout = QVBoxLayout()
+        
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItem(t('theme_system'), "system")
+        self.theme_combo.addItem(t('theme_light'), "light")
+        self.theme_combo.addItem(t('theme_dark'), "dark")
+        
+        # Set current theme
+        current_theme = self.config.get('theme', 'system')
+        theme_index = self.theme_combo.findData(current_theme)
+        if theme_index >= 0:
+            self.theme_combo.setCurrentIndex(theme_index)
+        
+        theme_layout.addWidget(self.theme_combo)
+        
+        # Info label
+        theme_info = QLabel(t('theme_restart_info'))
+        theme_info.setStyleSheet(colors['info_text'])
+        theme_info.setWordWrap(True)
+        theme_layout.addWidget(theme_info)
+        
+        theme_group.setLayout(theme_layout)
+        layout.addWidget(theme_group)
         
         # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -174,6 +205,7 @@ class SettingsDialog(QDialog):
         """Retorna configuração atualizada"""
         baudrate_str = self.can_baudrate_combo.currentText().split()[0]
         selected_language = self.language_combo.currentData()
+        selected_theme = self.theme_combo.currentData()
         
         return {
             'channel': self.device_combo.currentText(),
@@ -184,6 +216,7 @@ class SettingsDialog(QDialog):
             'rts_hs': self.rts_hs_check.isChecked(),
             'baudrate_reg': self.baudrate_reg_input.text(),
             'language': selected_language,
+            'theme': selected_theme,
             'simulation_mode': self.simulation_mode_check.isChecked()
         }
 
@@ -194,6 +227,11 @@ class BitFieldViewerDialog(QDialog):
         super().__init__(parent)
         self.message = message
         self.bit_labels = {}
+        # Get theme from parent's config if available
+        theme_pref = 'system'
+        if parent and hasattr(parent, 'theme_preference'):
+            theme_pref = parent.theme_preference
+        self.colors = get_adaptive_colors(theme_pref)
         self.init_ui()
     
     def init_ui(self):
@@ -276,11 +314,7 @@ class BitFieldViewerDialog(QDialog):
             bit_value = (byte_val >> bit) & 1
             bit_widget = QLabel(str(bit_value))
             bit_widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            bit_widget.setStyleSheet(
-                f"background-color: {'#4CAF50' if bit_value else '#f44336'}; "
-                f"color: white; font-weight: bold; font-size: 16px; "
-                f"padding: 10px; border-radius: 5px;"
-            )
+            bit_widget.setStyleSheet(get_bit_style(bit_value, self.colors))
             layout.addWidget(bit_widget, 1, 7 - bit)
         
         # Labels editáveis para cada bit
@@ -358,6 +392,10 @@ class FilterDialog(QDialog):
             'data_filters': [],
             'show_only': True
         }
+        # Get theme from parent's config if available
+        self.theme_pref = 'system'
+        if parent and hasattr(parent, 'theme_preference'):
+            self.theme_pref = parent.theme_preference
         self.init_ui()
     
     def init_ui(self):
@@ -400,8 +438,9 @@ class FilterDialog(QDialog):
         id_group = QGroupBox("ID Filters")
         id_layout = QVBoxLayout()
         
+        colors = get_adaptive_colors(self.theme_pref)
         id_help = QLabel("Enter CAN IDs (hex) separated by commas or spaces\nExample: 0x280, 0x284, 0x300-0x310")
-        id_help.setStyleSheet("color: gray; font-size: 10px;")
+        id_help.setStyleSheet(colors['info_text'])
         id_layout.addWidget(id_help)
         
         self.id_filter_input = QLineEdit()
@@ -420,7 +459,7 @@ class FilterDialog(QDialog):
         data_layout = QVBoxLayout()
         
         data_help = QLabel("Filter by data content (hex)\nExample: Byte 0 = FF, Byte 2 = 00")
-        data_help.setStyleSheet("color: gray; font-size: 10px;")
+        data_help.setStyleSheet(colors['info_text'])
         data_layout.addWidget(data_help)
         
         self.data_filter_table = QTableWidget()
@@ -555,6 +594,11 @@ class TriggerDialog(QDialog):
     def __init__(self, parent=None, triggers=None):
         super().__init__(parent)
         self.triggers = triggers or []
+        # Get theme from parent's config if available
+        theme_pref = 'system'
+        if parent and hasattr(parent, 'theme_preference'):
+            theme_pref = parent.theme_preference
+        self.colors = get_adaptive_colors(theme_pref)
         self.init_ui()
     
     def init_ui(self):
@@ -569,7 +613,7 @@ class TriggerDialog(QDialog):
             "Configure automatic transmission based on received messages.\n"
             "When a trigger condition is met, the associated message is sent automatically."
         )
-        info_label.setStyleSheet("color: gray; font-size: 11px; padding: 10px;")
+        info_label.setStyleSheet(f"{self.colors['info_text'].replace('10px', '11px')}; padding: 10px;")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
@@ -630,7 +674,7 @@ class TriggerDialog(QDialog):
             "<b>Example 2:</b> When ID 0x284 with byte[0]=0xFF, send ID 0x301<br>"
             "<b>Example 3:</b> Simulate ECU response to diagnostic requests"
         )
-        example_text.setStyleSheet("color: gray; font-size: 10px;")
+        example_text.setStyleSheet(self.colors['info_text'])
         examples_layout.addWidget(example_text)
         
         examples_group.setLayout(examples_layout)

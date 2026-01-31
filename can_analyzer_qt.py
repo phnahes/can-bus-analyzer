@@ -55,7 +55,11 @@ def main():
         # Configurar display name para o menu macOS
         app.setApplicationDisplayName("CAN Analyzer")
         
-        app.setStyle('Fusion')  # Modern and consistent style
+        # Apply theme based on user preference
+        from src.theme import apply_theme_to_app
+        theme_preference = config_mgr.get('theme', 'system')
+        apply_theme_to_app(app, theme_preference)
+        logger.info(f"Theme applied: {theme_preference}")
         
         # Prevent app from quitting when last window closes (for macOS)
         app.setQuitOnLastWindowClosed(True)

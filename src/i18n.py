@@ -819,6 +819,346 @@ class I18n:
             'de': 'Warnung',
             'fr': 'Avertissement'
         },
+        
+        # Notification messages
+        'notif_connected': {
+            'en': '✅ Connected successfully: {channel} @ {baudrate} kbit/s',
+            'pt': '✅ Conectado com sucesso: {channel} @ {baudrate} kbit/s',
+            'es': '✅ Conectado exitosamente: {channel} @ {baudrate} kbit/s',
+            'de': '✅ Erfolgreich verbunden: {channel} @ {baudrate} kbit/s',
+            'fr': '✅ Connecté avec succès: {channel} @ {baudrate} kbit/s'
+        },
+        'notif_simulation_mode': {
+            'en': '⚠️ Simulation mode activated: {baudrate} kbit/s',
+            'pt': '⚠️ Modo simulação ativado: {baudrate} kbit/s',
+            'es': '⚠️ Modo simulación activado: {baudrate} kbit/s',
+            'de': '⚠️ Simulationsmodus aktiviert: {baudrate} kbit/s',
+            'fr': '⚠️ Mode simulation activé: {baudrate} kbit/s'
+        },
+        'notif_disconnected': {
+            'en': '⏹ Disconnected',
+            'pt': '⏹ Desconectado',
+            'es': '⏹ Desconectado',
+            'de': '⏹ Getrennt',
+            'fr': '⏹ Déconnecté'
+        },
+        'notif_reset': {
+            'en': 'Complete reset - data cleared, connection maintained',
+            'pt': 'Reset completo - dados limpos, conexão mantida',
+            'es': 'Reinicio completo - datos borrados, conexión mantenida',
+            'de': 'Vollständiger Reset - Daten gelöscht, Verbindung beibehalten',
+            'fr': 'Réinitialisation complète - données effacées, connexion maintenue'
+        },
+        'notif_recording_started': {
+            'en': '⏺ Recording started - messages will be saved for playback',
+            'pt': '⏺ Gravação iniciada - mensagens serão salvas para reprodução',
+            'es': '⏺ Grabación iniciada - mensajes se guardarán para reproducción',
+            'de': '⏺ Aufnahme gestartet - Nachrichten werden für Wiedergabe gespeichert',
+            'fr': '⏺ Enregistrement démarré - messages seront sauvegardés pour lecture'
+        },
+        'notif_recording_stopped': {
+            'en': '⏹ Recording stopped - {count} messages recorded and visible',
+            'pt': '⏹ Gravação parada - {count} mensagens gravadas e visíveis',
+            'es': '⏹ Grabación detenida - {count} mensajes grabados y visibles',
+            'de': '⏹ Aufnahme gestoppt - {count} Nachrichten aufgenommen und sichtbar',
+            'fr': '⏹ Enregistrement arrêté - {count} messages enregistrés et visibles'
+        },
+        'notif_recording_stopped_empty': {
+            'en': '⏹ Recording stopped - no messages recorded',
+            'pt': '⏹ Gravação parada - nenhuma mensagem gravada',
+            'es': '⏹ Grabación detenida - ningún mensaje grabado',
+            'de': '⏹ Aufnahme gestoppt - keine Nachrichten aufgenommen',
+            'fr': '⏹ Enregistrement arrêté - aucun message enregistré'
+        },
+        'notif_tx_panel_visible': {
+            'en': 'Transmit panel visible',
+            'pt': 'Painel de Transmissão visível',
+            'es': 'Panel de transmisión visible',
+            'de': 'Sendepanel sichtbar',
+            'fr': 'Panneau de transmission visible'
+        },
+        'notif_tx_panel_hidden': {
+            'en': 'Transmit panel hidden',
+            'pt': 'Painel de Transmissão ocultado',
+            'es': 'Panel de transmisión oculto',
+            'de': 'Sendepanel ausgeblendet',
+            'fr': 'Panneau de transmission masqué'
+        },
+        'notif_recorded_cleared': {
+            'en': 'Recorded messages cleared',
+            'pt': 'Mensagens gravadas limpas',
+            'es': 'Mensajes grabados borrados',
+            'de': 'Aufgenommene Nachrichten gelöscht',
+            'fr': 'Messages enregistrés effacés'
+        },
+        'notif_message_sent': {
+            'en': '✅ Sent: 0x{id:03X}',
+            'pt': '✅ Enviado: 0x{id:03X}',
+            'es': '✅ Enviado: 0x{id:03X}',
+            'de': '✅ Gesendet: 0x{id:03X}',
+            'fr': '✅ Envoyé: 0x{id:03X}'
+        },
+        'notif_simulation_sent': {
+            'en': '⚠️ Simulation mode: 0x{id:03X}',
+            'pt': '⚠️ Modo simulação: 0x{id:03X}',
+            'es': '⚠️ Modo simulación: 0x{id:03X}',
+            'de': '⚠️ Simulationsmodus: 0x{id:03X}',
+            'fr': '⚠️ Mode simulation: 0x{id:03X}'
+        },
+        'notif_error': {
+            'en': '❌ Error: {error}',
+            'pt': '❌ Erro: {error}',
+            'es': '❌ Error: {error}',
+            'de': '❌ Fehler: {error}',
+            'fr': '❌ Erreur: {error}'
+        },
+        'notif_connect_first': {
+            'en': '⚠️ Connect to CAN bus first!',
+            'pt': '⚠️ Conecte-se ao barramento CAN primeiro!',
+            'es': '⚠️ ¡Conéctese al bus CAN primero!',
+            'de': '⚠️ Zuerst mit CAN-Bus verbinden!',
+            'fr': '⚠️ Connectez-vous au bus CAN d\'abord!'
+        },
+        'notif_periodic_already_active': {
+            'en': '⚠️ Periodic send already active!',
+            'pt': '⚠️ Envio periódico já está ativo!',
+            'es': '⚠️ ¡Envío periódico ya activo!',
+            'de': '⚠️ Periodisches Senden bereits aktiv!',
+            'fr': '⚠️ Envoi périodique déjà actif!'
+        },
+        'notif_no_messages_in_table': {
+            'en': '⚠️ No messages in transmit table!',
+            'pt': '⚠️ Nenhuma mensagem na tabela de transmissão!',
+            'es': '⚠️ ¡No hay mensajes en la tabla de transmisión!',
+            'de': '⚠️ Keine Nachrichten in der Sendetabelle!',
+            'fr': '⚠️ Aucun message dans la table de transmission!'
+        },
+        'notif_periodic_started': {
+            'en': '✅ Periodic send started: {count} message(s)',
+            'pt': '✅ Envio periódico iniciado: {count} mensagem(ns)',
+            'es': '✅ Envío periódico iniciado: {count} mensaje(s)',
+            'de': '✅ Periodisches Senden gestartet: {count} Nachricht(en)',
+            'fr': '✅ Envoi périodique démarré: {count} message(s)'
+        },
+        'notif_no_valid_period': {
+            'en': '⚠️ No messages with valid period!',
+            'pt': '⚠️ Nenhuma mensagem com período válido!',
+            'es': '⚠️ ¡No hay mensajes con período válido!',
+            'de': '⚠️ Keine Nachrichten mit gültiger Periode!',
+            'fr': '⚠️ Aucun message avec période valide!'
+        },
+        'notif_no_periodic_active': {
+            'en': '⚠️ No periodic send active!',
+            'pt': '⚠️ Nenhum envio periódico ativo!',
+            'es': '⚠️ ¡No hay envío periódico activo!',
+            'de': '⚠️ Kein periodisches Senden aktiv!',
+            'fr': '⚠️ Aucun envoi périodique actif!'
+        },
+        'notif_periodic_stopped': {
+            'en': '⏹ Periodic send stopped',
+            'pt': '⏹ Envio periódico parado',
+            'es': '⏹ Envío periódico detenido',
+            'de': '⏹ Periodisches Senden gestoppt',
+            'fr': '⏹ Envoi périodique arrêté'
+        },
+        'notif_language_changed': {
+            'en': 'Language changed to {language}',
+            'pt': 'Idioma alterado para {language}',
+            'es': 'Idioma cambiado a {language}',
+            'de': 'Sprache geändert zu {language}',
+            'fr': 'Langue changée en {language}'
+        },
+        'notif_log_saved': {
+            'en': '✅ Log saved: {filename} ({count} messages)',
+            'pt': '✅ Log salvo: {filename} ({count} mensagens)',
+            'es': '✅ Log guardado: {filename} ({count} mensajes)',
+            'de': '✅ Log gespeichert: {filename} ({count} Nachrichten)',
+            'fr': '✅ Log sauvegardé: {filename} ({count} messages)'
+        },
+        'notif_log_loaded': {
+            'en': '✅ Log loaded: {filename} ({count} messages)',
+            'pt': '✅ Log carregado: {filename} ({count} mensagens)',
+            'es': '✅ Log cargado: {filename} ({count} mensajes)',
+            'de': '✅ Log geladen: {filename} ({count} Nachrichten)',
+            'fr': '✅ Log chargé: {filename} ({count} messages)'
+        },
+        'notif_monitor_saved': {
+            'en': '✅ Monitor saved: {filename} ({count} messages)',
+            'pt': '✅ Monitor salvo: {filename} ({count} mensagens)',
+            'es': '✅ Monitor guardado: {filename} ({count} mensajes)',
+            'de': '✅ Monitor gespeichert: {filename} ({count} Nachrichten)',
+            'fr': '✅ Moniteur sauvegardé: {filename} ({count} messages)'
+        },
+        'notif_monitor_loaded': {
+            'en': '✅ Monitor loaded: {filename} ({count} messages)',
+            'pt': '✅ Monitor carregado: {filename} ({count} mensagens)',
+            'es': '✅ Monitor cargado: {filename} ({count} mensajes)',
+            'de': '✅ Monitor geladen: {filename} ({count} Nachrichten)',
+            'fr': '✅ Moniteur chargé: {filename} ({count} messages)'
+        },
+        'notif_tx_saved': {
+            'en': '✅ TX saved: {filename} ({count} messages)',
+            'pt': '✅ TX salvo: {filename} ({count} mensagens)',
+            'es': '✅ TX guardado: {filename} ({count} mensajes)',
+            'de': '✅ TX gespeichert: {filename} ({count} Nachrichten)',
+            'fr': '✅ TX sauvegardé: {filename} ({count} messages)'
+        },
+        'notif_tx_loaded': {
+            'en': '✅ TX loaded: {filename} ({count} messages)',
+            'pt': '✅ TX carregado: {filename} ({count} mensagens)',
+            'es': '✅ TX cargado: {filename} ({count} mensajes)',
+            'de': '✅ TX geladen: {filename} ({count} Nachrichten)',
+            'fr': '✅ TX chargé: {filename} ({count} messages)'
+        },
+        'notif_messages_sent': {
+            'en': '✅ {count} message(s) sent',
+            'pt': '✅ {count} mensagem(ns) enviada(s)',
+            'es': '✅ {count} mensaje(s) enviado(s)',
+            'de': '✅ {count} Nachricht(en) gesendet',
+            'fr': '✅ {count} message(s) envoyé(s)'
+        },
+        'notif_periodic_stopped_count': {
+            'en': '⏹ Periodic send stopped: {count} message(s)',
+            'pt': '⏹ Envio periódico parado: {count} mensagem(ns)',
+            'es': '⏹ Envío periódico detenido: {count} mensaje(s)',
+            'de': '⏹ Periodisches Senden gestoppt: {count} Nachricht(en)',
+            'fr': '⏹ Envoi périodique arrêté: {count} message(s)'
+        },
+        'notif_messages_deleted': {
+            'en': '{count} message(s) deleted',
+            'pt': '{count} mensagem(ns) deletada(s)',
+            'es': '{count} mensaje(s) eliminado(s)',
+            'de': '{count} Nachricht(en) gelöscht',
+            'fr': '{count} message(s) supprimé(s)'
+        },
+        'notif_id_copied': {
+            'en': 'ID copied: {id}',
+            'pt': 'ID copiado: {id}',
+            'es': 'ID copiado: {id}',
+            'de': 'ID kopiert: {id}',
+            'fr': 'ID copié: {id}'
+        },
+        'notif_data_copied': {
+            'en': 'Data copied: {data}',
+            'pt': 'Data copiado: {data}',
+            'es': 'Datos copiados: {data}',
+            'de': 'Daten kopiert: {data}',
+            'fr': 'Données copiées: {data}'
+        },
+        'notif_playback_paused': {
+            'en': '⏸ Playback paused',
+            'pt': '⏸ Reprodução pausada',
+            'es': '⏸ Reproducción pausada',
+            'de': '⏸ Wiedergabe pausiert',
+            'fr': '⏸ Lecture en pause'
+        },
+        'notif_playback_resumed': {
+            'en': '▶ Playback resumed',
+            'pt': '▶ Reprodução continuada',
+            'es': '▶ Reproducción reanudada',
+            'de': '▶ Wiedergabe fortgesetzt',
+            'fr': '▶ Lecture reprise'
+        },
+        'notif_playback_playing': {
+            'en': '▶ Playing {count} recorded messages...',
+            'pt': '▶ Reproduzindo {count} mensagens gravadas...',
+            'es': '▶ Reproduciendo {count} mensajes grabados...',
+            'de': '▶ Wiedergabe von {count} aufgenommenen Nachrichten...',
+            'fr': '▶ Lecture de {count} messages enregistrés...'
+        },
+        'notif_playback_stopped': {
+            'en': '⏹ Playback stopped',
+            'pt': '⏹ Reprodução parada',
+            'es': '⏹ Reproducción detenida',
+            'de': '⏹ Wiedergabe gestoppt',
+            'fr': '⏹ Lecture arrêtée'
+        },
+        'notif_filters_enabled': {
+            'en': 'Filters enabled: {count} ID(s)',
+            'pt': 'Filtros ativados: {count} ID(s)',
+            'es': 'Filtros activados: {count} ID(s)',
+            'de': 'Filter aktiviert: {count} ID(s)',
+            'fr': 'Filtres activés: {count} ID(s)'
+        },
+        'notif_filters_disabled': {
+            'en': 'Filters disabled',
+            'pt': 'Filtros desativados',
+            'es': 'Filtros desactivados',
+            'de': 'Filter deaktiviert',
+            'fr': 'Filtres désactivés'
+        },
+        'notif_triggers_disabled': {
+            'en': 'Triggers disabled',
+            'pt': 'Triggers desativados',
+            'es': 'Triggers desactivados',
+            'de': 'Trigger deaktiviert',
+            'fr': 'Déclencheurs désactivés'
+        },
+        
+        # Theme settings
+        'theme_group': {
+            'en': 'Theme',
+            'pt': 'Tema',
+            'es': 'Tema',
+            'de': 'Thema',
+            'fr': 'Thème'
+        },
+        'theme_system': {
+            'en': 'System',
+            'pt': 'Sistema',
+            'es': 'Sistema',
+            'de': 'System',
+            'fr': 'Système'
+        },
+        'theme_light': {
+            'en': 'Light',
+            'pt': 'Claro',
+            'es': 'Claro',
+            'de': 'Hell',
+            'fr': 'Clair'
+        },
+        'theme_dark': {
+            'en': 'Dark',
+            'pt': 'Escuro',
+            'es': 'Oscuro',
+            'de': 'Dunkel',
+            'fr': 'Sombre'
+        },
+        'theme_restart_info': {
+            'en': 'Theme will be applied on next restart',
+            'pt': 'Tema será aplicado no próximo reinício',
+            'es': 'El tema se aplicará en el próximo reinicio',
+            'de': 'Theme wird beim nächsten Neustart angewendet',
+            'fr': 'Le thème sera appliqué au prochain redémarrage'
+        },
+        'msg_theme_applied': {
+            'en': 'Theme applied successfully!',
+            'pt': 'Tema aplicado com sucesso!',
+            'es': '¡Tema aplicado con éxito!',
+            'de': 'Theme erfolgreich angewendet!',
+            'fr': 'Thème appliqué avec succès!'
+        },
+        'msg_language_applied': {
+            'en': 'Language changed successfully!',
+            'pt': 'Idioma alterado com sucesso!',
+            'es': '¡Idioma cambiado con éxito!',
+            'de': 'Sprache erfolgreich geändert!',
+            'fr': 'Langue modifiée avec succès!'
+        },
+        'msg_language_and_theme_applied': {
+            'en': 'Language and theme applied successfully!',
+            'pt': 'Idioma e tema aplicados com sucesso!',
+            'es': '¡Idioma y tema aplicados con éxito!',
+            'de': 'Sprache und Theme erfolgreich angewendet!',
+            'fr': 'Langue et thème appliqués avec succès!'
+        },
+        'msg_settings_saved': {
+            'en': 'Settings saved successfully!',
+            'pt': 'Configurações salvas com sucesso!',
+            'es': '¡Configuración guardada con éxito!',
+            'de': 'Einstellungen erfolgreich gespeichert!',
+            'fr': 'Paramètres enregistrés avec succès!'
+        },
     }
     
     def __init__(self, language: str = 'en'):

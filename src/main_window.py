@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QApplication, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QAction, QFont, QColor
+from PyQt6.QtGui import QAction, QFont, QColor, QPalette
 
 # Internal imports
 from .models import CANMessage
@@ -28,6 +28,7 @@ from .dialogs_new import SettingsDialog, BitFieldViewerDialog, FilterDialog, Tri
 from .file_operations import FileOperations
 from .logger import get_logger
 from .i18n import get_i18n, t
+from .theme import detect_dark_mode, get_adaptive_colors, should_use_dark_mode
 
 # CAN imports
 try:
@@ -102,13 +103,21 @@ class CANAnalyzerWindow(QMainWindow):
         self.usb_monitor.on_device_disconnected = self.on_usb_device_disconnected
         self.usb_monitor.start_monitoring()
         
+        # Detect dark mode based on user preference
+        self.theme_preference = self.config.get('theme', 'system')
+        self.is_dark_mode = should_use_dark_mode(self.theme_preference)
+        self.logger.info(f"Theme preference: {self.theme_preference}, Dark mode: {self.is_dark_mode}")
+        
         self.init_ui()
         self.start_ui_update()
-        
+    
     def init_ui(self):
         """Inicializa a interface do usuário"""
         self.setWindowTitle("CAN Analyzer - macOS")
         self.setGeometry(100, 100, 1200, 800)
+        
+        # Get adaptive colors based on theme preference
+        self.colors = get_adaptive_colors(self.theme_preference)
         
         # Widget central
         central_widget = QWidget()
@@ -309,7 +318,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Separador visual
         sep1 = QLabel("│")
-        sep1.setStyleSheet("color: lightgray;")
+        sep1.setStyleSheet(self.colors['separator'])
         row1.addWidget(sep1)
         
         row1.addWidget(QLabel("DLC:"))
@@ -322,7 +331,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Separador visual
         sep2 = QLabel("│")
-        sep2.setStyleSheet("color: lightgray;")
+        sep2.setStyleSheet(self.colors['separator'])
         row1.addWidget(sep2)
         
         row1.addWidget(QLabel("Data:"))
@@ -340,7 +349,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Separador visual
         sep3 = QLabel("│")
-        sep3.setStyleSheet("color: lightgray;")
+        sep3.setStyleSheet(self.colors['separator'])
         row1.addWidget(sep3)
         
         row1.addWidget(QLabel("Period:"))
@@ -365,7 +374,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Separador visual
         sep4 = QLabel("│")
-        sep4.setStyleSheet("color: lightgray;")
+        sep4.setStyleSheet(self.colors['separator'])
         row2.addWidget(sep4)
         
         row2.addWidget(QLabel("Comment:"))
@@ -387,7 +396,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Separador visual
         sep5 = QLabel("│")
-        sep5.setStyleSheet("color: lightgray;")
+        sep5.setStyleSheet(self.colors['separator'])
         row3.addWidget(sep5)
         
         row3.addWidget(QLabel("Trigger ID:"))
@@ -422,7 +431,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Separador visual
         separator = QLabel("|")
-        separator.setStyleSheet("color: gray; font-size: 16px; padding: 0 10px;")
+        separator.setStyleSheet(f"{self.colors['separator']}; font-size: 16px; padding: 0 10px;")
         row4.addWidget(separator)
         
         self.btn_single = QPushButton("Send")
@@ -490,7 +499,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Lado direito: área para notificações
         self.notification_label = QLabel("")
-        self.notification_label.setStyleSheet("color: #666; font-style: italic;")
+        self.notification_label.setStyleSheet(self.colors['notification'])
         self.notification_label.setWordWrap(True)  # Quebra linha apenas se necessário
         self.notification_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.notification_label.setSizePolicy(
@@ -781,6 +790,46 @@ class CANAnalyzerWindow(QMainWindow):
         # Update menu bar
         self.create_menu_bar()
     
+    def apply_theme(self, theme_preference='system'):
+        """Apply theme colors to all UI elements"""
+        # Update theme preference and colors
+        self.theme_preference = theme_preference
+        self.is_dark_mode = should_use_dark_mode(theme_preference)
+        self.colors = get_adaptive_colors(theme_preference)
+        
+        self.logger.info(f"Applying theme: {theme_preference}, Dark mode: {self.is_dark_mode}")
+        
+        # Apply the theme to the application
+        from .theme import apply_theme_to_app
+        app = QApplication.instance()
+        if app:
+            apply_theme_to_app(app, theme_preference)
+        
+        # Apply colors to receive table
+        if hasattr(self, 'receive_table'):
+            for row in range(self.receive_table.rowCount()):
+                for col in range(self.receive_table.columnCount()):
+                    item = self.receive_table.item(row, col)
+                    if item:
+                        # Reset background to normal
+                        item.setBackground(self.colors['normal_bg'])
+                        item.setForeground(self.colors['normal_text'])
+        
+        # Apply colors to transmit table
+        if hasattr(self, 'transmit_table'):
+            for row in range(self.transmit_table.rowCount()):
+                for col in range(self.transmit_table.columnCount()):
+                    item = self.transmit_table.item(row, col)
+                    if item:
+                        # Reset background to normal
+                        item.setBackground(self.colors['normal_bg'])
+                        item.setForeground(self.colors['normal_text'])
+        
+        # Force repaint
+        self.update()
+        
+        self.logger.info("Theme applied successfully")
+    
     def create_menu_bar(self):
         """Cria a barra de menu"""
         menubar = self.menuBar()
@@ -970,7 +1019,7 @@ class CANAnalyzerWindow(QMainWindow):
                     self.connected = True
                     self.connection_status.setText(f"Connected: {baudrate//1000} kbit/s")
                     self.device_label.setText(f"Device: {channel}")
-                    self.show_notification(f"✅ Conectado com sucesso: {channel} @ {baudrate//1000} kbit/s", 5000)
+                    self.show_notification(t('notif_connected', channel=channel, baudrate=baudrate//1000), 5000)
                     
                 except Exception as e:
                     self.logger.error(f"Erro ao conectar ao dispositivo real: {str(e)}")
@@ -1012,7 +1061,7 @@ class CANAnalyzerWindow(QMainWindow):
                 self.connection_status.setText(f"Simulation: {baudrate//1000} kbit/s")
                 device_info = self.config.get('channel', 'can0')
                 self.device_label.setText(f"Device: {device_info} (Sim)")
-                self.show_notification(f"⚠️ Modo simulação ativado: {baudrate//1000} kbit/s", 5000)
+                self.show_notification(t('notif_simulation_mode', baudrate=baudrate//1000), 5000)
             
             # Configurações comuns
             self.btn_connect.setEnabled(False)
@@ -1067,7 +1116,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         self.connection_status.setText("Not Connected")
         self.device_label.setText("Device: N/A")
-        self.show_notification("⏹ Desconectado", 3000)
+        self.show_notification(t('notif_disconnected'), 3000)
         self.btn_connect.setEnabled(True)
         self.btn_disconnect.setEnabled(False)
         self.btn_pause.setEnabled(False)
@@ -1104,7 +1153,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.recording = False
         
         self.update_message_count()
-        self.show_notification("🔄 Reset completo - dados limpos, conexão mantida")
+        self.show_notification(t('notif_reset'))
     
     def toggle_recording(self):
         """Inicia/para a gravação de mensagens para reprodução (apenas Tracer)"""
@@ -1115,10 +1164,10 @@ class CANAnalyzerWindow(QMainWindow):
             self.recorded_messages.clear()  # Limpar gravações anteriores
             self.receive_table.setRowCount(0)  # Limpar tabela
             self.btn_record.setText("⏺ Recording")
-            self.btn_record.setStyleSheet("background-color: #ff4444; color: white;")
+            self.btn_record.setStyleSheet(self.colors['record_active'])
             self.btn_play_all.setEnabled(False)
             self.btn_play_selected.setEnabled(False)
-            self.show_notification("⏺ Gravação iniciada - mensagens serão salvas para reprodução", 3000)
+            self.show_notification(t('notif_recording_started'), 3000)
         else:
             # Parar gravação
             self.btn_record.setText("⏺ Record")
@@ -1130,9 +1179,9 @@ class CANAnalyzerWindow(QMainWindow):
             if len(self.recorded_messages) > 0:
                 self.btn_play_all.setEnabled(True)
                 self.btn_play_selected.setEnabled(True)
-                self.show_notification(f"⏹ Gravação parada - {len(self.recorded_messages)} mensagens gravadas e visíveis", 3000)
+                self.show_notification(t('notif_recording_stopped', count=len(self.recorded_messages)), 3000)
             else:
-                self.show_notification("⏹ Gravação parada - nenhuma mensagem gravada", 3000)
+                self.show_notification(t('notif_recording_stopped_empty'), 3000)
     
     def toggle_transmit_panel(self):
         """Mostra/oculta o painel de Transmissão"""
@@ -1142,12 +1191,12 @@ class CANAnalyzerWindow(QMainWindow):
             # Mostrar painel
             self.transmit_group.setVisible(True)
             self.btn_toggle_transmit.setText("📤 Hide TX")
-            self.show_notification("Painel de Transmissão visível", 2000)
+            self.show_notification(t('notif_tx_panel_visible'), 2000)
         else:
             # Ocultar painel
             self.transmit_group.setVisible(False)
             self.btn_toggle_transmit.setText("📤 Show TX")
-            self.show_notification("Painel de Transmissão ocultado", 2000)
+            self.show_notification(t('notif_tx_panel_hidden'), 2000)
     
     def show_notification(self, message: str, duration: int = 3000):
         """Mostra notificação temporária no canto inferior direito"""
@@ -1162,14 +1211,14 @@ class CANAnalyzerWindow(QMainWindow):
         self.receive_table.setRowCount(0)
         self.btn_play_all.setEnabled(False)
         self.btn_play_selected.setEnabled(False)
-        self.show_notification("🗑 Mensagens gravadas limpas")
+        self.show_notification(t('notif_recorded_cleared'))
     
     def toggle_pause(self):
         """Pausa/retoma a exibição"""
         self.paused = not self.paused
         if self.paused:
             self.btn_pause.setText("▶ Resume")
-            self.btn_pause.setStyleSheet("background-color: #4444ff; color: white;")
+            self.btn_pause.setStyleSheet(self.colors['pause_active'])
         else:
             self.btn_pause.setText("⏸ Pause")
             self.btn_pause.setStyleSheet("")
@@ -1345,22 +1394,26 @@ class CANAnalyzerWindow(QMainWindow):
             # Atualizar linha existente
             # Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
             count_item = QTableWidgetItem(str(count))
+            count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)  # Centralizar Count
             self.receive_table.setItem(existing_row, 1, count_item)                     # Count
             self.receive_table.setItem(existing_row, 4, QTableWidgetItem(data_str))     # Data
             self.receive_table.setItem(existing_row, 5, QTableWidgetItem(period_str))   # Period
             self.receive_table.setItem(existing_row, 6, QTableWidgetItem(ascii_str))    # ASCII
             
-            # NO MONITOR MODE: Destacar APENAS a célula Count em azul claro
-            if highlight:
-                count_item.setBackground(QColor(220, 240, 255))  # Azul mais claro
+            # NO MONITOR MODE: Destacar APENAS a célula Count em azul claro quando count > 1
+            if highlight and count > 1:
+                count_item.setBackground(self.colors['highlight'])
+            else:
+                # Manter cor normal se count == 1
+                count_item.setBackground(self.colors['normal_bg'])
                 
-                # Limpar background das outras células (caso tenham sido destacadas antes)
-                for col in range(self.receive_table.columnCount()):
-                    if col == 1:  # Pular a coluna Count
-                        continue
-                    item = self.receive_table.item(existing_row, col)
-                    if item:
-                        item.setBackground(QColor(255, 255, 255))  # Branco (padrão)
+            # Limpar background das outras células (caso tenham sido destacadas antes)
+            for col in range(self.receive_table.columnCount()):
+                if col == 1:  # Pular a coluna Count
+                    continue
+                item = self.receive_table.item(existing_row, col)
+                if item:
+                    item.setBackground(self.colors['normal_bg'])
         else:
             # Adicionar nova linha NA POSIÇÃO CORRETA (ordenado por PID)
             # Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
@@ -1407,9 +1460,9 @@ class CANAnalyzerWindow(QMainWindow):
             self.receive_table.setItem(row, 6, QTableWidgetItem(ascii_str))        # ASCII
             self.receive_table.setItem(row, 7, QTableWidgetItem(msg.comment))      # Comment
             
-            # Destacar APENAS a célula Count em azul claro (primeira mensagem do ID)
-            if highlight:
-                count_item.setBackground(QColor(220, 240, 255))  # Azul mais claro
+            # NÃO destacar na primeira mensagem (count == 1), manter cor normal
+            # Highlight só deve aparecer quando count > 1 (mensagem repetida)
+            count_item.setBackground(self.colors['normal_bg'])
             
             # Recalcular IDs sequenciais de todas as linhas (pois a ordem mudou)
             self.update_sequential_ids()
@@ -1528,14 +1581,15 @@ class CANAnalyzerWindow(QMainWindow):
                         new_item = QTableWidgetItem("1")
                         new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.transmit_table.setItem(self.editing_tx_row, 15, new_item)
+                        self.transmit_table.setItem(self.editing_tx_row, 15, new_item)
                 
                 # Sem popup - apenas notificação discreta
-                self.show_notification(f"✅ Enviado: 0x{can_id:03X}", 1000)
+                self.show_notification(t('notif_message_sent', id=can_id), 1000)
             else:
-                self.show_notification(f"⚠️ Modo simulação: 0x{can_id:03X}", 2000)
+                self.show_notification(t('notif_simulation_sent', id=can_id), 2000)
         except Exception as e:
             self.logger.error(f"Erro ao enviar: {e}")
-            self.show_notification(f"❌ Erro: {str(e)}", 3000)
+            self.show_notification(t('notif_error', error=str(e)), 3000)
     
     def clear_tx_fields(self):
         """Limpa todos os campos de edição de transmissão"""
@@ -1687,16 +1741,16 @@ class CANAnalyzerWindow(QMainWindow):
     def send_all(self):
         """Inicia envio periódico de todas as mensagens da tabela de transmissão"""
         if not self.connected or not self.can_bus:
-            self.show_notification("⚠️ Conecte-se ao barramento CAN primeiro!", 3000)
+            self.show_notification(t('notif_connect_first'), 3000)
             return
         
         if self.periodic_send_active:
-            self.show_notification("⚠️ Envio periódico já está ativo!", 2000)
+            self.show_notification(t('notif_periodic_already_active'), 2000)
             return
         
         # Verificar se há mensagens na tabela
         if self.transmit_table.rowCount() == 0:
-            self.show_notification("⚠️ Nenhuma mensagem na tabela de transmissão!", 2000)
+            self.show_notification(t('notif_no_messages_in_table'), 2000)
             return
         
         self.periodic_send_active = True
@@ -1740,20 +1794,20 @@ class CANAnalyzerWindow(QMainWindow):
                 self.logger.error(f"Erro ao iniciar envio periódico da linha {row}: {e}")
         
         if messages_started > 0:
-            self.show_notification(f"✅ Envio periódico iniciado: {messages_started} mensagem(ns)", 3000)
+            self.show_notification(t('notif_periodic_started', count=messages_started), 3000)
             # Transformar botão Send All em Stop All
             self.btn_send_all.setText("Stop All")
-            self.btn_send_all.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
+            self.btn_send_all.setStyleSheet(self.colors['send_active'])
             self.btn_send_all.clicked.disconnect()
             self.btn_send_all.clicked.connect(self.stop_all)
         else:
             self.periodic_send_active = False
-            self.show_notification("⚠️ Nenhuma mensagem com período válido!", 2000)
+            self.show_notification(t('notif_no_valid_period'), 2000)
     
     def stop_all(self):
         """Para todas as transmissões periódicas"""
         if not self.periodic_send_active:
-            self.show_notification("⚠️ Nenhum envio periódico ativo!", 2000)
+            self.show_notification(t('notif_no_periodic_active'), 2000)
             return
         
         # Sinalizar todas as threads para parar
@@ -1776,7 +1830,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_send_all.clicked.disconnect()
         self.btn_send_all.clicked.connect(self.send_all)
         
-        self.show_notification("⏹ Envio periódico parado", 2000)
+        self.show_notification(t('notif_periodic_stopped'), 2000)
         self.logger.info("Periodic Send: Todas as transmissões periódicas foram paradas")
     
     def _periodic_send_worker(self, row: int, can_id: int, dlc: int, data: bytes, period_ms: int, stop_event: threading.Event, is_rtr: bool = False):
@@ -1829,6 +1883,7 @@ class CANAnalyzerWindow(QMainWindow):
                     # Criar item se não existir
                     new_item = QTableWidgetItem("1")
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.transmit_table.setItem(row, 15, new_item)
         except Exception as e:
             self.logger.error(f"Erro ao incrementar contador: {e}")
@@ -1844,6 +1899,7 @@ class CANAnalyzerWindow(QMainWindow):
                 else:
                     # Criar item se não existir
                     new_item = QTableWidgetItem(str(count))
+                    new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.transmit_table.setItem(row, 15, new_item)
         except Exception as e:
@@ -1863,6 +1919,10 @@ class CANAnalyzerWindow(QMainWindow):
                 old_language = self.config.get('language', 'en')
                 new_language = new_config.get('language', 'en')
                 
+                # Verificar se mudou o tema
+                old_theme = self.config.get('theme', 'system')
+                new_theme = new_config.get('theme', 'system')
+                
                 # Verificar se mudou listen_only
                 old_listen_only = self.config.get('listen_only', True)
                 new_listen_only = new_config.get('listen_only', True)
@@ -1873,6 +1933,7 @@ class CANAnalyzerWindow(QMainWindow):
                 self.logger.info("Configuração salva em config.json")
                 
                 # Aplicar mudança de idioma
+                language_changed = False
                 if old_language != new_language:
                     from .i18n import get_i18n
                     i18n = get_i18n()
@@ -1881,6 +1942,15 @@ class CANAnalyzerWindow(QMainWindow):
                     
                     # Atualizar interface com novo idioma
                     self.update_ui_translations()
+                    language_changed = True
+                
+                # Aplicar mudança de tema
+                theme_changed = False
+                if old_theme != new_theme:
+                    self.logger.info(f"Tema alterado para: {new_theme}")
+                    # Aplicar tema imediatamente
+                    self.apply_theme(new_theme)
+                    theme_changed = True
                 
                 # Atualizar label de modo se conectado ou sempre atualizar
                 if self.config.get('listen_only', True):
@@ -1891,8 +1961,27 @@ class CANAnalyzerWindow(QMainWindow):
                 if old_listen_only != new_listen_only:
                     self.logger.info(f"Modo alterado para: {'Listen Only' if new_listen_only else 'Normal'}")
                 
-                if old_language == new_language:  # Só mostrar se não mudou idioma
-                    QMessageBox.information(self, "Settings", "Configurações atualizadas!")
+                # Mostrar notificação no canto inferior direito
+                if language_changed and theme_changed:
+                    self.show_notification(
+                        f"✅ {t('msg_language_and_theme_applied')}",
+                        5000  # 5 segundos
+                    )
+                elif language_changed:
+                    self.show_notification(
+                        f"✅ {t('msg_language_applied')}",
+                        3000  # 3 segundos
+                    )
+                elif theme_changed:
+                    self.show_notification(
+                        f"✅ {t('msg_theme_applied')}",
+                        3000  # 3 segundos
+                    )
+                else:
+                    self.show_notification(
+                        f"✅ {t('msg_settings_saved')}",
+                        3000  # 3 segundos
+                    )
                 
         except Exception as e:
             self.logger.error(f"Erro ao abrir/processar settings: {str(e)}", exc_info=True)
@@ -1920,8 +2009,8 @@ class CANAnalyzerWindow(QMainWindow):
             self.update_ui_translations()
             
             # Mostrar notificação
-            lang_name = "English" if language_code == 'en' else "Português"
-            self.show_notification(f"Language changed to {lang_name}", 3000)
+            lang_name = {"en": "English", "pt": "Português", "es": "Español", "de": "Deutsch", "fr": "Français"}.get(language_code, language_code)
+            self.show_notification(t('notif_language_changed', language=lang_name), 3000)
             
         except Exception as e:
             self.logger.error(f"Erro ao mudar idioma: {str(e)}", exc_info=True)
@@ -2030,7 +2119,7 @@ class CANAnalyzerWindow(QMainWindow):
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
-                    f"✅ Log salvo: {filename_short} ({len(messages_to_save)} mensagens)",
+                    t('notif_log_saved', filename=filename_short, count=len(messages_to_save)),
                     5000
                 )
             except Exception as e:
@@ -2131,7 +2220,7 @@ class CANAnalyzerWindow(QMainWindow):
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
-                    f"✅ Log carregado: {filename_short} ({len(messages)} mensagens)",
+                    t('notif_log_loaded', filename=filename_short, count=len(messages)),
                     5000
                 )
             except Exception as e:
@@ -2253,7 +2342,7 @@ class CANAnalyzerWindow(QMainWindow):
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
-                    f"✅ Monitor salvo: {filename_short} ({len(messages_to_save)} mensagens)",
+                    t('notif_monitor_saved', filename=filename_short, count=len(messages_to_save)),
                     5000
                 )
             except Exception as e:
@@ -2301,7 +2390,7 @@ class CANAnalyzerWindow(QMainWindow):
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
-                    f"✅ Monitor carregado: {filename_short} ({len(messages)} mensagens)",
+                    t('notif_monitor_loaded', filename=filename_short, count=len(messages)),
                     5000
                 )
             except Exception as e:
@@ -2359,7 +2448,7 @@ class CANAnalyzerWindow(QMainWindow):
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
-                    f"✅ TX salvo: {filename_short} ({len(transmit_data)} mensagens)",
+                    t('notif_tx_saved', filename=filename_short, count=len(transmit_data)),
                     5000
                 )
             except Exception as e:
@@ -2453,7 +2542,7 @@ class CANAnalyzerWindow(QMainWindow):
     def send_selected_tx_once(self):
         """Envia mensagens selecionadas da tabela de transmissão uma única vez"""
         if not self.connected or not self.can_bus:
-            self.show_notification("⚠️ Conecte-se ao barramento CAN primeiro!", 3000)
+            self.show_notification(t('notif_connect_first'), 3000)
             return
         
         selected_rows = self.transmit_table.selectionModel().selectedRows()
@@ -2490,18 +2579,19 @@ class CANAnalyzerWindow(QMainWindow):
                     # Criar item se não existir
                     new_item = QTableWidgetItem("1")
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.transmit_table.setItem(row, 15, new_item)
                 
             except Exception as e:
                 self.logger.error(f"Erro ao enviar mensagem da linha {row}: {e}")
         
         if sent_count > 0:
-            self.show_notification(f"✅ {sent_count} mensagem(ns) enviada(s)", 2000)
+            self.show_notification(t('notif_messages_sent', count=sent_count), 2000)
     
     def start_selected_periodic(self):
         """Inicia envio periódico das mensagens selecionadas"""
         if not self.connected or not self.can_bus:
-            self.show_notification("⚠️ Conecte-se ao barramento CAN primeiro!", 3000)
+            self.show_notification(t('notif_connect_first'), 3000)
             return
         
         selected_rows = self.transmit_table.selectionModel().selectedRows()
@@ -2553,10 +2643,10 @@ class CANAnalyzerWindow(QMainWindow):
                 self.logger.error(f"Erro ao iniciar envio periódico da linha {row}: {e}")
         
         if started_count > 0:
-            self.show_notification(f"✅ Envio periódico iniciado: {started_count} mensagem(ns)", 2000)
+            self.show_notification(t('notif_periodic_started', count=started_count), 2000)
             # Transformar botão Send All em Stop All
             self.btn_send_all.setText("Stop All")
-            self.btn_send_all.setStyleSheet("background-color: #f44336; color: white; font-weight: bold;")
+            self.btn_send_all.setStyleSheet(self.colors['send_active'])
             self.btn_send_all.clicked.disconnect()
             self.btn_send_all.clicked.connect(self.stop_all)
     
@@ -2600,7 +2690,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_send_all.clicked.connect(self.send_all)
         
         if stopped_count > 0:
-            self.show_notification(f"⏹ Envio periódico parado: {stopped_count} mensagem(ns)", 2000)
+            self.show_notification(t('notif_periodic_stopped_count', count=stopped_count), 2000)
     
     def delete_selected_tx_messages(self):
         """Deleta mensagens selecionadas da tabela de transmissão"""
@@ -2625,7 +2715,7 @@ class CANAnalyzerWindow(QMainWindow):
             # Deletar linha
             self.transmit_table.removeRow(row)
         
-        self.show_notification(f"🗑️ {len(rows_to_delete)} mensagem(ns) deletada(s)", 2000)
+        self.show_notification(t('notif_messages_deleted', count=len(rows_to_delete)), 2000)
     
     def add_selected_to_transmit(self):
         """Adiciona mensagens selecionadas à lista de transmissão"""
@@ -2733,7 +2823,7 @@ class CANAnalyzerWindow(QMainWindow):
         clipboard = QApplication.clipboard()
         clipboard.setText(id_str)
         
-        self.show_notification(f"ID copiado: {id_str}", 2000)
+        self.show_notification(t('notif_id_copied', id=id_str), 2000)
     
     def copy_selected_data(self):
         """Copia dados da mensagem selecionada"""
@@ -2752,7 +2842,7 @@ class CANAnalyzerWindow(QMainWindow):
         clipboard = QApplication.clipboard()
         clipboard.setText(data_str)
         
-        self.show_notification(f"Data copiado: {data_str}", 2000)
+        self.show_notification(t('notif_data_copied', data=data_str), 2000)
     
     def load_transmit_list(self):
         """Carrega lista de mensagens de transmissão"""
@@ -2841,7 +2931,7 @@ class CANAnalyzerWindow(QMainWindow):
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
-                    f"✅ TX carregado: {filename_short} ({len(transmit_data)} mensagens)",
+                    t('notif_tx_loaded', filename=filename_short, count=len(transmit_data)),
                     5000
                 )
             except Exception as e:
@@ -2854,11 +2944,11 @@ class CANAnalyzerWindow(QMainWindow):
         if self.playback_paused:
             self.btn_play_all.setText("▶ Continue")
             self.playback_label.setText("Paused")
-            self.show_notification("⏸ Reprodução pausada", 2000)
+            self.show_notification(t('notif_playback_paused'), 2000)
         else:
             self.btn_play_all.setText("⏸ Pause")
             self.playback_label.setText("Playing...")
-            self.show_notification("▶ Reprodução continuada", 2000)
+            self.show_notification(t('notif_playback_resumed'), 2000)
     
     def highlight_playback_row(self, row: int):
         """Destaca a linha atual durante reprodução"""
@@ -2868,7 +2958,7 @@ class CANAnalyzerWindow(QMainWindow):
                 for col in range(self.receive_table.columnCount()):
                     item = self.receive_table.item(self.current_playback_row, col)
                     if item:
-                        item.setBackground(QColor(255, 255, 255))  # Branco
+                        item.setBackground(self.colors['normal_bg'])
             
             # Aplicar novo highlight
             self.current_playback_row = row
@@ -2876,7 +2966,7 @@ class CANAnalyzerWindow(QMainWindow):
                 for col in range(self.receive_table.columnCount()):
                     item = self.receive_table.item(row, col)
                     if item:
-                        item.setBackground(QColor(220, 240, 255))  # Azul claro sutil
+                        item.setBackground(self.colors['highlight'])
                 
                 # Scroll para a linha atual
                 first_item = self.receive_table.item(row, 0)
@@ -2891,7 +2981,7 @@ class CANAnalyzerWindow(QMainWindow):
             for col in range(self.receive_table.columnCount()):
                 item = self.receive_table.item(self.current_playback_row, col)
                 if item:
-                    item.setBackground(QColor(255, 255, 255))  # Branco
+                    item.setBackground(self.colors['normal_bg'])
         self.current_playback_row = -1
     
     def play_all_messages(self):
@@ -2926,7 +3016,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_play_selected.setEnabled(False)
         self.btn_stop_play.setEnabled(True)
         self.playback_label.setText("Playing...")
-        self.show_notification(f"▶ Reproduzindo {len(self.recorded_messages)} mensagens gravadas...", 3000)
+        self.show_notification(t('notif_playback_playing', count=len(self.recorded_messages)), 3000)
     
     def play_selected_message(self):
         """Reproduz (envia) apenas as mensagens selecionadas"""
@@ -2936,7 +3026,7 @@ class CANAnalyzerWindow(QMainWindow):
             return  # Sem popup, apenas retorna
         
         if not self.connected or not self.can_bus:
-            self.show_notification("⚠️ Conecte-se ao barramento CAN primeiro!", 3000)
+            self.show_notification(t('notif_connect_first'), 3000)
             return
         
         # Obter mensagens selecionadas
@@ -3011,7 +3101,7 @@ class CANAnalyzerWindow(QMainWindow):
             # self.show_notification(f"✅ {len(selected_messages)} msg enviada(s)", 1000)
         except Exception as e:
             self.logger.error(f"Erro ao enviar mensagens: {e}")
-            self.show_notification(f"❌ Erro: {str(e)}", 3000)
+            self.show_notification(t('notif_error', error=str(e)), 3000)
     
     def stop_playback(self):
         """Para a reprodução de mensagens"""
@@ -3032,7 +3122,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_play_selected.setEnabled(has_recorded)
         self.btn_stop_play.setEnabled(False)
         self.playback_label.setText("Ready")
-        self.show_notification("⏹ Reprodução parada", 2000)
+        self.show_notification(t('notif_playback_stopped'), 2000)
     
     def _playback_worker(self, messages: List[CANMessage]):
         """Worker thread para reproduzir mensagens com timing original"""
@@ -3136,11 +3226,11 @@ class CANAnalyzerWindow(QMainWindow):
             if self.message_filters['enabled']:
                 filter_count = len(self.message_filters['id_filters'])
                 self.show_notification(
-                    f"✅ Filtros ativados: {filter_count} ID(s)",
+                    t('notif_filters_enabled', count=filter_count),
                     3000
                 )
             else:
-                self.show_notification("Filtros desativados", 2000)
+                self.show_notification(t('notif_filters_disabled'), 2000)
     
     def show_trigger_dialog(self):
         """Mostra dialog de configuração de triggers"""
@@ -3165,7 +3255,7 @@ class CANAnalyzerWindow(QMainWindow):
                     3000
                 )
             else:
-                self.show_notification("Triggers desativados", 2000)
+                self.show_notification(t('notif_triggers_disabled'), 2000)
     
     def apply_message_filters(self):
         """Aplica filtros às mensagens exibidas"""

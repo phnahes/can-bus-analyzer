@@ -3,12 +3,22 @@
 CAN Message Sender - Direct serial communication with CanHacker/Lawicel protocol devices
 No external dependencies required (only pyserial)
 
+Features:
+- Send message groups with individual CAN IDs and periods (like Arduino example)
+- Sequential or individual period transmission modes
+- Listen-only mode for receiving messages
+- Debug mode for troubleshooting
+
 Usage:
-    python3 send_can_message.py              # Cycle through messages automatically
+    python3 send_can_message.py              # Send message group automatically
     python3 send_can_message.py --listen     # Listen-only mode (receive only)
     python3 send_can_message.py -l           # Same as --listen
     python3 send_can_message.py --debug      # Enable debug mode (shows raw data)
     python3 send_can_message.py -l --debug   # Listen mode with debug
+    
+Configuration:
+    Edit the message_group list in main() to define your messages.
+    Each message has: id (CAN ID), data (8 bytes), period_ms (transmission period)
 """
 
 import serial
@@ -286,21 +296,40 @@ def main():
     debug_mode = "--debug" in sys.argv or "-d" in sys.argv
     
     # Configuration
-    #PORT = "/dev/cu.usbserial-110"  # Adjust as needed
-    PORT = "/dev/cu.usbmodemA021E7C81"  # Adjust as needed
+    PORT = "/dev/cu.usbserial-110"  # Adjust as needed
+    #PORT = "/dev/cu.usbmodemA021E7C81"  # Adjust as needed
     BITRATE = 500000  # 500 kbit/s
-    DELAY_BETWEEN_MESSAGES = 1.0  # seconds
     
-    # CAN messages (ID 0x333)
-    messages = [
-        [0x01, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        [0x02, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        [0x03, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        [0x04, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        [0x05, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        [0x06, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-        [0x07, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+    # ============================================================================
+    # MESSAGE GROUP CONFIGURATION (similar to Arduino example)
+    # ============================================================================
+    # Each message: {'id': CAN_ID, 'data': [bytes], 'period_ms': period}
+    # - id: CAN identifier (0x000-0x7FF for Standard)
+    # - data: List of 8 bytes
+    # - period_ms: Transmission period in milliseconds (used in individual mode)
+    #
+    # Example simulating automotive ECU:
+    # - 0x100: Engine RPM - sent every 10ms
+    # - 0x200: Vehicle Speed - sent every 20ms
+    # - 0x300: Temperature - sent every 100ms
+    # - 0x400: Status - sent every 50ms
+    
+    message_group = [
+        {'id': 0x100, 'data': [0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 'period_ms': 10},   # RPM
+        {'id': 0x200, 'data': [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 'period_ms': 20},   # Speed
+        {'id': 0x300, 'data': [0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 'period_ms': 100},  # Temp
+        {'id': 0x400, 'data': [0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00], 'period_ms': 50},   # Status
     ]
+    
+    # Transmission mode:
+    # - 'sequential': Send all messages in sequence, using period_ms as delay after each
+    # - 'individual': Each message sent independently at its own period (requires threading)
+    TRANSMISSION_MODE = 'sequential'  # 'sequential' or 'individual'
+    
+    # For sequential mode: delay between full group cycles (in addition to individual periods)
+    GROUP_CYCLE_DELAY = 0.0  # seconds
+    
+    # ============================================================================
     
     # Create CAN interface
     can_interface = CANInterface(PORT)
@@ -332,32 +361,75 @@ def main():
             # Listen indefinitely (continuous mode)
             can_interface.read_messages(duration=999999, debug=debug_mode, show_header=True)
         else:
-            # Automatic message cycling mode
+            # Automatic message group transmission
             print("=" * 60)
-            print("Starting automatic message cycling...")
+            print("CAN Message Group Transmission")
+            print("=" * 60)
+            print(f"Group Size: {len(message_group)} messages")
+            print(f"Transmission Mode: {TRANSMISSION_MODE}")
             if debug_mode:
                 print("DEBUG MODE ENABLED - showing raw data")
-            print(f"Press Ctrl+C to stop")
+            print()
+            print("Messages in group:")
+            for i, msg in enumerate(message_group):
+                print(f"  [{i+1}] ID: 0x{msg['id']:03X}, Period: {msg['period_ms']}ms, Data: {' '.join(f'{b:02X}' for b in msg['data'])}")
+            print()
+            print("Press Ctrl+C to stop")
             print("=" * 60)
             print()
             
-            # Cycle through messages
-            message_index = 0
-            while True:
-                # Get current message
-                data = messages[message_index]
+            if TRANSMISSION_MODE == 'sequential':
+                # Sequential mode: send all messages in sequence
+                cycle_count = 0
+                while True:
+                    cycle_count += 1
+                    print(f"--- Cycle {cycle_count} ---")
+                    
+                    for i, msg in enumerate(message_group):
+                        print(f"[{i+1}/{len(message_group)}] ", end='')
+                        can_interface.send_can_message(msg['id'], msg['data'])
+                        
+                        # Use message's period_ms as delay (converted to seconds)
+                        delay_sec = msg['period_ms'] / 1000.0
+                        time.sleep(delay_sec)
+                        
+                        # Check for incoming messages during delay
+                        if can_interface.serial.in_waiting > 0:
+                            can_interface.read_messages(duration=0.01, debug=debug_mode, show_header=False)
+                    
+                    # Additional delay between full group cycles
+                    if GROUP_CYCLE_DELAY > 0:
+                        time.sleep(GROUP_CYCLE_DELAY)
+                    
+                    print()  # Empty line for readability
+                    
+            elif TRANSMISSION_MODE == 'individual':
+                # Individual mode: each message sent at its own period
+                print("⚠ Individual period mode requires threading - using simplified sequential mode")
+                print("   (For true individual periods, use the Arduino example)")
+                print()
                 
-                # Send message
-                print(f"[Message {message_index + 1}/7]")
-                can_interface.send_can_message(0x333, data)
+                # Fallback to sequential with minimal delays
+                last_send_time = {i: 0 for i in range(len(message_group))}
                 
-                # Wait for responses
-                can_interface.read_messages(duration=DELAY_BETWEEN_MESSAGES, debug=debug_mode)
-                
-                # Move to next message
-                message_index = (message_index + 1) % len(messages)
-                
-                print()  # Empty line for readability
+                while True:
+                    current_time = time.time() * 1000  # Convert to ms
+                    
+                    for i, msg in enumerate(message_group):
+                        # Check if period has elapsed
+                        if current_time - last_send_time[i] >= msg['period_ms']:
+                            can_interface.send_can_message(msg['id'], msg['data'])
+                            last_send_time[i] = current_time
+                    
+                    # Small delay to avoid CPU overload
+                    time.sleep(0.001)
+                    
+                    # Check for incoming messages
+                    if can_interface.serial.in_waiting > 0:
+                        can_interface.read_messages(duration=0.01, debug=debug_mode, show_header=False)
+            else:
+                print(f"✗ Unknown transmission mode: {TRANSMISSION_MODE}")
+                sys.exit(1)
     
     except KeyboardInterrupt:
         print("\n\n⚠ Interrupted by user")
