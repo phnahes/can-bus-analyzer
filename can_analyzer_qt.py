@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-CAN Analyzer for macOS - Entry Point
-Complete replication of CANHacker functionalities for CAN packet analysis
+CAN Analyzer - Entry Point
+CAN bus analyzer with CANHacker-like functionality. Runs on macOS and Linux.
 """
 
 import sys
@@ -16,7 +16,8 @@ def main():
     """Application entry point"""
     # Initialize logging system
     logger = init_logger(log_dir="logs", max_bytes=10*1024*1024, backup_count=5)
-    logger.info("Starting CAN Analyzer for macOS")
+    from src.utils import get_platform_display_name
+    logger.info(f"Starting CAN Analyzer ({get_platform_display_name()})")
     
     # Initialize configuration manager
     from src.config_manager import init_config_manager
