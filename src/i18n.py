@@ -19,13 +19,13 @@ class I18n:
     
     # Translation dictionary
     TRANSLATIONS = {
-        # Application
+        # Application (window title uses app_title + " - " + platform at runtime)
         'app_title': {
-            'en': 'CAN Analyzer - macOS',
-            'pt': 'CAN Analyzer - macOS',
-            'es': 'Analizador CAN - macOS',
-            'de': 'CAN Analyzer - macOS',
-            'fr': 'Analyseur CAN - macOS'
+            'en': 'CAN Analyzer',
+            'pt': 'CAN Analyzer',
+            'es': 'Analizador CAN',
+            'de': 'CAN Analyzer',
+            'fr': 'Analyseur CAN'
         },
         
         # Menu - File
@@ -185,11 +185,11 @@ class I18n:
             'fr': 'À propos'
         },
         'about_title': {
-            'en': 'CAN Analyzer for macOS',
-            'pt': 'CAN Analyzer para macOS',
-            'es': 'Analizador CAN para macOS',
-            'de': 'CAN-Analysator für macOS',
-            'fr': 'Analyseur CAN pour macOS'
+            'en': 'CAN Analyzer for {platform}',
+            'pt': 'CAN Analyzer para {platform}',
+            'es': 'Analizador CAN para {platform}',
+            'de': 'CAN-Analysator für {platform}',
+            'fr': 'Analyseur CAN pour {platform}'
         },
         'about_version': {
             'en': 'Version',
@@ -213,11 +213,11 @@ class I18n:
             'fr': 'Analyseur de bus CAN complet'
         },
         'about_replicates': {
-            'en': 'Replicates CANHacker functionalities for macOS',
-            'pt': 'Replica funcionalidades do CANHacker para macOS',
-            'es': 'Replica funcionalidades de CANHacker para macOS',
-            'de': 'Repliziert CANHacker-Funktionen für macOS',
-            'fr': 'Réplique les fonctionnalités de CANHacker pour macOS'
+            'en': 'Replicates CANHacker functionalities for {platform}',
+            'pt': 'Replica funcionalidades do CANHacker para {platform}',
+            'es': 'Replica funcionalidades de CANHacker para {platform}',
+            'de': 'Repliziert CANHacker-Funktionen für {platform}',
+            'fr': 'Réplique les fonctionnalités de CANHacker pour {platform}'
         },
         'about_features': {
             'en': 'Features',

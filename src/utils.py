@@ -2,8 +2,16 @@
 Utils - Funções utilitárias
 """
 
+import sys
 from typing import List, Optional
 from .models import CANMessage
+
+
+def get_platform_display_name() -> str:
+    """Return display name for current OS (e.g. macOS, Linux, Windows)."""
+    return {"darwin": "macOS", "linux": "Linux", "win32": "Windows"}.get(
+        sys.platform, sys.platform.capitalize()
+    )
 
 
 def calculate_toyota_crc(data: bytes, indices: List[int]) -> int:
