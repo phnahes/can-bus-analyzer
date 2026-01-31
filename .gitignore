@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs
+*.log
+logs/
+
+# Configuration
+config.json
+
+# CAN logs (but not config.json)
+can_*.json
+trace_*.json
+transmit_*.json
+*.csv
+*.asc
+*.blf
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Build artifacts
+*.spec~
+icon.iconset/
+
+# Temporary icon files (keep icon.icns and icon.ico)
+can_analyzer_icon.png
+*.iconset/
+

@@ -1,0 +1,16 @@
+# Development and build dependencies (NOT included in packaged app)
+# Install with: pip install -r requirements-dev.txt
+
+# Include runtime dependencies
+-r requirements.txt
+
+# Build tools (platform-specific)
+py2app>=0.28.8; sys_platform == 'darwin'
+pyinstaller>=6.0.0; sys_platform == 'linux'
+
+# Icon generation tools (only needed for creating icons)
+Pillow>=10.0.0
+
+# Optional development tools
+# pylint>=3.0.0
+# black>=23.0.0
