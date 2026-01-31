@@ -1,4 +1,4 @@
-# CAN Testing Examples
+# CAN Testing Tools
 
 Practical examples for testing and using the CAN Analyzer with different devices and protocols.
 
@@ -67,13 +67,13 @@ Press Ctrl+C to stop
 ============================================================
 
 [Message 1/7]
-Message sent: ID=0x3DA, Data=[0x01, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+Message sent: ID=333, Data=[0x01, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
 
 Listening for messages (1.0 seconds)...
 RX: ID=0x280, DLC=8, Data=[0xBB, 0x8E, 0x00, 0x00, 0x29, 0xFA, 0x29, 0x29]
 
 [Message 2/7]
-Message sent: ID=0x3DA, Data=[0x02, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+Message sent: ID=0x333, Data=[0x02, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
 ...
 ```
 
@@ -101,7 +101,7 @@ If you see "Failed to configure bitrate":
 
 ---
 
-## Arduino Examples
+## Arduino Tools
 
 ### arduino_msg_generator.ino
 
@@ -578,14 +578,4 @@ m000007FF    # Mask = 0x7FF (all standard ID bits)
 - **LAWICEL CANUSB**: http://www.can232.com/docs/canusb_manual.pdf
 - **CanHacker for Windows**: http://www.mictronics.de/projects/usb-can-bus/
 
----
 
-## License
-
-Based on original code from Seeed Technology Co., Ltd.
-Improvements and documentation by Paulo Nahes - 2026
-
-**Libraries used:**
-- **arduino-canhacker** by autowp - MIT License
-- **arduino-mcp2515** by autowp - MIT License
-- **Seeed CAN Bus Shield** by Seeed Studio - MIT License

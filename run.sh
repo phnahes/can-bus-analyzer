@@ -1,6 +1,6 @@
 #!/bin/bash
-# CAN Analyzer para macOS - Script de execução
-# Automatiza a criação do venv e instalação de dependências
+# CAN Analyzer - Run script (macOS / Linux)
+# Automates venv creation and dependency installation
 
 set -e
 GREEN='\033[0;32m'
@@ -8,43 +8,43 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}CAN Analyzer para macOS${NC}"
+echo -e "${GREEN}CAN Analyzer${NC}"
 echo "================================"
 
-# Verificar se o venv existe
+# Check if venv exists
 if [ ! -d "venv" ]; then
-    echo -e "${YELLOW}Ambiente virtual não encontrado. Criando...${NC}"
+    echo -e "${YELLOW}Virtual environment not found. Creating...${NC}"
     python3 -m venv venv
-    
+
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Erro ao criar ambiente virtual!${NC}"
+        echo -e "${RED}Error creating virtual environment!${NC}"
         exit 1
     fi
-    
-    echo -e "${GREEN}Ambiente virtual criado com sucesso!${NC}"
+
+    echo -e "${GREEN}Virtual environment created successfully!${NC}"
 fi
 
-# Ativar o ambiente virtual
-echo -e "${YELLOW}Ativando ambiente virtual...${NC}"
+# Activate the virtual environment
+echo -e "${YELLOW}Activating virtual environment...${NC}"
 source venv/bin/activate
 
-# Verificar se as dependências estão instaladas
+# Check if dependencies are installed
 if ! python -c "import can" 2>/dev/null; then
-    echo -e "${YELLOW}Instalando dependências de runtime...${NC}"
+    echo -e "${YELLOW}Installing runtime dependencies...${NC}"
     pip install --upgrade pip
     pip install -r requirements.txt
-    
+
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Erro ao instalar dependências!${NC}"
+        echo -e "${RED}Error installing dependencies!${NC}"
         exit 1
     fi
-    
-    echo -e "${GREEN}Dependências instaladas com sucesso!${NC}"
+
+    echo -e "${GREEN}Dependencies installed successfully!${NC}"
 fi
 
-# Executar a aplicação
-echo -e "${GREEN}Iniciando CAN Analyzer...${NC}"
+# Run the application
+echo -e "${GREEN}Starting CAN Analyzer...${NC}"
 python can_analyzer_qt.py
 
-# Desativar o ambiente virtual ao sair
+# Deactivate virtual environment on exit
 deactivate
