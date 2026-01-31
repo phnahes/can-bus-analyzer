@@ -7,6 +7,7 @@ A CANbus analyzer with CANHacker-like functionality. Built with Python and PyQt6
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Screenshots](#screenshots)
 - [Supported Operating Systems](#supported-operating-systems)
 - [Requirements](#requirements)
 - [Features](#features)
@@ -37,6 +38,15 @@ source venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
 python can_analyzer_qt.py
 ```
+
+---
+
+## Screenshots
+
+| | |
+|:---:|:---:|
+| ![Screenshot 1](docs/image1.png) | ![Screenshot 2](docs/image2.png) |
+| ![Screenshot 3](docs/image3.png) | ![Screenshot 4](docs/image4.png) |
 
 ---
 
