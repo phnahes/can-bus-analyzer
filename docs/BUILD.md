@@ -2,6 +2,16 @@
 
 You can build a standalone package so users don't need Python installed.
 
+### Quick build
+
+**macOS / Linux:** (run from project root)
+```bash
+./extras/build.sh
+```
+The script creates/activates a venv and installs dependencies if needed.
+
+**Note:** Use `requirements-dev.txt` for building (includes py2app/PyInstaller). Use `requirements.txt` only for running from source.
+
 ### Requirements
 
 - **py2app** for macOS (included in `requirements-dev.txt`)
@@ -16,16 +26,6 @@ You can build a standalone package so users don't need Python installed.
 ### System Requirements
 - **macOS**: 10.14+ (for running from source) or any recent version (for .app bundle)
 - **Linux**: Modern distribution with Python 3.9+ and Qt/GUI support
-
-### Quick build
-
-**macOS / Linux:** (run from project root)
-```bash
-./extras/build.sh
-```
-The script creates/activates a venv and installs dependencies if needed.
-
-**Note:** Use `requirements-dev.txt` for building (includes py2app/PyInstaller). Use `requirements.txt` only for running from source.
 
 ### Output
 
