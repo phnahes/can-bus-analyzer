@@ -1,6 +1,6 @@
 # CAN Analyzer
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 A CANbus analyzer with CANHacker-like functionality. Built with Python and PyQt6. **Runs on macOS and Linux.**
@@ -215,6 +215,47 @@ Automatically send a CAN message when a specific message is received. You define
 
 Replay previously recorded traffic back onto the bus. In **Tracer** mode, use **Record** to capture messages; then **Play All** or **Play Selected** sends them with the same timing. Requires an active connection. Use it to reproduce scenarios, test other nodes, or repeat a sequence without manual retyping.
 
+### **CAN Gateway**
+
+Bridge and filter messages between two CAN buses. The Gateway feature allows you to:
+
+- **Bidirectional Transmission**: Control message flow from CAN1→CAN2 and/or CAN2→CAN1
+- **Static Blocking**: Block specific message IDs on specific channels
+- **Dynamic Blocking**: Automatically cycle through a range of IDs, blocking each for a specified period
+- **Message Modification**: Modify message IDs and data bytes as they pass through the gateway
+- **Statistics**: Track forwarded, blocked, and modified messages in real-time
+
+**How to Use:**
+
+1. Configure at least 2 CAN buses in Settings
+2. Open **Tools → Gateway** (Ctrl+W)
+3. Enable Gateway and configure transmission direction
+4. Add blocking rules or dynamic blocks as needed
+5. Monitor statistics to verify gateway operation
+
+**Use Cases:**
+- Isolate two CAN networks while selectively forwarding messages
+- Test ECU behavior by blocking specific messages
+- Simulate gateway ECUs in automotive systems
+- Debug multi-network vehicle architectures
+
+### **Split-Screen Monitor**
+
+View messages from different CAN channels simultaneously in a split-screen layout.
+
+**How to Use:**
+
+1. Configure at least 2 CAN buses in Settings
+2. Enable **View → Split-Screen Mode** (Ctrl+D)
+3. Select which channel to display in each panel (left/right)
+4. Messages are automatically filtered by channel
+
+**Benefits:**
+- Compare message traffic between two networks
+- Monitor gateway operation in real-time
+- Analyze timing differences between channels
+- Simplify multi-network debugging
+
 ### **Multi-CAN Support**
 
 Work with multiple CAN buses simultaneously. Configure up to multiple CAN interfaces (e.g., two USB adapters, or one adapter with multiple channels) and monitor/transmit on all of them at once.
@@ -331,6 +372,8 @@ You can manually edit `config.json` if needed (application must be closed).
 | Tracer Mode | `Ctrl+T` |
 | Filters | `Ctrl+F` |
 | Triggers | `Ctrl+G` |
+| Gateway | `Ctrl+W` |
+| Split-Screen Mode | `Ctrl+D` |
 | Settings | `Ctrl+,` |
 | Exit | `Ctrl+Q` |
 
@@ -420,12 +463,13 @@ Contributions are welcome! Here's how you can help:
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
 
-**Latest Release: v0.2.0** - Multi-CAN Support
-- Multiple CAN bus support with independent configuration
-- Channel-specific filters
-- Enhanced status bar with per-channel details
-- Improved terminology aligned with industry standards
-- Save/Load with channel information
+**Latest Release: v0.3.0** - CAN Gateway & Split-Screen
+- CAN Gateway for bridging and filtering between two CAN buses
+- Split-Screen Monitor for side-by-side channel viewing
+- Static and dynamic message blocking
+- Message modification capabilities
+- Real-time gateway statistics
+- Complete internationalization support
 
 ---
 
@@ -456,9 +500,9 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 ## Project Status
 
-**Version**: 0.2.0  
+**Version**: 0.3.0  
 **Status**: Active  
-**Last Updated**: January 2026
+**Last Updated**: February 2026
 
 ### Implemented Features
 - Monitor & Tracer modes
@@ -475,10 +519,13 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 - Multi-CAN support (multiple buses simultaneously)
 - Per-channel filters and improved terminology (Channel/Device)
 
+### Recently Added Features
+- **CAN Gateway**: Bridge and filter messages between two CAN buses
+- **Split-Screen Monitor**: View messages from different channels side-by-side
+
 ### Planned Features
 - Hardware filters (28 configurable)
 - CAN Bomber (spoofing tool)
-- Gateway mode (bridge two channels)
 - Statistics & analytics
 - DBC file support
 - Real-time plotting

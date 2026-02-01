@@ -20,7 +20,7 @@ except ImportError:
     CAN_AVAILABLE = False
     print("python-can not installed. Simulation mode activated.")
 
-from .models import CANMessage
+from .models import CANMessage, GatewayConfig
 
 
 @dataclass
@@ -208,13 +208,25 @@ class CANBusInstance:
 
 
 class CANBusManager:
-    """Manages multiple CAN bus instances"""
+    """Manages multiple CAN bus instances with Gateway support"""
     
     def __init__(self, message_callback: Optional[Callable[[CANMessage], None]] = None, logger=None):
         self.buses: Dict[str, CANBusInstance] = {}
         self.message_callback = message_callback
         self.logger = logger
         self._lock = threading.Lock()
+        
+        # Gateway configuration
+        self.gateway_config: Optional[GatewayConfig] = None
+        self.gateway_thread: Optional[threading.Thread] = None
+        self.gateway_running = False
+        
+        # Statistics
+        self.gateway_stats = {
+            'forwarded': 0,
+            'blocked': 0,
+            'modified': 0
+        }
     
     def add_bus(self, config: CANBusConfig) -> bool:
         """Add a CAN bus to the manager"""
@@ -304,7 +316,12 @@ class CANBusManager:
         self.message_callback = callback
     
     def _on_message_received(self, bus_name: str, msg: CANMessage):
-        """Internal callback that forwards to user callback"""
+        """Internal callback that forwards to user callback and handles gateway"""
+        # Process gateway if enabled
+        if self.gateway_config and self.gateway_config.enabled:
+            self._process_gateway_message(msg)
+        
+        # Forward to user callback
         if self.message_callback:
             # Message already has source field set, just forward it
             self.message_callback(msg)
@@ -331,3 +348,116 @@ class CANBusManager:
     def __contains__(self, name: str) -> bool:
         """Check if bus exists"""
         return name in self.buses
+    
+    # ========== Gateway Methods ==========
+    
+    def set_gateway_config(self, config: GatewayConfig):
+        """Set gateway configuration"""
+        self.gateway_config = config
+        
+        # Start dynamic blocking thread if needed
+        if config.enabled and any(db.enabled for db in config.dynamic_blocks):
+            self._start_dynamic_blocking()
+    
+    def get_gateway_config(self) -> Optional[GatewayConfig]:
+        """Get current gateway configuration"""
+        return self.gateway_config
+    
+    def enable_gateway(self, enabled: bool = True):
+        """Enable or disable gateway"""
+        if self.gateway_config:
+            self.gateway_config.enabled = enabled
+            if enabled and any(db.enabled for db in self.gateway_config.dynamic_blocks):
+                self._start_dynamic_blocking()
+            elif not enabled:
+                self._stop_dynamic_blocking()
+    
+    def get_gateway_stats(self) -> Dict[str, int]:
+        """Get gateway statistics"""
+        return self.gateway_stats.copy()
+    
+    def reset_gateway_stats(self):
+        """Reset gateway statistics"""
+        self.gateway_stats = {
+            'forwarded': 0,
+            'blocked': 0,
+            'modified': 0
+        }
+    
+    def _process_gateway_message(self, msg: CANMessage):
+        """Process message through gateway rules"""
+        if not self.gateway_config or not self.gateway_config.enabled:
+            return
+        
+        # Check if message should be blocked
+        if self.gateway_config.should_block(msg):
+            self.gateway_stats['blocked'] += 1
+            return
+        
+        # Check if message should be modified
+        modify_rule = self.gateway_config.get_modify_rule(msg)
+        if modify_rule:
+            msg = modify_rule.apply(msg)
+            self.gateway_stats['modified'] += 1
+        
+        # Determine target bus based on source and gateway config
+        target_bus = None
+        
+        # Get bus names (assume first two buses are CAN1 and CAN2)
+        bus_names = self.get_bus_names()
+        if len(bus_names) < 2:
+            return  # Need at least 2 buses for gateway
+        
+        bus1, bus2 = bus_names[0], bus_names[1]
+        
+        # Forward based on configuration
+        if msg.source == bus1 and self.gateway_config.transmit_1_to_2:
+            target_bus = bus2
+        elif msg.source == bus2 and self.gateway_config.transmit_2_to_1:
+            target_bus = bus1
+        
+        # Send to target bus if determined
+        if target_bus and target_bus in self.buses:
+            if self.send_to(target_bus, msg):
+                self.gateway_stats['forwarded'] += 1
+    
+    def _start_dynamic_blocking(self):
+        """Start thread for dynamic blocking"""
+        if self.gateway_running:
+            return
+        
+        self.gateway_running = True
+        self.gateway_thread = threading.Thread(
+            target=self._dynamic_blocking_loop,
+            daemon=True,
+            name="GatewayDynamicBlock"
+        )
+        self.gateway_thread.start()
+    
+    def _stop_dynamic_blocking(self):
+        """Stop dynamic blocking thread"""
+        self.gateway_running = False
+        if self.gateway_thread and self.gateway_thread.is_alive():
+            self.gateway_thread.join(timeout=1.0)
+    
+    def _dynamic_blocking_loop(self):
+        """Thread loop for dynamic blocking"""
+        while self.gateway_running:
+            if not self.gateway_config:
+                time.sleep(0.1)
+                continue
+            
+            # Advance all enabled dynamic blocks
+            for dyn_block in self.gateway_config.dynamic_blocks:
+                if dyn_block.enabled:
+                    dyn_block.advance()
+            
+            # Sleep for the period (use minimum period from all blocks)
+            if self.gateway_config.dynamic_blocks:
+                min_period = min(
+                    (db.period for db in self.gateway_config.dynamic_blocks if db.enabled),
+                    default=1000
+                )
+                time.sleep(min_period / 1000.0)
+            else:
+                time.sleep(1.0)

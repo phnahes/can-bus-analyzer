@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 
-from .models import CANMessage, CANConfig
+from .models import CANMessage, CANConfig, GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule
 from .utils import calculate_baudrate_divisor
 from .i18n import get_i18n, t
 from .theme import get_adaptive_colors, get_bit_style, should_use_dark_mode
@@ -1167,3 +1167,354 @@ class USBDeviceSelectionDialog(QDialog):
             super().accept()
         else:
             QMessageBox.warning(self, t('warning'), t('msg_select_device'))
+
+
+class GatewayDialog(QDialog):
+    """Dialog de configuração do CAN Gateway"""
+    def __init__(self, parent=None, config=None, bus_names=None):
+        super().__init__(parent)
+        self.config = config or GatewayConfig()
+        self.bus_names = bus_names or ["CAN1", "CAN2"]
+        self.i18n = get_i18n()
+        self.init_ui()
+    
+    def init_ui(self):
+        self.setWindowTitle(t('gateway_title'))
+        self.setModal(True)
+        self.setMinimumWidth(700)
+        self.setMinimumHeight(600)
+        
+        layout = QVBoxLayout(self)
+        
+        # Get theme preference
+        colors = get_adaptive_colors('system')
+        
+        # ===== Transmission Control =====
+        transmission_group = QGroupBox(t('gateway_transmission'))
+        transmission_layout = QVBoxLayout()
+        
+        # Enable Gateway
+        self.enable_gateway_check = QCheckBox(t('gateway_enable'))
+        self.enable_gateway_check.setChecked(self.config.enabled)
+        transmission_layout.addWidget(self.enable_gateway_check)
+        
+        # Transmit 1 to 2
+        transmit_layout_1_2 = QHBoxLayout()
+        self.transmit_1_to_2_check = QCheckBox(f"{t('gateway_transmit_from')} {self.bus_names[0]} {t('gateway_to')} {self.bus_names[1]}")
+        self.transmit_1_to_2_check.setChecked(self.config.transmit_1_to_2)
+        transmit_layout_1_2.addWidget(self.transmit_1_to_2_check)
+        transmission_layout.addLayout(transmit_layout_1_2)
+        
+        # Transmit 2 to 1
+        transmit_layout_2_1 = QHBoxLayout()
+        self.transmit_2_to_1_check = QCheckBox(f"{t('gateway_transmit_from')} {self.bus_names[1]} {t('gateway_to')} {self.bus_names[0]}")
+        self.transmit_2_to_1_check.setChecked(self.config.transmit_2_to_1)
+        transmit_layout_2_1.addWidget(self.transmit_2_to_1_check)
+        transmission_layout.addLayout(transmit_layout_2_1)
+        
+        transmission_group.setLayout(transmission_layout)
+        layout.addWidget(transmission_group)
+        
+        # ===== Static Blocking Rules =====
+        blocking_group = QGroupBox(t('gateway_blocking'))
+        blocking_layout = QVBoxLayout()
+        
+        # Add rule controls
+        add_block_layout = QHBoxLayout()
+        
+        add_block_layout.addWidget(QLabel(t('gateway_channel')))
+        self.block_channel_combo = QComboBox()
+        for bus_name in self.bus_names:
+            self.block_channel_combo.addItem(bus_name)
+        add_block_layout.addWidget(self.block_channel_combo)
+        
+        add_block_layout.addWidget(QLabel(t('gateway_id')))
+        self.block_id_input = QLineEdit()
+        self.block_id_input.setPlaceholderText("0x000")
+        self.block_id_input.setMaximumWidth(100)
+        add_block_layout.addWidget(self.block_id_input)
+        
+        self.add_block_btn = QPushButton(t('gateway_lock'))
+        self.add_block_btn.clicked.connect(self.add_block_rule)
+        add_block_layout.addWidget(self.add_block_btn)
+        
+        self.remove_block_btn = QPushButton(t('gateway_unlock'))
+        self.remove_block_btn.clicked.connect(self.remove_block_rule)
+        add_block_layout.addWidget(self.remove_block_btn)
+        
+        add_block_layout.addStretch()
+        blocking_layout.addLayout(add_block_layout)
+        
+        # Block rules table
+        self.block_table = QTableWidget()
+        self.block_table.setColumnCount(3)
+        self.block_table.setHorizontalHeaderLabels([
+            t('gateway_channel'),
+            t('gateway_id'),
+            t('gateway_enabled')
+        ])
+        self.block_table.horizontalHeader().setStretchLastSection(True)
+        self.block_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        blocking_layout.addWidget(self.block_table)
+        
+        blocking_group.setLayout(blocking_layout)
+        layout.addWidget(blocking_group)
+        
+        # ===== Dynamic Blocking =====
+        dynamic_group = QGroupBox(t('gateway_dynamic_blocking'))
+        dynamic_layout = QVBoxLayout()
+        
+        # Dynamic block controls
+        dyn_control_layout = QHBoxLayout()
+        
+        dyn_control_layout.addWidget(QLabel(t('gateway_channel')))
+        self.dyn_channel_combo = QComboBox()
+        for bus_name in self.bus_names:
+            self.dyn_channel_combo.addItem(bus_name)
+        dyn_control_layout.addWidget(self.dyn_channel_combo)
+        
+        dyn_control_layout.addWidget(QLabel(t('gateway_id_from')))
+        self.dyn_id_from_input = QLineEdit()
+        self.dyn_id_from_input.setPlaceholderText("0x000")
+        self.dyn_id_from_input.setMaximumWidth(100)
+        dyn_control_layout.addWidget(self.dyn_id_from_input)
+        
+        dyn_control_layout.addWidget(QLabel(t('gateway_id_to')))
+        self.dyn_id_to_input = QLineEdit()
+        self.dyn_id_to_input.setPlaceholderText("0x7FF")
+        self.dyn_id_to_input.setMaximumWidth(100)
+        dyn_control_layout.addWidget(self.dyn_id_to_input)
+        
+        dyn_control_layout.addWidget(QLabel(t('gateway_period')))
+        self.dyn_period_input = QLineEdit()
+        self.dyn_period_input.setPlaceholderText("1000")
+        self.dyn_period_input.setMaximumWidth(80)
+        dyn_control_layout.addWidget(self.dyn_period_input)
+        dyn_control_layout.addWidget(QLabel("ms"))
+        
+        self.add_dyn_btn = QPushButton(t('gateway_start'))
+        self.add_dyn_btn.clicked.connect(self.add_dynamic_block)
+        dyn_control_layout.addWidget(self.add_dyn_btn)
+        
+        self.remove_dyn_btn = QPushButton(t('gateway_stop'))
+        self.remove_dyn_btn.clicked.connect(self.remove_dynamic_block)
+        dyn_control_layout.addWidget(self.remove_dyn_btn)
+        
+        dyn_control_layout.addStretch()
+        dynamic_layout.addLayout(dyn_control_layout)
+        
+        # Dynamic block table
+        self.dynamic_table = QTableWidget()
+        self.dynamic_table.setColumnCount(5)
+        self.dynamic_table.setHorizontalHeaderLabels([
+            t('gateway_channel'),
+            t('gateway_id_from'),
+            t('gateway_id_to'),
+            t('gateway_period'),
+            t('gateway_enabled')
+        ])
+        self.dynamic_table.horizontalHeader().setStretchLastSection(True)
+        self.dynamic_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        dynamic_layout.addWidget(self.dynamic_table)
+        
+        dynamic_group.setLayout(dynamic_layout)
+        layout.addWidget(dynamic_group)
+        
+        # ===== Statistics =====
+        stats_group = QGroupBox(t('gateway_statistics'))
+        stats_layout = QHBoxLayout()
+        
+        self.stats_label = QLabel(t('gateway_stats_template').format(
+            forwarded=0, blocked=0, modified=0
+        ))
+        stats_layout.addWidget(self.stats_label)
+        
+        self.reset_stats_btn = QPushButton(t('gateway_reset_stats'))
+        self.reset_stats_btn.clicked.connect(self.reset_stats)
+        stats_layout.addWidget(self.reset_stats_btn)
+        
+        stats_group.setLayout(stats_layout)
+        layout.addWidget(stats_group)
+        
+        # ===== Buttons =====
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | 
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+        
+        # Load existing rules
+        self.load_rules()
+    
+    def load_rules(self):
+        """Load existing rules into tables"""
+        # Load block rules
+        self.block_table.setRowCount(len(self.config.block_rules))
+        for row, rule in enumerate(self.config.block_rules):
+            self.block_table.setItem(row, 0, QTableWidgetItem(rule.channel))
+            self.block_table.setItem(row, 1, QTableWidgetItem(f"0x{rule.can_id:03X}"))
+            
+            enabled_check = QCheckBox()
+            enabled_check.setChecked(rule.enabled)
+            self.block_table.setCellWidget(row, 2, enabled_check)
+        
+        # Load dynamic blocks
+        self.dynamic_table.setRowCount(len(self.config.dynamic_blocks))
+        for row, dyn_block in enumerate(self.config.dynamic_blocks):
+            self.dynamic_table.setItem(row, 0, QTableWidgetItem(dyn_block.channel))
+            self.dynamic_table.setItem(row, 1, QTableWidgetItem(f"0x{dyn_block.id_from:03X}"))
+            self.dynamic_table.setItem(row, 2, QTableWidgetItem(f"0x{dyn_block.id_to:03X}"))
+            self.dynamic_table.setItem(row, 3, QTableWidgetItem(f"{dyn_block.period}"))
+            
+            enabled_check = QCheckBox()
+            enabled_check.setChecked(dyn_block.enabled)
+            self.dynamic_table.setCellWidget(row, 4, enabled_check)
+    
+    def add_block_rule(self):
+        """Add a new blocking rule"""
+        try:
+            channel = self.block_channel_combo.currentText()
+            id_text = self.block_id_input.text().strip()
+            
+            if not id_text:
+                QMessageBox.warning(self, t('warning'), t('gateway_enter_id'))
+                return
+            
+            # Parse ID (support hex with 0x prefix)
+            if id_text.startswith('0x') or id_text.startswith('0X'):
+                can_id = int(id_text, 16)
+            else:
+                can_id = int(id_text)
+            
+            # Add rule
+            rule = GatewayBlockRule(can_id=can_id, channel=channel, enabled=True)
+            self.config.block_rules.append(rule)
+            
+            # Add to table
+            row = self.block_table.rowCount()
+            self.block_table.insertRow(row)
+            self.block_table.setItem(row, 0, QTableWidgetItem(channel))
+            self.block_table.setItem(row, 1, QTableWidgetItem(f"0x{can_id:03X}"))
+            
+            enabled_check = QCheckBox()
+            enabled_check.setChecked(True)
+            self.block_table.setCellWidget(row, 2, enabled_check)
+            
+            # Clear input
+            self.block_id_input.clear()
+            
+        except ValueError:
+            QMessageBox.warning(self, t('error'), t('gateway_invalid_id'))
+    
+    def remove_block_rule(self):
+        """Remove selected blocking rule"""
+        selected_rows = self.block_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, t('warning'), t('gateway_select_rule'))
+            return
+        
+        row = selected_rows[0].row()
+        self.config.block_rules.pop(row)
+        self.block_table.removeRow(row)
+    
+    def add_dynamic_block(self):
+        """Add a new dynamic blocking rule"""
+        try:
+            channel = self.dyn_channel_combo.currentText()
+            id_from_text = self.dyn_id_from_input.text().strip()
+            id_to_text = self.dyn_id_to_input.text().strip()
+            period_text = self.dyn_period_input.text().strip()
+            
+            if not all([id_from_text, id_to_text, period_text]):
+                QMessageBox.warning(self, t('warning'), t('gateway_fill_all_fields'))
+                return
+            
+            # Parse values
+            if id_from_text.startswith('0x'):
+                id_from = int(id_from_text, 16)
+            else:
+                id_from = int(id_from_text)
+            
+            if id_to_text.startswith('0x'):
+                id_to = int(id_to_text, 16)
+            else:
+                id_to = int(id_to_text)
+            
+            period = int(period_text)
+            
+            # Add dynamic block
+            dyn_block = GatewayDynamicBlock(
+                id_from=id_from,
+                id_to=id_to,
+                channel=channel,
+                period=period,
+                enabled=True
+            )
+            self.config.dynamic_blocks.append(dyn_block)
+            
+            # Add to table
+            row = self.dynamic_table.rowCount()
+            self.dynamic_table.insertRow(row)
+            self.dynamic_table.setItem(row, 0, QTableWidgetItem(channel))
+            self.dynamic_table.setItem(row, 1, QTableWidgetItem(f"0x{id_from:03X}"))
+            self.dynamic_table.setItem(row, 2, QTableWidgetItem(f"0x{id_to:03X}"))
+            self.dynamic_table.setItem(row, 3, QTableWidgetItem(f"{period}"))
+            
+            enabled_check = QCheckBox()
+            enabled_check.setChecked(True)
+            self.dynamic_table.setCellWidget(row, 4, enabled_check)
+            
+            # Clear inputs
+            self.dyn_id_from_input.clear()
+            self.dyn_id_to_input.clear()
+            self.dyn_period_input.clear()
+            
+        except ValueError:
+            QMessageBox.warning(self, t('error'), t('gateway_invalid_values'))
+    
+    def remove_dynamic_block(self):
+        """Remove selected dynamic blocking rule"""
+        selected_rows = self.dynamic_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, t('warning'), t('gateway_select_rule'))
+            return
+        
+        row = selected_rows[0].row()
+        self.config.dynamic_blocks.pop(row)
+        self.dynamic_table.removeRow(row)
+    
+    def reset_stats(self):
+        """Reset statistics (signal to parent)"""
+        self.stats_label.setText(t('gateway_stats_template').format(
+            forwarded=0, blocked=0, modified=0
+        ))
+    
+    def update_stats(self, stats):
+        """Update statistics display"""
+        self.stats_label.setText(t('gateway_stats_template').format(
+            forwarded=stats.get('forwarded', 0),
+            blocked=stats.get('blocked', 0),
+            modified=stats.get('modified', 0)
+        ))
+    
+    def get_config(self):
+        """Get the configured gateway settings"""
+        # Update config from UI
+        self.config.enabled = self.enable_gateway_check.isChecked()
+        self.config.transmit_1_to_2 = self.transmit_1_to_2_check.isChecked()
+        self.config.transmit_2_to_1 = self.transmit_2_to_1_check.isChecked()
+        
+        # Update enabled status from checkboxes
+        for row in range(self.block_table.rowCount()):
+            checkbox = self.block_table.cellWidget(row, 2)
+            if checkbox and row < len(self.config.block_rules):
+                self.config.block_rules[row].enabled = checkbox.isChecked()
+        
+        for row in range(self.dynamic_table.rowCount()):
+            checkbox = self.dynamic_table.cellWidget(row, 4)
+            if checkbox and row < len(self.config.dynamic_blocks):
+                self.config.dynamic_blocks[row].enabled = checkbox.isChecked()
+        
+        return self.config
