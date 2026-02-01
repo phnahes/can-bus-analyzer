@@ -3969,9 +3969,17 @@ class CANAnalyzerWindow(QMainWindow):
                 # Update toolbar button
                 self.update_gateway_button_state()
                 
+                # Show status in status bar
                 if self.gateway_config.enabled:
+                    route_count = len([r for r in self.gateway_config.routes if r.enabled])
+                    block_count = len([r for r in self.gateway_config.block_rules if r.enabled])
+                    modify_count = len([r for r in self.gateway_config.modify_rules if r.enabled])
+                    
+                    status_msg = f"🌉 Gateway ON | {route_count} route(s), {block_count} block(s), {modify_count} modify"
+                    self.statusBar().showMessage(status_msg, 5000)
                     self.show_notification("Gateway enabled", 3000)
                 else:
+                    self.statusBar().showMessage("🌉 Gateway OFF", 3000)
                     self.show_notification("Gateway disabled", 3000)
         
         stats_timer.stop()
@@ -3998,11 +4006,15 @@ class CANAnalyzerWindow(QMainWindow):
         # Update button appearance
         self.update_gateway_button_state()
         
-        # Show notification
+        # Show notification and status bar
         if self.gateway_config.enabled:
+            route_count = len([r for r in self.gateway_config.routes if r.enabled])
+            status_msg = f"🌉 Gateway ON | {route_count} active route(s)"
+            self.statusBar().showMessage(status_msg, 5000)
             self.show_notification("🌉 Gateway enabled", 2000)
             self.logger.info("Gateway enabled from toolbar")
         else:
+            self.statusBar().showMessage("🌉 Gateway OFF", 3000)
             self.show_notification("Gateway disabled", 2000)
             self.logger.info("Gateway disabled from toolbar")
     

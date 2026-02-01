@@ -1748,7 +1748,18 @@ class GatewayDialog(QDialog):
             
             enabled_check = QCheckBox()
             enabled_check.setChecked(route.enabled)
+            # Connect to apply changes immediately
+            enabled_check.stateChanged.connect(lambda state, r=row: self._on_route_enabled_changed(r, state))
             self.routes_table.setCellWidget(row, 2, enabled_check)
+    
+    def _on_route_enabled_changed(self, row, state):
+        """Apply route enable/disable immediately"""
+        if row < len(self.config.routes):
+            self.config.routes[row].enabled = (state == Qt.CheckState.Checked.value)
+            # Apply to parent if dialog has parent with can_bus_manager
+            if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
+                if self.parent().can_bus_manager:
+                    self.parent().can_bus_manager.set_gateway_config(self.config)
     
     def add_route(self):
         """Add a new route"""
@@ -1786,6 +1797,8 @@ class GatewayDialog(QDialog):
         
         enabled_check = QCheckBox()
         enabled_check.setChecked(True)
+        # Connect to apply changes immediately
+        enabled_check.stateChanged.connect(lambda state, r=row: self._on_route_enabled_changed(r, state))
         self.routes_table.setCellWidget(row, 2, enabled_check)
     
     def remove_route(self):
@@ -1809,7 +1822,18 @@ class GatewayDialog(QDialog):
             
             enabled_check = QCheckBox()
             enabled_check.setChecked(rule.enabled)
+            # Connect to apply changes immediately
+            enabled_check.stateChanged.connect(lambda state, r=row: self._on_block_enabled_changed(r, state))
             self.block_table.setCellWidget(row, 2, enabled_check)
+    
+    def _on_block_enabled_changed(self, row, state):
+        """Apply block rule enable/disable immediately"""
+        if row < len(self.config.block_rules):
+            self.config.block_rules[row].enabled = (state == Qt.CheckState.Checked.value)
+            # Apply to parent if dialog has parent with can_bus_manager
+            if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
+                if self.parent().can_bus_manager:
+                    self.parent().can_bus_manager.set_gateway_config(self.config)
         
         # Load dynamic blocks
         self.dynamic_table.setRowCount(len(self.config.dynamic_blocks))
@@ -1821,7 +1845,18 @@ class GatewayDialog(QDialog):
             
             enabled_check = QCheckBox()
             enabled_check.setChecked(dyn_block.enabled)
+            # Connect to apply changes immediately
+            enabled_check.stateChanged.connect(lambda state, r=row: self._on_dynamic_enabled_changed(r, state))
             self.dynamic_table.setCellWidget(row, 4, enabled_check)
+    
+    def _on_dynamic_enabled_changed(self, row, state):
+        """Apply dynamic block enable/disable immediately"""
+        if row < len(self.config.dynamic_blocks):
+            self.config.dynamic_blocks[row].enabled = (state == Qt.CheckState.Checked.value)
+            # Apply to parent if dialog has parent with can_bus_manager
+            if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
+                if self.parent().can_bus_manager:
+                    self.parent().can_bus_manager.set_gateway_config(self.config)
         
         # Load modify rules
         self.modify_table.setRowCount(len(self.config.modify_rules))
@@ -1840,7 +1875,18 @@ class GatewayDialog(QDialog):
             
             enabled_check = QCheckBox()
             enabled_check.setChecked(rule.enabled)
+            # Connect to apply changes immediately
+            enabled_check.stateChanged.connect(lambda state, r=row: self._on_modify_enabled_changed(r, state))
             self.modify_table.setCellWidget(row, 4, enabled_check)
+    
+    def _on_modify_enabled_changed(self, row, state):
+        """Apply modify rule enable/disable immediately"""
+        if row < len(self.config.modify_rules):
+            self.config.modify_rules[row].enabled = (state == Qt.CheckState.Checked.value)
+            # Apply to parent if dialog has parent with can_bus_manager
+            if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
+                if self.parent().can_bus_manager:
+                    self.parent().can_bus_manager.set_gateway_config(self.config)
     
     def _get_source_channels(self):
         """Get list of source channels based on active routes"""
@@ -1891,6 +1937,8 @@ class GatewayDialog(QDialog):
                 
                 enabled_check = QCheckBox()
                 enabled_check.setChecked(True)
+                # Connect to apply changes immediately
+                enabled_check.stateChanged.connect(lambda state, r=row: self._on_block_enabled_changed(r, state))
                 self.block_table.setCellWidget(row, 2, enabled_check)
             
             # Clear input
@@ -1965,6 +2013,8 @@ class GatewayDialog(QDialog):
                 
                 enabled_check = QCheckBox()
                 enabled_check.setChecked(True)
+                # Connect to apply changes immediately
+                enabled_check.stateChanged.connect(lambda state, r=row: self._on_dynamic_enabled_changed(r, state))
                 self.dynamic_table.setCellWidget(row, 4, enabled_check)
             
             # Clear inputs
@@ -2048,6 +2098,8 @@ class GatewayDialog(QDialog):
                     
                     enabled_check = QCheckBox()
                     enabled_check.setChecked(True)
+                    # Connect to apply changes immediately
+                    enabled_check.stateChanged.connect(lambda state, r=row: self._on_modify_enabled_changed(r, state))
                     self.modify_table.setCellWidget(row, 4, enabled_check)
             
             # Clear input
