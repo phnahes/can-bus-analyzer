@@ -47,33 +47,35 @@ python can_analyzer_qt.py
 
 ## Screenshots
 
-### Main Interface
+### Monitor & Tracer Modes
 | | |
 |:---:|:---:|
-| ![Screenshot 1](docs/image1.png) | ![Screenshot 2](docs/image2.png) |
-| ![Screenshot 3](docs/image3.png) | ![Screenshot 4](docs/image4.png) |
+| ![Monitor Mode](docs/image1.png) | ![Tracer Mode](docs/image2.png) |
+| *Monitor Mode - Grouped by ID* | *Tracer Mode - Chronological List* |
 
-### Multi-CAN Support
+### Configuration & Tools
 | | |
 |:---:|:---:|
-| ![Multi-CAN Config](docs/image5.png) | ![Multi-CAN Monitor](docs/image6.png) |
-| *Multiple CAN Bus Configuration* | *Simultaneous Multi-Channel Monitoring* |
+| ![CAN Bus Config](docs/image3.png) | ![Bit Viewer](docs/image4.png) |
+| *Multi-CAN Bus Configuration* | *Bit Field Viewer* |
 
-### Split-Screen Monitor
+### Split-Screen Monitor (Dual Channel View)
 | | |
 |:---:|:---:|
-| ![Split-Screen View](docs/image7.png) | ![Split-Screen Details](docs/image8.png) |
-| *Side-by-Side Channel Comparison* | *Independent Channel Filtering* |
+| ![Split with TX Panel](docs/image5.png) | ![Split Clean View](docs/image6.png) |
+| *Split-Screen + Transmit Panel* | *Split-Screen (TX Hidden)* |
+| ![Multi-CAN View](docs/image7.png) | ![Split Channel Selection](docs/image8.png) |
+| *Multi-CAN Without Split* | *Split-Screen Channel Selection Dialog* |
+| ![Split with Active TX](docs/image9.png) | ![Tracer Multi-CAN](docs/image10.png) |
+| *Split-Screen + Active Transmission* | *Tracer Mode with Multi-CAN* |
 
-### CAN Gateway
+### CAN Gateway (Message Routing & Modification)
 | | |
 |:---:|:---:|
-| ![Gateway Config](docs/image9.png) | ![Gateway Routes](docs/image10.png) |
-| *Gateway Configuration Dialog* | *Multi-Route Setup* |
-| ![Gateway Blocking](docs/image11.png) | ![Gateway Modification](docs/image12.png) |
-| *Message Blocking Rules* | *Bit-Level Message Modification* |
-| ![Gateway Stats](docs/image13.png) | ![Gateway Topology](docs/image14.png) |
-| *Real-Time Statistics* | *Multi-Bus Topology Example* |
+| ![Gateway Configuration](docs/image11.png) | ![Message Modification Editor](docs/image12.png) |
+| *Gateway Basic Configuration* | *Bit-Level Message Modification* |
+| ![Modified Message Result](docs/image13.png) | |
+| *Original vs Modified Message Result* | |
 
 ---
 
