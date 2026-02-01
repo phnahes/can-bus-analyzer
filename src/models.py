@@ -20,6 +20,7 @@ class CANMessage:
     channel: int = 1  # Canal CAN (1 ou 2)
     is_extended: bool = False  # ID de 29 bits
     is_rtr: bool = False  # Remote Transmission Request
+    source: str = "CAN1"  # Source bus name (for multi-CAN support)
     
     def to_dict(self) -> dict:
         """Converte para dicionário"""
@@ -33,7 +34,8 @@ class CANMessage:
             'count': self.count,
             'channel': self.channel,
             'is_extended': self.is_extended,
-            'is_rtr': self.is_rtr
+            'is_rtr': self.is_rtr,
+            'source': self.source
         }
     
     @classmethod
@@ -49,7 +51,8 @@ class CANMessage:
             count=data.get('count', 0),
             channel=data.get('channel', 1),
             is_extended=data.get('is_extended', False),
-            is_rtr=data.get('is_rtr', False)
+            is_rtr=data.get('is_rtr', False),
+            source=data.get('source', 'CAN1')
         )
     
     def to_ascii(self) -> str:
