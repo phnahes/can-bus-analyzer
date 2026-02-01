@@ -2909,19 +2909,19 @@ class CANAnalyzerWindow(QMainWindow):
             try:
                 # Extrair dados da linha selecionada
                 if self.tracer_mode:
-                    # Modo Tracer: ID, Time, PID, DLC, Data, ASCII, Comment, Source
-                    id_str = self.receive_table.item(row, 2).text()  # PID (coluna 2)
-                    dlc_str = self.receive_table.item(row, 3).text()  # DLC (coluna 3)
-                    data_str = self.receive_table.item(row, 4).text()  # Data (coluna 4)
-                    comment_str = self.receive_table.item(row, 6).text() if self.receive_table.item(row, 6) else ""  # Comment
-                    source_str = self.receive_table.item(row, 7).text() if self.receive_table.item(row, 7) else "CAN1"  # Source
-                else:
-                    # Modo Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment, Source
-                    id_str = self.receive_table.item(row, 2).text()  # PID (coluna 2)
-                    dlc_str = self.receive_table.item(row, 3).text()  # DLC (coluna 3)
-                    data_str = self.receive_table.item(row, 4).text()  # Data (coluna 4)
+                    # Modo Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
+                    id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3)
+                    dlc_str = self.receive_table.item(row, 4).text()  # DLC (coluna 4)
+                    data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5)
                     comment_str = self.receive_table.item(row, 7).text() if self.receive_table.item(row, 7) else ""  # Comment
-                    source_str = self.receive_table.item(row, 8).text() if self.receive_table.item(row, 8) else "CAN1"  # Source
+                    source_str = self.receive_table.item(row, 2).text() if self.receive_table.item(row, 2) else "CAN1"  # Channel (coluna 2)
+                else:
+                    # Modo Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
+                    id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3)
+                    dlc_str = self.receive_table.item(row, 4).text()  # DLC (coluna 4)
+                    data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5)
+                    comment_str = self.receive_table.item(row, 8).text() if self.receive_table.item(row, 8) else ""  # Comment
+                    source_str = self.receive_table.item(row, 2).text() if self.receive_table.item(row, 2) else "CAN1"  # Channel (coluna 2)
                 
                 # Remover "0x" do ID se presente
                 id_clean = id_str.replace("0x", "").replace("0X", "")
@@ -3000,9 +3000,9 @@ class CANAnalyzerWindow(QMainWindow):
         row = selected_rows[0].row()
         
         if self.tracer_mode:
-            id_str = self.receive_table.item(row, 2).text()  # PID (coluna 2) no Tracer
+            id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3) no Tracer
         else:
-            id_str = self.receive_table.item(row, 2).text()  # PID (coluna 2) no Monitor
+            id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3) no Monitor
         
         # Copiar para clipboard
         clipboard = QApplication.clipboard()
@@ -3019,9 +3019,9 @@ class CANAnalyzerWindow(QMainWindow):
         row = selected_rows[0].row()
         
         if self.tracer_mode:
-            data_str = self.receive_table.item(row, 4).text()  # Data (coluna 4) no Tracer
+            data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5) no Tracer
         else:
-            data_str = self.receive_table.item(row, 4).text()  # Data (coluna 4) no Monitor
+            data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5) no Monitor
         
         # Copiar para clipboard
         clipboard = QApplication.clipboard()
