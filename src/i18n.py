@@ -1233,6 +1233,227 @@ class I18n:
             'de': 'Konfigurieren Sie mehrere CAN-Busse. Mindestens ein Bus ist erforderlich.',
             'fr': 'Configurez plusieurs bus CAN. Au moins un bus est requis.'
         },
+        
+        # Gateway
+        'gateway_title': {
+            'en': 'CAN Gateway Configuration',
+            'pt': 'Configuração do Gateway CAN',
+            'es': 'Configuración del Gateway CAN',
+            'de': 'CAN Gateway Konfiguration',
+            'fr': 'Configuration du Gateway CAN'
+        },
+        'gateway_transmission': {
+            'en': 'Transmission Control',
+            'pt': 'Controle de Transmissão',
+            'es': 'Control de Transmisión',
+            'de': 'Übertragungssteuerung',
+            'fr': 'Contrôle de Transmission'
+        },
+        'gateway_enable': {
+            'en': 'Enable Gateway',
+            'pt': 'Ativar Gateway',
+            'es': 'Activar Gateway',
+            'de': 'Gateway aktivieren',
+            'fr': 'Activer Gateway'
+        },
+        'gateway_transmit_from': {
+            'en': 'Transmit from',
+            'pt': 'Transmitir de',
+            'es': 'Transmitir desde',
+            'de': 'Übertragen von',
+            'fr': 'Transmettre de'
+        },
+        'gateway_to': {
+            'en': 'to',
+            'pt': 'para',
+            'es': 'a',
+            'de': 'zu',
+            'fr': 'à'
+        },
+        'gateway_blocking': {
+            'en': 'Static Blocking Rules',
+            'pt': 'Regras de Bloqueio Estático',
+            'es': 'Reglas de Bloqueo Estático',
+            'de': 'Statische Sperrregeln',
+            'fr': 'Règles de Blocage Statique'
+        },
+        'gateway_channel': {
+            'en': 'Channel',
+            'pt': 'Canal',
+            'es': 'Canal',
+            'de': 'Kanal',
+            'fr': 'Canal'
+        },
+        'gateway_id': {
+            'en': 'ID',
+            'pt': 'ID',
+            'es': 'ID',
+            'de': 'ID',
+            'fr': 'ID'
+        },
+        'gateway_lock': {
+            'en': 'Lock',
+            'pt': 'Bloquear',
+            'es': 'Bloquear',
+            'de': 'Sperren',
+            'fr': 'Bloquer'
+        },
+        'gateway_unlock': {
+            'en': 'Unlock',
+            'pt': 'Desbloquear',
+            'es': 'Desbloquear',
+            'de': 'Entsperren',
+            'fr': 'Débloquer'
+        },
+        'gateway_enabled': {
+            'en': 'Enabled',
+            'pt': 'Ativado',
+            'es': 'Activado',
+            'de': 'Aktiviert',
+            'fr': 'Activé'
+        },
+        'gateway_dynamic_blocking': {
+            'en': 'Dynamic Blocking',
+            'pt': 'Bloqueio Dinâmico',
+            'es': 'Bloqueo Dinámico',
+            'de': 'Dynamische Sperrung',
+            'fr': 'Blocage Dynamique'
+        },
+        'gateway_id_from': {
+            'en': 'ID From',
+            'pt': 'ID De',
+            'es': 'ID Desde',
+            'de': 'ID Von',
+            'fr': 'ID De'
+        },
+        'gateway_id_to': {
+            'en': 'ID To',
+            'pt': 'ID Até',
+            'es': 'ID Hasta',
+            'de': 'ID Bis',
+            'fr': 'ID À'
+        },
+        'gateway_period': {
+            'en': 'Period',
+            'pt': 'Período',
+            'es': 'Período',
+            'de': 'Periode',
+            'fr': 'Période'
+        },
+        'gateway_start': {
+            'en': 'Start',
+            'pt': 'Iniciar',
+            'es': 'Iniciar',
+            'de': 'Starten',
+            'fr': 'Démarrer'
+        },
+        'gateway_stop': {
+            'en': 'Stop',
+            'pt': 'Parar',
+            'es': 'Detener',
+            'de': 'Stoppen',
+            'fr': 'Arrêter'
+        },
+        'gateway_statistics': {
+            'en': 'Statistics',
+            'pt': 'Estatísticas',
+            'es': 'Estadísticas',
+            'de': 'Statistiken',
+            'fr': 'Statistiques'
+        },
+        'gateway_stats_template': {
+            'en': 'Forwarded: {forwarded} | Blocked: {blocked} | Modified: {modified}',
+            'pt': 'Encaminhadas: {forwarded} | Bloqueadas: {blocked} | Modificadas: {modified}',
+            'es': 'Reenviadas: {forwarded} | Bloqueadas: {blocked} | Modificadas: {modified}',
+            'de': 'Weitergeleitet: {forwarded} | Blockiert: {blocked} | Modifiziert: {modified}',
+            'fr': 'Transmis: {forwarded} | Bloqués: {blocked} | Modifiés: {modified}'
+        },
+        'gateway_reset_stats': {
+            'en': 'Reset Statistics',
+            'pt': 'Resetar Estatísticas',
+            'es': 'Restablecer Estadísticas',
+            'de': 'Statistiken zurücksetzen',
+            'fr': 'Réinitialiser les Statistiques'
+        },
+        'gateway_enter_id': {
+            'en': 'Please enter an ID',
+            'pt': 'Por favor, insira um ID',
+            'es': 'Por favor, ingrese un ID',
+            'de': 'Bitte geben Sie eine ID ein',
+            'fr': 'Veuillez entrer un ID'
+        },
+        'gateway_invalid_id': {
+            'en': 'Invalid ID format',
+            'pt': 'Formato de ID inválido',
+            'es': 'Formato de ID inválido',
+            'de': 'Ungültiges ID-Format',
+            'fr': 'Format d\'ID invalide'
+        },
+        'gateway_select_rule': {
+            'en': 'Please select a rule to remove',
+            'pt': 'Por favor, selecione uma regra para remover',
+            'es': 'Por favor, seleccione una regla para eliminar',
+            'de': 'Bitte wählen Sie eine Regel zum Entfernen',
+            'fr': 'Veuillez sélectionner une règle à supprimer'
+        },
+        'gateway_fill_all_fields': {
+            'en': 'Please fill all fields',
+            'pt': 'Por favor, preencha todos os campos',
+            'es': 'Por favor, complete todos los campos',
+            'de': 'Bitte füllen Sie alle Felder aus',
+            'fr': 'Veuillez remplir tous les champs'
+        },
+        'gateway_invalid_values': {
+            'en': 'Invalid values entered',
+            'pt': 'Valores inválidos inseridos',
+            'es': 'Valores inválidos ingresados',
+            'de': 'Ungültige Werte eingegeben',
+            'fr': 'Valeurs invalides saisies'
+        },
+        'menu_gateway': {
+            'en': 'Gateway',
+            'pt': 'Gateway',
+            'es': 'Gateway',
+            'de': 'Gateway',
+            'fr': 'Gateway'
+        },
+        
+        # Split-Screen Monitor
+        'split_screen_mode': {
+            'en': 'Split-Screen Mode',
+            'pt': 'Modo Tela Dividida',
+            'es': 'Modo Pantalla Dividida',
+            'de': 'Geteilter Bildschirm',
+            'fr': 'Mode Écran Partagé'
+        },
+        'split_screen_enable': {
+            'en': 'Enable Split-Screen',
+            'pt': 'Ativar Tela Dividida',
+            'es': 'Activar Pantalla Dividida',
+            'de': 'Geteilten Bildschirm aktivieren',
+            'fr': 'Activer l\'Écran Partagé'
+        },
+        'split_screen_left': {
+            'en': 'Left Panel',
+            'pt': 'Painel Esquerdo',
+            'es': 'Panel Izquierdo',
+            'de': 'Linkes Panel',
+            'fr': 'Panneau Gauche'
+        },
+        'split_screen_right': {
+            'en': 'Right Panel',
+            'pt': 'Painel Direito',
+            'es': 'Panel Derecho',
+            'de': 'Rechtes Panel',
+            'fr': 'Panneau Droit'
+        },
+        'split_screen_channel': {
+            'en': 'Channel: {channel}',
+            'pt': 'Canal: {channel}',
+            'es': 'Canal: {channel}',
+            'de': 'Kanal: {channel}',
+            'fr': 'Canal: {channel}'
+        },
     }
     
     def __init__(self, language: str = 'en'):

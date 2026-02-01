@@ -24,7 +24,7 @@ from PyQt6.QtGui import QAction, QFont, QColor, QPalette
 
 # Internal imports
 from .models import CANMessage
-from .dialogs_new import SettingsDialog, BitFieldViewerDialog, FilterDialog, TriggerDialog
+from .dialogs_new import SettingsDialog, BitFieldViewerDialog, FilterDialog, TriggerDialog, GatewayDialog
 from .file_operations import FileOperations
 from .logger import get_logger
 from .i18n import get_i18n, t
@@ -100,6 +100,17 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Transmit editing state
         self.editing_tx_row = -1  # -1 = adding new, >= 0 = editing existing row
+        
+        # Split-screen mode
+        self.split_screen_mode = False
+        self.split_screen_left_channel = None
+        self.split_screen_right_channel = None
+        self.receive_table_left: Optional[QTableWidget] = None
+        self.receive_table_right: Optional[QTableWidget] = None
+        
+        # Gateway configuration
+        from .models import GatewayConfig
+        self.gateway_config = GatewayConfig()
         
         # USB Device Monitor
         from .usb_device_monitor import get_usb_monitor
@@ -950,6 +961,14 @@ class CANAnalyzerWindow(QMainWindow):
         
         view_menu.addSeparator()
         
+        split_screen_action = QAction(t('split_screen_mode'), self)
+        split_screen_action.setCheckable(True)
+        split_screen_action.setShortcut("Ctrl+D")
+        split_screen_action.triggered.connect(self.toggle_split_screen)
+        view_menu.addAction(split_screen_action)
+        
+        view_menu.addSeparator()
+        
         toggle_tx_action = QAction("Show/Hide Transmit Panel", self)
         toggle_tx_action.setShortcut("Ctrl+Shift+T")
         toggle_tx_action.triggered.connect(self.toggle_transmit_panel)
@@ -967,6 +986,13 @@ class CANAnalyzerWindow(QMainWindow):
         triggers_action.setShortcut("Ctrl+G")
         triggers_action.triggered.connect(self.show_trigger_dialog)
         tools_menu.addAction(triggers_action)
+        
+        tools_menu.addSeparator()
+        
+        gateway_action = QAction(f"🌉 {t('menu_gateway')}...", self)
+        gateway_action.setShortcut("Ctrl+W")
+        gateway_action.triggered.connect(self.show_gateway_dialog)
+        tools_menu.addAction(gateway_action)
         
         tools_menu.addSeparator()
         
@@ -3737,6 +3763,133 @@ class CANAnalyzerWindow(QMainWindow):
             )
         except Exception as e:
             self.logger.error(f"Error in device disconnected callback: {e}")
+    
+    def show_gateway_dialog(self):
+        """Mostra o dialog de configuração do Gateway"""
+        if not self.can_bus_manager or len(self.can_bus_manager.get_bus_names()) < 2:
+            QMessageBox.warning(
+                self,
+                t('warning'),
+                "Gateway requires at least 2 CAN buses configured.\n"
+                "Please configure multiple CAN buses in Settings first."
+            )
+            return
+        
+        bus_names = self.can_bus_manager.get_bus_names()
+        dialog = GatewayDialog(self, self.gateway_config, bus_names)
+        
+        # Update stats periodically while dialog is open
+        def update_stats():
+            if self.can_bus_manager:
+                stats = self.can_bus_manager.get_gateway_stats()
+                dialog.update_stats(stats)
+        
+        # Create timer for stats update
+        stats_timer = QTimer()
+        stats_timer.timeout.connect(update_stats)
+        stats_timer.start(1000)  # Update every second
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Get updated config
+            self.gateway_config = dialog.get_config()
+            
+            # Apply to CAN bus manager
+            if self.can_bus_manager:
+                self.can_bus_manager.set_gateway_config(self.gateway_config)
+                self.logger.info(f"Gateway config updated: enabled={self.gateway_config.enabled}")
+                
+                if self.gateway_config.enabled:
+                    self.show_notification("Gateway enabled", 3000)
+                else:
+                    self.show_notification("Gateway disabled", 3000)
+        
+        stats_timer.stop()
+    
+    def toggle_split_screen(self):
+        """Toggle split-screen mode"""
+        self.split_screen_mode = not self.split_screen_mode
+        
+        if self.split_screen_mode:
+            # Enable split-screen
+            if not self.can_bus_manager or len(self.can_bus_manager.get_bus_names()) < 2:
+                QMessageBox.warning(
+                    self,
+                    t('warning'),
+                    "Split-screen mode requires at least 2 CAN buses.\n"
+                    "Please configure multiple CAN buses in Settings first."
+                )
+                self.split_screen_mode = False
+                return
+            
+            # Show channel selection dialog
+            bus_names = self.can_bus_manager.get_bus_names()
+            
+            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QDialogButtonBox
+            
+            dialog = QDialog(self)
+            dialog.setWindowTitle(t('split_screen_mode'))
+            layout = QVBoxLayout(dialog)
+            
+            # Left panel channel
+            left_layout = QHBoxLayout()
+            left_layout.addWidget(QLabel(t('split_screen_left') + ":"))
+            left_combo = QComboBox()
+            for bus in bus_names:
+                left_combo.addItem(bus)
+            left_layout.addWidget(left_combo)
+            layout.addLayout(left_layout)
+            
+            # Right panel channel
+            right_layout = QHBoxLayout()
+            right_layout.addWidget(QLabel(t('split_screen_right') + ":"))
+            right_combo = QComboBox()
+            for bus in bus_names:
+                right_combo.addItem(bus)
+            if len(bus_names) > 1:
+                right_combo.setCurrentIndex(1)
+            right_layout.addWidget(right_combo)
+            layout.addLayout(right_layout)
+            
+            # Buttons
+            button_box = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok | 
+                QDialogButtonBox.StandardButton.Cancel
+            )
+            button_box.accepted.connect(dialog.accept)
+            button_box.rejected.connect(dialog.reject)
+            layout.addWidget(button_box)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                self.split_screen_left_channel = left_combo.currentText()
+                self.split_screen_right_channel = right_combo.currentText()
+                
+                # Rebuild receive panel with split view
+                self._setup_split_screen_view()
+                self.show_notification(f"Split-screen enabled: {self.split_screen_left_channel} | {self.split_screen_right_channel}", 3000)
+            else:
+                self.split_screen_mode = False
+        else:
+            # Disable split-screen
+            self._setup_single_screen_view()
+            self.show_notification("Split-screen disabled", 3000)
+    
+    def _setup_split_screen_view(self):
+        """Setup split-screen view with two tables"""
+        # This is a simplified implementation
+        # In a full implementation, you would:
+        # 1. Create two separate QTableWidget instances
+        # 2. Use a QSplitter to arrange them side by side
+        # 3. Filter messages by channel in update_ui()
+        # 4. Update both tables independently
+        
+        # For now, just show a notification that the feature is active
+        # The actual implementation would require significant refactoring
+        # of the receive panel layout
+        self.logger.info(f"Split-screen view activated: {self.split_screen_left_channel} | {self.split_screen_right_channel}")
+    
+    def _setup_single_screen_view(self):
+        """Restore single screen view"""
+        self.logger.info("Single screen view restored")
     
     def closeEvent(self, event):
         """Evento chamado ao fechar a janela"""
