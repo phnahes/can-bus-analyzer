@@ -1159,6 +1159,71 @@ class I18n:
             'de': 'Einstellungen erfolgreich gespeichert!',
             'fr': 'Paramètres enregistrés avec succès!'
         },
+        
+        # Multi-CAN settings
+        'multican_group': {
+            'en': 'Multi-CAN Configuration',
+            'pt': 'Configuração Multi-CAN',
+            'es': 'Configuración Multi-CAN',
+            'de': 'Multi-CAN-Konfiguration',
+            'fr': 'Configuration Multi-CAN'
+        },
+        'multican_name': {
+            'en': 'Name',
+            'pt': 'Nome',
+            'es': 'Nombre',
+            'de': 'Name',
+            'fr': 'Nom'
+        },
+        'multican_channel': {
+            'en': 'Channel',
+            'pt': 'Canal',
+            'es': 'Canal',
+            'de': 'Kanal',
+            'fr': 'Canal'
+        },
+        'multican_baudrate': {
+            'en': 'Baudrate',
+            'pt': 'Baudrate',
+            'es': 'Baudrate',
+            'de': 'Baudrate',
+            'fr': 'Baudrate'
+        },
+        'multican_interface': {
+            'en': 'Interface',
+            'pt': 'Interface',
+            'es': 'Interfaz',
+            'de': 'Schnittstelle',
+            'fr': 'Interface'
+        },
+        'multican_listen_only': {
+            'en': 'Listen Only',
+            'pt': 'Apenas Escuta',
+            'es': 'Solo Escucha',
+            'de': 'Nur Zuhören',
+            'fr': 'Écoute Seulement'
+        },
+        'btn_add_can': {
+            'en': 'Add CAN',
+            'pt': 'Adicionar CAN',
+            'es': 'Agregar CAN',
+            'de': 'CAN hinzufügen',
+            'fr': 'Ajouter CAN'
+        },
+        'btn_remove_can': {
+            'en': 'Remove',
+            'pt': 'Remover',
+            'es': 'Eliminar',
+            'de': 'Entfernen',
+            'fr': 'Supprimer'
+        },
+        'multican_info': {
+            'en': 'Configure multiple CAN buses. At least one bus is required.',
+            'pt': 'Configure múltiplos barramentos CAN. Pelo menos um barramento é necessário.',
+            'es': 'Configure múltiples buses CAN. Se requiere al menos un bus.',
+            'de': 'Konfigurieren Sie mehrere CAN-Busse. Mindestens ein Bus ist erforderlich.',
+            'fr': 'Configurez plusieurs bus CAN. Au moins un bus est requis.'
+        },
     }
     
     def __init__(self, language: str = 'en'):

@@ -30,6 +30,7 @@ from .logger import get_logger
 from .i18n import get_i18n, t
 from .theme import detect_dark_mode, get_adaptive_colors, should_use_dark_mode
 from .utils import get_platform_display_name
+from .can_bus_manager import CANBusManager, CANBusConfig
 
 # CAN imports
 try:
@@ -62,7 +63,8 @@ class CANAnalyzerWindow(QMainWindow):
         self.paused = False
         self.tracer_mode = False  # Tracer Mode
         self.recorded_messages: List[CANMessage] = []  # Mensagens gravadas para reprodução (Tracer)
-        self.can_bus: Optional[can.BusABC] = None
+        self.can_bus: Optional[can.BusABC] = None  # Legacy single bus (kept for compatibility)
+        self.can_bus_manager: Optional[CANBusManager] = None  # Multi-CAN manager
         self.receive_thread: Optional[threading.Thread] = None
         self.message_queue = queue.Queue()
         self.received_messages: List[CANMessage] = []
@@ -977,6 +979,11 @@ class CANAnalyzerWindow(QMainWindow):
         # about_action.triggered.connect(self.show_about)
         # help_menu.addAction(about_action)
     
+    def _on_can_message_received(self, msg: CANMessage):
+        """Callback chamado quando uma mensagem CAN é recebida de qualquer barramento"""
+        # Add message to queue for UI update
+        self.message_queue.put(msg)
+    
     def toggle_connection(self):
         """Conecta ou desconecta do barramento CAN"""
         if not self.connected:
@@ -985,66 +992,87 @@ class CANAnalyzerWindow(QMainWindow):
             self.disconnect()
     
     def connect(self):
-        """Conecta ao barramento CAN"""
+        """Conecta ao barramento CAN (com suporte multi-CAN)"""
         self.logger.info("Tentando conectar ao barramento CAN")
         
         try:
             simulation_mode = self.config.get('simulation_mode', False)
             
+            # Initialize CANBusManager
+            self.can_bus_manager = CANBusManager(
+                message_callback=self._on_can_message_received,
+                logger=self.logger
+            )
+            
+            # Load CAN buses from config
+            can_buses = self.config.get('can_buses', [])
+            if not can_buses:
+                # Fallback to legacy single-bus config
+                can_buses = [{
+                    'name': 'CAN1',
+                    'channel': self.config.get('channel', 'can0'),
+                    'baudrate': self.config.get('baudrate', 500000),
+                    'interface': 'socketcan',
+                    'listen_only': self.config.get('listen_only', True)
+                }]
+            
+            # Add all CAN buses to manager
+            for bus_cfg in can_buses:
+                config = CANBusConfig(
+                    name=bus_cfg['name'],
+                    channel=bus_cfg['channel'],
+                    baudrate=bus_cfg['baudrate'],
+                    listen_only=bus_cfg.get('listen_only', True),
+                    interface=bus_cfg.get('interface', 'socketcan')
+                )
+                self.can_bus_manager.add_bus(config)
+            
+            # Update TX source combo with available buses
+            self.tx_source_combo.clear()
+            for bus_name in self.can_bus_manager.get_bus_names():
+                self.tx_source_combo.addItem(bus_name)
+            
             # Tentar conexão real se não estiver em modo simulação
             if not simulation_mode and CAN_AVAILABLE:
-                channel = self.config.get('channel', 'can0')
-                baudrate = self.config.get('baudrate', 500000)
-                
-                self.logger.info(f"Tentando conexão real: Channel={channel}, Baudrate={baudrate}")
+                self.logger.info("Tentando conectar todos os barramentos CAN")
                 
                 try:
-                    # Detect interface type from channel (cross-platform)
-                    channel_upper = channel.upper()
-                    if (channel.startswith('/dev/tty.') or channel.startswith('/dev/cu.') or
-                            channel.startswith('/dev/ttyUSB') or channel.startswith('/dev/ttyACM') or
-                            (channel_upper.startswith('COM') and len(channel) >= 4 and channel[3:].strip().isdigit())):
-                        # Serial device (SLCAN) - macOS, Linux, Windows
-                        bustype = 'slcan'
-                        self.logger.info(f"Using SLCAN interface for {channel}")
-                    elif channel.startswith('can') or channel.startswith('vcan'):
-                        # SocketCAN (Linux)
-                        bustype = 'socketcan'
-                        self.logger.info(f"Using SocketCAN interface for {channel}")
+                    # Connect all CAN buses
+                    self.can_bus_manager.connect_all(simulation=False)
+                    
+                    # Check if at least one bus connected successfully
+                    connected_buses = [name for name in self.can_bus_manager.get_bus_names() 
+                                      if self.can_bus_manager.is_bus_connected(name)]
+                    
+                    if connected_buses:
+                        self.logger.info(f"Conexão real estabelecida: {', '.join(connected_buses)}")
+                        self.connected = True
+                        
+                        # Update status with first bus info (or summary)
+                        first_bus = can_buses[0]
+                        baudrate = first_bus['baudrate']
+                        channel = first_bus['channel']
+                        
+                        if len(connected_buses) > 1:
+                            self.connection_status.setText(f"Connected: {len(connected_buses)} buses")
+                            self.device_label.setText(f"Devices: {', '.join(connected_buses)}")
+                        else:
+                            self.connection_status.setText(f"Connected: {baudrate//1000} kbit/s")
+                            self.device_label.setText(f"Device: {channel}")
+                        
+                        self.show_notification(t('notif_connected', channel=', '.join(connected_buses), baudrate=baudrate//1000), 5000)
                     else:
-                        bustype = None
-                        self.logger.info("Auto-detecting interface type")
-                    
-                    # Tentar criar bus CAN
-                    if bustype:
-                        self.can_bus = can.interface.Bus(
-                            channel=channel,
-                            bustype=bustype,
-                            bitrate=baudrate
-                        )
-                    else:
-                        self.can_bus = can.interface.Bus(
-                            channel=channel,
-                            bitrate=baudrate
-                        )
-                    
-                    self.logger.info("Conexão real estabelecida com sucesso!")
-                    
-                    # Configurar interface
-                    self.connected = True
-                    self.connection_status.setText(f"Connected: {baudrate//1000} kbit/s")
-                    self.device_label.setText(f"Device: {channel}")
-                    self.show_notification(t('notif_connected', channel=channel, baudrate=baudrate//1000), 5000)
+                        raise Exception("Nenhum barramento CAN conseguiu conectar")
                     
                 except Exception as e:
-                    self.logger.error(f"Erro ao conectar ao dispositivo real: {str(e)}")
+                    self.logger.error(f"Erro ao conectar aos dispositivos reais: {str(e)}")
                     self.logger.warning("Tentando modo simulação como fallback")
                     
                     # Perguntar ao usuário se quer usar simulação
                     reply = QMessageBox.question(
                         self,
                         "Connection Error",
-                        f"Não foi possível conectar ao dispositivo:\n{str(e)}\n\n"
+                        f"Não foi possível conectar aos dispositivos:\n{str(e)}\n\n"
                         f"Deseja conectar em modo simulação?",
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
@@ -1058,7 +1086,9 @@ class CANAnalyzerWindow(QMainWindow):
             # Modo simulação
             if simulation_mode or not CAN_AVAILABLE:
                 self.logger.warning("Conectando em modo simulação")
-                self.logger.info(f"Configuração: Channel={self.config.get('channel')}, Baudrate={self.config.get('baudrate', 500000)//1000}Kbps")
+                
+                # Connect all buses in simulation mode
+                self.can_bus_manager.connect_all(simulation=True)
                 
                 if not simulation_mode:
                     QMessageBox.information(
@@ -1072,10 +1102,17 @@ class CANAnalyzerWindow(QMainWindow):
                     )
                 
                 self.connected = True
-                baudrate = self.config.get('baudrate', 500000)
-                self.connection_status.setText(f"Simulation: {baudrate//1000} kbit/s")
-                device_info = self.config.get('channel', 'can0')
-                self.device_label.setText(f"Device: {device_info} (Sim)")
+                bus_names = self.can_bus_manager.get_bus_names()
+                baudrate = can_buses[0]['baudrate'] if can_buses else 500000
+                
+                if len(bus_names) > 1:
+                    self.connection_status.setText(f"Simulation: {len(bus_names)} buses")
+                    self.device_label.setText(f"Devices: {', '.join(bus_names)} (Sim)")
+                else:
+                    self.connection_status.setText(f"Simulation: {baudrate//1000} kbit/s")
+                    device_info = can_buses[0]['channel'] if can_buses else 'can0'
+                    self.device_label.setText(f"Device: {device_info} (Sim)")
+                
                 self.show_notification(t('notif_simulation_mode', baudrate=baudrate//1000), 5000)
             
             # Configurações comuns
@@ -1119,15 +1156,24 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_record.setChecked(False)
             self.toggle_recording()
         
+        # Disconnect all CAN buses
+        if self.can_bus_manager:
+            try:
+                self.can_bus_manager.disconnect_all()
+            except Exception as e:
+                self.logger.warning(f"Erro ao fechar interfaces CAN (ignorado): {e}")
+            finally:
+                self.can_bus_manager = None
+                self.logger.info("Todas as interfaces CAN encerradas")
+        
+        # Legacy single bus support
         if self.can_bus:
             try:
                 self.can_bus.shutdown()
             except Exception as e:
-                # Ignorar erros ao desconectar (dispositivo pode já estar desconectado)
                 self.logger.warning(f"Erro ao fechar interface CAN (ignorado): {e}")
             finally:
                 self.can_bus = None
-                self.logger.info("Interface CAN encerrada")
         
         self.connection_status.setText("Not Connected")
         self.device_label.setText("Device: N/A")
