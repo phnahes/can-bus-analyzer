@@ -1459,25 +1459,29 @@ class CANAnalyzerWindow(QMainWindow):
         data_str = " ".join([f"{b:02X}" for b in msg.data])
         ascii_str = msg.to_ascii()
         
-        # Incrementar contador
-        self.message_counters[msg.can_id] += 1
-        count = self.message_counters[msg.can_id]
+        # Incrementar contador por ID+Channel
+        counter_key = (msg.can_id, msg.source)
+        self.message_counters[counter_key] += 1
+        count = self.message_counters[counter_key]
         
-        # Calcular period (tempo desde última mensagem deste ID)
+        # Calcular period (tempo desde última mensagem deste ID+Channel)
         period_str = ""
-        if msg.can_id in self.message_last_timestamp:
-            period_ms = int((msg.timestamp - self.message_last_timestamp[msg.can_id]) * 1000)
+        if counter_key in self.message_last_timestamp:
+            period_ms = int((msg.timestamp - self.message_last_timestamp[counter_key]) * 1000)
             period_str = f"{period_ms}"
         
-        # Atualizar timestamp da última mensagem deste ID
-        self.message_last_timestamp[msg.can_id] = msg.timestamp
+        # Atualizar timestamp da última mensagem deste ID+Channel
+        self.message_last_timestamp[counter_key] = msg.timestamp
         
-        # Procurar se já existe linha com esse PID
+        # Procurar se já existe linha com esse PID E Channel (coluna 8)
         existing_row = -1
         for row in range(self.receive_table.rowCount()):
-            if self.receive_table.item(row, 2).text() == pid_str:  # Coluna 2 agora é PID
-                existing_row = row
-                break
+            pid_item = self.receive_table.item(row, 2)  # Coluna 2 = PID
+            channel_item = self.receive_table.item(row, 8)  # Coluna 8 = Channel
+            if pid_item and channel_item:
+                if pid_item.text() == pid_str and channel_item.text() == msg.source:
+                    existing_row = row
+                    break
         
         if existing_row >= 0:
             # Atualizar linha existente
@@ -1508,11 +1512,12 @@ class CANAnalyzerWindow(QMainWindow):
             # Adicionar nova linha NA POSIÇÃO CORRETA (ordenado por PID)
             # Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
             
-            # Encontrar posição correta para inserir (mantendo ordem por PID)
+            # Encontrar posição correta para inserir (ordenado por PID, depois por Channel)
             insert_row = self.receive_table.rowCount()  # Por padrão, inserir no final
             
             for row in range(self.receive_table.rowCount()):
                 existing_pid_item = self.receive_table.item(row, 2)
+                existing_channel_item = self.receive_table.item(row, 8)
                 if existing_pid_item:
                     existing_pid_str = existing_pid_item.text()
                     # Comparar PIDs (remover "0x" e converter para int)
@@ -1521,6 +1526,11 @@ class CANAnalyzerWindow(QMainWindow):
                         if msg.can_id < existing_pid:
                             insert_row = row
                             break
+                        elif msg.can_id == existing_pid and existing_channel_item:
+                            # Mesmo PID, ordenar por Channel
+                            if msg.source < existing_channel_item.text():
+                                insert_row = row
+                                break
                     except ValueError:
                         continue
             

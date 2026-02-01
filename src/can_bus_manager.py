@@ -149,6 +149,7 @@ class CANBusInstance:
             
             if self.bus:
                 self.bus.send(can_msg)
+                print(f"[{self.config.name}] TX: ID=0x{msg_id:03X}, Data={msg_data.hex() if isinstance(msg_data, bytes) else msg_data}")
                 return True
             else:
                 # Simulation mode
