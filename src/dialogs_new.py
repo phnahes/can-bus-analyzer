@@ -1470,8 +1470,8 @@ class GatewayDialog(QDialog):
     def init_ui(self):
         self.setWindowTitle(t('gateway_title'))
         self.setModal(True)
-        self.setMinimumWidth(700)
-        self.setMinimumHeight(600)
+        self.setMinimumWidth(900)
+        self.setMinimumHeight(750)
         
         layout = QVBoxLayout(self)
         
@@ -1487,56 +1487,36 @@ class GatewayDialog(QDialog):
         self.enable_gateway_check.setChecked(self.config.enabled)
         transmission_layout.addWidget(self.enable_gateway_check)
         
-        # Route selection with dropdowns - reorganized for better spacing
-        route_layout = QVBoxLayout()
+        # Route selection - simple horizontal layout
+        route_layout = QHBoxLayout()
         
-        # First row: dropdowns
-        route_select_layout = QHBoxLayout()
-        
-        # Source dropdown
-        source_layout = QVBoxLayout()
-        source_layout.addWidget(QLabel(t('gateway_from') + ":"))
+        route_layout.addWidget(QLabel(t('gateway_from') + ":"))
         self.source_combo = QComboBox()
-        self.source_combo.setMinimumWidth(120)
+        self.source_combo.setMinimumWidth(100)
         for bus_name in self.bus_names:
             self.source_combo.addItem(bus_name)
-        source_layout.addWidget(self.source_combo)
-        route_select_layout.addLayout(source_layout)
+        route_layout.addWidget(self.source_combo)
         
-        # Arrow in the middle
-        arrow_label = QLabel("→")
-        arrow_label.setStyleSheet("font-size: 24px; font-weight: bold;")
-        arrow_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        route_select_layout.addWidget(arrow_label)
+        route_layout.addWidget(QLabel("→"))
         
-        # Destination dropdown
-        dest_layout = QVBoxLayout()
-        dest_layout.addWidget(QLabel(t('gateway_to') + ":"))
+        route_layout.addWidget(QLabel(t('gateway_to') + ":"))
         self.dest_combo = QComboBox()
-        self.dest_combo.setMinimumWidth(120)
+        self.dest_combo.setMinimumWidth(100)
         for bus_name in self.bus_names:
             self.dest_combo.addItem(bus_name)
         if len(self.bus_names) > 1:
             self.dest_combo.setCurrentIndex(1)  # Default to second bus
-        dest_layout.addWidget(self.dest_combo)
-        route_select_layout.addLayout(dest_layout)
+        route_layout.addWidget(self.dest_combo)
         
-        route_select_layout.addStretch()
-        route_layout.addLayout(route_select_layout)
-        
-        # Second row: buttons
-        route_buttons_layout = QHBoxLayout()
         self.add_route_btn = QPushButton("➕ " + t('btn_add_route'))
         self.add_route_btn.clicked.connect(self.add_route)
-        route_buttons_layout.addWidget(self.add_route_btn)
+        route_layout.addWidget(self.add_route_btn)
         
         self.remove_route_btn = QPushButton("➖ " + t('btn_remove'))
         self.remove_route_btn.clicked.connect(self.remove_route)
-        route_buttons_layout.addWidget(self.remove_route_btn)
+        route_layout.addWidget(self.remove_route_btn)
         
-        route_buttons_layout.addStretch()
-        route_layout.addLayout(route_buttons_layout)
-        
+        route_layout.addStretch()
         transmission_layout.addLayout(route_layout)
         
         # Routes table
@@ -1547,7 +1527,12 @@ class GatewayDialog(QDialog):
             t('gateway_to'),
             t('gateway_enabled')
         ])
-        self.routes_table.horizontalHeader().setStretchLastSection(True)
+        # Adjust column widths
+        header = self.routes_table.horizontalHeader()
+        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, header.ResizeMode.Fixed)
+        self.routes_table.setColumnWidth(2, 80)  # Fixed width for Enabled column
         self.routes_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.routes_table.setMaximumHeight(150)
         transmission_layout.addWidget(self.routes_table)
@@ -1593,7 +1578,12 @@ class GatewayDialog(QDialog):
             t('gateway_id'),
             t('gateway_enabled')
         ])
-        self.block_table.horizontalHeader().setStretchLastSection(True)
+        # Adjust column widths
+        header = self.block_table.horizontalHeader()
+        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, header.ResizeMode.Fixed)
+        self.block_table.setColumnWidth(2, 80)  # Fixed width for Enabled column
         self.block_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         blocking_layout.addWidget(self.block_table)
         
@@ -1647,7 +1637,14 @@ class GatewayDialog(QDialog):
             t('gateway_period'),
             t('gateway_enabled')
         ])
-        self.dynamic_table.horizontalHeader().setStretchLastSection(True)
+        # Adjust column widths
+        header = self.dynamic_table.horizontalHeader()
+        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, header.ResizeMode.Fixed)
+        self.dynamic_table.setColumnWidth(4, 80)  # Fixed width for Enabled column
         self.dynamic_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         dynamic_layout.addWidget(self.dynamic_table)
         
@@ -1688,7 +1685,14 @@ class GatewayDialog(QDialog):
             t('gateway_data_mask'),
             t('gateway_enabled')
         ])
-        self.modify_table.horizontalHeader().setStretchLastSection(True)
+        # Adjust column widths
+        header = self.modify_table.horizontalHeader()
+        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, header.ResizeMode.Fixed)
+        self.modify_table.setColumnWidth(4, 80)  # Fixed width for Enabled column
         self.modify_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.modify_table.itemDoubleClicked.connect(self.edit_modify_rule)
         modify_layout.addWidget(self.modify_table)
@@ -1739,6 +1743,17 @@ class GatewayDialog(QDialog):
         self.load_routes()
         self.load_rules()
     
+    def _create_centered_checkbox(self, checked=True):
+        """Create a centered checkbox widget"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        checkbox = QCheckBox()
+        checkbox.setChecked(checked)
+        layout.addWidget(checkbox)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(0, 0, 0, 0)
+        return widget, checkbox
+    
     def load_routes(self):
         """Load existing routes into table"""
         self.routes_table.setRowCount(len(self.config.routes))
@@ -1746,11 +1761,10 @@ class GatewayDialog(QDialog):
             self.routes_table.setItem(row, 0, QTableWidgetItem(route.source))
             self.routes_table.setItem(row, 1, QTableWidgetItem(route.destination))
             
-            enabled_check = QCheckBox()
-            enabled_check.setChecked(route.enabled)
+            widget, enabled_check = self._create_centered_checkbox(route.enabled)
             # Connect to apply changes immediately
             enabled_check.stateChanged.connect(lambda state, r=row: self._on_route_enabled_changed(r, state))
-            self.routes_table.setCellWidget(row, 2, enabled_check)
+            self.routes_table.setCellWidget(row, 2, widget)
     
     def _on_route_enabled_changed(self, row, state):
         """Apply route enable/disable immediately"""
@@ -1795,11 +1809,10 @@ class GatewayDialog(QDialog):
         self.routes_table.setItem(row, 0, QTableWidgetItem(source))
         self.routes_table.setItem(row, 1, QTableWidgetItem(dest))
         
-        enabled_check = QCheckBox()
-        enabled_check.setChecked(True)
+        widget, enabled_check = self._create_centered_checkbox(True)
         # Connect to apply changes immediately
         enabled_check.stateChanged.connect(lambda state, r=row: self._on_route_enabled_changed(r, state))
-        self.routes_table.setCellWidget(row, 2, enabled_check)
+        self.routes_table.setCellWidget(row, 2, widget)
     
     def remove_route(self):
         """Remove selected route"""
@@ -1820,20 +1833,10 @@ class GatewayDialog(QDialog):
             self.block_table.setItem(row, 0, QTableWidgetItem(rule.channel))
             self.block_table.setItem(row, 1, QTableWidgetItem(f"0x{rule.can_id:03X}"))
             
-            enabled_check = QCheckBox()
-            enabled_check.setChecked(rule.enabled)
+            widget, enabled_check = self._create_centered_checkbox(rule.enabled)
             # Connect to apply changes immediately
             enabled_check.stateChanged.connect(lambda state, r=row: self._on_block_enabled_changed(r, state))
-            self.block_table.setCellWidget(row, 2, enabled_check)
-    
-    def _on_block_enabled_changed(self, row, state):
-        """Apply block rule enable/disable immediately"""
-        if row < len(self.config.block_rules):
-            self.config.block_rules[row].enabled = (state == Qt.CheckState.Checked.value)
-            # Apply to parent if dialog has parent with can_bus_manager
-            if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
-                if self.parent().can_bus_manager:
-                    self.parent().can_bus_manager.set_gateway_config(self.config)
+            self.block_table.setCellWidget(row, 2, widget)
         
         # Load dynamic blocks
         self.dynamic_table.setRowCount(len(self.config.dynamic_blocks))
@@ -1843,20 +1846,10 @@ class GatewayDialog(QDialog):
             self.dynamic_table.setItem(row, 2, QTableWidgetItem(f"0x{dyn_block.id_to:03X}"))
             self.dynamic_table.setItem(row, 3, QTableWidgetItem(f"{dyn_block.period}"))
             
-            enabled_check = QCheckBox()
-            enabled_check.setChecked(dyn_block.enabled)
+            widget, enabled_check = self._create_centered_checkbox(dyn_block.enabled)
             # Connect to apply changes immediately
             enabled_check.stateChanged.connect(lambda state, r=row: self._on_dynamic_enabled_changed(r, state))
-            self.dynamic_table.setCellWidget(row, 4, enabled_check)
-    
-    def _on_dynamic_enabled_changed(self, row, state):
-        """Apply dynamic block enable/disable immediately"""
-        if row < len(self.config.dynamic_blocks):
-            self.config.dynamic_blocks[row].enabled = (state == Qt.CheckState.Checked.value)
-            # Apply to parent if dialog has parent with can_bus_manager
-            if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
-                if self.parent().can_bus_manager:
-                    self.parent().can_bus_manager.set_gateway_config(self.config)
+            self.dynamic_table.setCellWidget(row, 4, widget)
         
         # Load modify rules
         self.modify_table.setRowCount(len(self.config.modify_rules))
@@ -1873,11 +1866,28 @@ class GatewayDialog(QDialog):
             mask_str = f"{mask_count} bytes" if mask_count > 0 else "-"
             self.modify_table.setItem(row, 3, QTableWidgetItem(mask_str))
             
-            enabled_check = QCheckBox()
-            enabled_check.setChecked(rule.enabled)
+            widget, enabled_check = self._create_centered_checkbox(rule.enabled)
             # Connect to apply changes immediately
             enabled_check.stateChanged.connect(lambda state, r=row: self._on_modify_enabled_changed(r, state))
-            self.modify_table.setCellWidget(row, 4, enabled_check)
+            self.modify_table.setCellWidget(row, 4, widget)
+    
+    def _on_block_enabled_changed(self, row, state):
+        """Apply block rule enable/disable immediately"""
+        if row < len(self.config.block_rules):
+            self.config.block_rules[row].enabled = (state == Qt.CheckState.Checked.value)
+            # Apply to parent if dialog has parent with can_bus_manager
+            if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
+                if self.parent().can_bus_manager:
+                    self.parent().can_bus_manager.set_gateway_config(self.config)
+    
+    def _on_dynamic_enabled_changed(self, row, state):
+        """Apply dynamic block enable/disable immediately"""
+        if row < len(self.config.dynamic_blocks):
+            self.config.dynamic_blocks[row].enabled = (state == Qt.CheckState.Checked.value)
+            # Apply to parent if dialog has parent with can_bus_manager
+            if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
+                if self.parent().can_bus_manager:
+                    self.parent().can_bus_manager.set_gateway_config(self.config)
     
     def _on_modify_enabled_changed(self, row, state):
         """Apply modify rule enable/disable immediately"""
@@ -1935,11 +1945,10 @@ class GatewayDialog(QDialog):
                 self.block_table.setItem(row, 0, QTableWidgetItem(channel))
                 self.block_table.setItem(row, 1, QTableWidgetItem(f"0x{can_id:03X}"))
                 
-                enabled_check = QCheckBox()
-                enabled_check.setChecked(True)
+                widget, enabled_check = self._create_centered_checkbox(True)
                 # Connect to apply changes immediately
                 enabled_check.stateChanged.connect(lambda state, r=row: self._on_block_enabled_changed(r, state))
-                self.block_table.setCellWidget(row, 2, enabled_check)
+                self.block_table.setCellWidget(row, 2, widget)
             
             # Clear input
             self.block_id_input.clear()
@@ -2011,11 +2020,10 @@ class GatewayDialog(QDialog):
                 self.dynamic_table.setItem(row, 2, QTableWidgetItem(f"0x{id_to:03X}"))
                 self.dynamic_table.setItem(row, 3, QTableWidgetItem(f"{period}"))
                 
-                enabled_check = QCheckBox()
-                enabled_check.setChecked(True)
+                widget, enabled_check = self._create_centered_checkbox(True)
                 # Connect to apply changes immediately
                 enabled_check.stateChanged.connect(lambda state, r=row: self._on_dynamic_enabled_changed(r, state))
-                self.dynamic_table.setCellWidget(row, 4, enabled_check)
+                self.dynamic_table.setCellWidget(row, 4, widget)
             
             # Clear inputs
             self.dyn_id_from_input.clear()
@@ -2096,11 +2104,10 @@ class GatewayDialog(QDialog):
                     mask_str = f"{mask_count} bytes" if mask_count > 0 else "-"
                     self.modify_table.setItem(row, 3, QTableWidgetItem(mask_str))
                     
-                    enabled_check = QCheckBox()
-                    enabled_check.setChecked(True)
+                    widget, enabled_check = self._create_centered_checkbox(True)
                     # Connect to apply changes immediately
                     enabled_check.stateChanged.connect(lambda state, r=row: self._on_modify_enabled_changed(r, state))
-                    self.modify_table.setCellWidget(row, 4, enabled_check)
+                    self.modify_table.setCellWidget(row, 4, widget)
             
             # Clear input
             self.modify_id_input.clear()
@@ -2250,24 +2257,32 @@ class GatewayDialog(QDialog):
         
         # Update routes enabled status
         for row in range(self.routes_table.rowCount()):
-            checkbox = self.routes_table.cellWidget(row, 2)
-            if checkbox and row < len(self.config.routes):
-                self.config.routes[row].enabled = checkbox.isChecked()
+            widget = self.routes_table.cellWidget(row, 2)
+            if widget and row < len(self.config.routes):
+                checkbox = widget.findChild(QCheckBox)
+                if checkbox:
+                    self.config.routes[row].enabled = checkbox.isChecked()
         
         # Update enabled status from checkboxes
         for row in range(self.block_table.rowCount()):
-            checkbox = self.block_table.cellWidget(row, 2)
-            if checkbox and row < len(self.config.block_rules):
-                self.config.block_rules[row].enabled = checkbox.isChecked()
+            widget = self.block_table.cellWidget(row, 2)
+            if widget and row < len(self.config.block_rules):
+                checkbox = widget.findChild(QCheckBox)
+                if checkbox:
+                    self.config.block_rules[row].enabled = checkbox.isChecked()
         
         for row in range(self.dynamic_table.rowCount()):
-            checkbox = self.dynamic_table.cellWidget(row, 4)
-            if checkbox and row < len(self.config.dynamic_blocks):
-                self.config.dynamic_blocks[row].enabled = checkbox.isChecked()
+            widget = self.dynamic_table.cellWidget(row, 4)
+            if widget and row < len(self.config.dynamic_blocks):
+                checkbox = widget.findChild(QCheckBox)
+                if checkbox:
+                    self.config.dynamic_blocks[row].enabled = checkbox.isChecked()
         
         for row in range(self.modify_table.rowCount()):
-            checkbox = self.modify_table.cellWidget(row, 4)
-            if checkbox and row < len(self.config.modify_rules):
-                self.config.modify_rules[row].enabled = checkbox.isChecked()
+            widget = self.modify_table.cellWidget(row, 4)
+            if widget and row < len(self.config.modify_rules):
+                checkbox = widget.findChild(QCheckBox)
+                if checkbox:
+                    self.config.modify_rules[row].enabled = checkbox.isChecked()
         
         return self.config
