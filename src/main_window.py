@@ -3914,7 +3914,7 @@ class CANAnalyzerWindow(QMainWindow):
         split_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Left panel
-        left_panel = QGroupBox(f"{t('split_screen_left')}: {self.split_screen_left_channel}")
+        left_panel = QGroupBox(f"Channel: {self.split_screen_left_channel}")
         left_layout = QVBoxLayout(left_panel)
         
         self.receive_table_left = QTableWidget()
@@ -3922,7 +3922,7 @@ class CANAnalyzerWindow(QMainWindow):
         left_layout.addWidget(self.receive_table_left)
         
         # Right panel
-        right_panel = QGroupBox(f"{t('split_screen_right')}: {self.split_screen_right_channel}")
+        right_panel = QGroupBox(f"Channel: {self.split_screen_right_channel}")
         right_layout = QVBoxLayout(right_panel)
         
         self.receive_table_right = QTableWidget()
