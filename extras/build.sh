@@ -81,3 +81,19 @@ else
     echo -e "${GREEN}Done. Output: dist/CAN Analyzer/${NC}"
     echo -e "${YELLOW}To run: ./dist/CAN Analyzer/CAN Analyzer${NC}"
 fi
+
+# Create zip for release (optional: set SKIP_ZIP=1 to skip)
+VERSION=$(python -c "import src; print(getattr(src, '__version__', '0.0.0'))") 2>/dev/null || VERSION="0.0.0"
+if [ -z "${SKIP_ZIP:-}" ]; then
+    if [ "$(uname)" = "Darwin" ] && [ -d "dist/CAN Analyzer.app" ]; then
+        ZIP_NAME="CAN-Analyzer-${VERSION}-macos.zip"
+        echo -e "${YELLOW}Creating ${ZIP_NAME}...${NC}"
+        zip -r "$ZIP_NAME" "dist/CAN Analyzer.app"
+        echo -e "${GREEN}Done. ${ZIP_NAME}${NC}"
+    elif [ -d "dist/CAN Analyzer" ]; then
+        ZIP_NAME="CAN-Analyzer-${VERSION}-linux.zip"
+        echo -e "${YELLOW}Creating ${ZIP_NAME}...${NC}"
+        zip -r "$ZIP_NAME" "dist/CAN Analyzer"
+        echo -e "${GREEN}Done. ${ZIP_NAME}${NC}"
+    fi
+fi
