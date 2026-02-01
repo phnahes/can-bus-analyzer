@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 
-from .models import CANMessage, CANConfig, GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule
+from .models import CANMessage, CANConfig, GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule, GatewayRoute
 from .utils import calculate_baudrate_divisor
 from .i18n import get_i18n, t
 from .theme import get_adaptive_colors, get_bit_style, should_use_dark_mode
@@ -1487,19 +1487,70 @@ class GatewayDialog(QDialog):
         self.enable_gateway_check.setChecked(self.config.enabled)
         transmission_layout.addWidget(self.enable_gateway_check)
         
-        # Transmit 1 to 2
-        transmit_layout_1_2 = QHBoxLayout()
-        self.transmit_1_to_2_check = QCheckBox(f"{t('gateway_transmit_from')} {self.bus_names[0]} {t('gateway_to')} {self.bus_names[1]}")
-        self.transmit_1_to_2_check.setChecked(self.config.transmit_1_to_2)
-        transmit_layout_1_2.addWidget(self.transmit_1_to_2_check)
-        transmission_layout.addLayout(transmit_layout_1_2)
+        # Route selection with dropdowns - reorganized for better spacing
+        route_layout = QVBoxLayout()
         
-        # Transmit 2 to 1
-        transmit_layout_2_1 = QHBoxLayout()
-        self.transmit_2_to_1_check = QCheckBox(f"{t('gateway_transmit_from')} {self.bus_names[1]} {t('gateway_to')} {self.bus_names[0]}")
-        self.transmit_2_to_1_check.setChecked(self.config.transmit_2_to_1)
-        transmit_layout_2_1.addWidget(self.transmit_2_to_1_check)
-        transmission_layout.addLayout(transmit_layout_2_1)
+        # First row: dropdowns
+        route_select_layout = QHBoxLayout()
+        
+        # Source dropdown
+        source_layout = QVBoxLayout()
+        source_layout.addWidget(QLabel(t('gateway_from') + ":"))
+        self.source_combo = QComboBox()
+        self.source_combo.setMinimumWidth(120)
+        for bus_name in self.bus_names:
+            self.source_combo.addItem(bus_name)
+        source_layout.addWidget(self.source_combo)
+        route_select_layout.addLayout(source_layout)
+        
+        # Arrow in the middle
+        arrow_label = QLabel("→")
+        arrow_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+        arrow_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        route_select_layout.addWidget(arrow_label)
+        
+        # Destination dropdown
+        dest_layout = QVBoxLayout()
+        dest_layout.addWidget(QLabel(t('gateway_to') + ":"))
+        self.dest_combo = QComboBox()
+        self.dest_combo.setMinimumWidth(120)
+        for bus_name in self.bus_names:
+            self.dest_combo.addItem(bus_name)
+        if len(self.bus_names) > 1:
+            self.dest_combo.setCurrentIndex(1)  # Default to second bus
+        dest_layout.addWidget(self.dest_combo)
+        route_select_layout.addLayout(dest_layout)
+        
+        route_select_layout.addStretch()
+        route_layout.addLayout(route_select_layout)
+        
+        # Second row: buttons
+        route_buttons_layout = QHBoxLayout()
+        self.add_route_btn = QPushButton("➕ " + t('btn_add_route'))
+        self.add_route_btn.clicked.connect(self.add_route)
+        route_buttons_layout.addWidget(self.add_route_btn)
+        
+        self.remove_route_btn = QPushButton("➖ " + t('btn_remove'))
+        self.remove_route_btn.clicked.connect(self.remove_route)
+        route_buttons_layout.addWidget(self.remove_route_btn)
+        
+        route_buttons_layout.addStretch()
+        route_layout.addLayout(route_buttons_layout)
+        
+        transmission_layout.addLayout(route_layout)
+        
+        # Routes table
+        self.routes_table = QTableWidget()
+        self.routes_table.setColumnCount(3)
+        self.routes_table.setHorizontalHeaderLabels([
+            t('gateway_from'),
+            t('gateway_to'),
+            t('gateway_enabled')
+        ])
+        self.routes_table.horizontalHeader().setStretchLastSection(True)
+        self.routes_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.routes_table.setMaximumHeight(150)
+        transmission_layout.addWidget(self.routes_table)
         
         transmission_group.setLayout(transmission_layout)
         layout.addWidget(transmission_group)
@@ -1684,8 +1735,69 @@ class GatewayDialog(QDialog):
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
         
-        # Load existing rules
+        # Load existing rules and routes
+        self.load_routes()
         self.load_rules()
+    
+    def load_routes(self):
+        """Load existing routes into table"""
+        self.routes_table.setRowCount(len(self.config.routes))
+        for row, route in enumerate(self.config.routes):
+            self.routes_table.setItem(row, 0, QTableWidgetItem(route.source))
+            self.routes_table.setItem(row, 1, QTableWidgetItem(route.destination))
+            
+            enabled_check = QCheckBox()
+            enabled_check.setChecked(route.enabled)
+            self.routes_table.setCellWidget(row, 2, enabled_check)
+    
+    def add_route(self):
+        """Add a new route"""
+        source = self.source_combo.currentText()
+        dest = self.dest_combo.currentText()
+        
+        # Validate
+        if source == dest:
+            QMessageBox.warning(
+                self,
+                t('warning'),
+                t('gateway_same_source_dest')
+            )
+            return
+        
+        # Check if route already exists
+        for route in self.config.routes:
+            if route.source == source and route.destination == dest:
+                QMessageBox.warning(
+                    self,
+                    t('warning'),
+                    t('gateway_route_exists')
+                )
+                return
+        
+        # Add route
+        route = GatewayRoute(source=source, destination=dest, enabled=True)
+        self.config.routes.append(route)
+        
+        # Add to table
+        row = self.routes_table.rowCount()
+        self.routes_table.insertRow(row)
+        self.routes_table.setItem(row, 0, QTableWidgetItem(source))
+        self.routes_table.setItem(row, 1, QTableWidgetItem(dest))
+        
+        enabled_check = QCheckBox()
+        enabled_check.setChecked(True)
+        self.routes_table.setCellWidget(row, 2, enabled_check)
+    
+    def remove_route(self):
+        """Remove selected route"""
+        selected_rows = self.routes_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, t('warning'), t('gateway_select_route'))
+            return
+        
+        row = selected_rows[0].row()
+        self.config.routes.pop(row)
+        self.routes_table.removeRow(row)
     
     def load_rules(self):
         """Load existing rules into tables"""
@@ -1731,13 +1843,15 @@ class GatewayDialog(QDialog):
             self.modify_table.setCellWidget(row, 4, enabled_check)
     
     def _get_source_channels(self):
-        """Get list of source channels based on transmission direction"""
+        """Get list of source channels based on active routes"""
         channels = []
-        if self.transmit_1_to_2_check.isChecked():
-            channels.append(self.bus_names[0])
-        if self.transmit_2_to_1_check.isChecked():
-            channels.append(self.bus_names[1])
-        return channels if channels else [self.bus_names[0]]  # Default to first
+        for row in range(self.routes_table.rowCount()):
+            checkbox = self.routes_table.cellWidget(row, 2)
+            if checkbox and checkbox.isChecked():
+                source = self.routes_table.item(row, 0).text()
+                if source not in channels:
+                    channels.append(source)
+        return channels
     
     def add_block_rule(self):
         """Add a new blocking rule (auto-detects channel from transmission direction)"""
@@ -2057,13 +2171,13 @@ class GatewayDialog(QDialog):
                 
                 # Reload UI
                 self.enable_gateway_check.setChecked(self.config.enabled)
-                self.transmit_1_to_2_check.setChecked(self.config.transmit_1_to_2)
-                self.transmit_2_to_1_check.setChecked(self.config.transmit_2_to_1)
                 
                 # Clear and reload tables
+                self.routes_table.setRowCount(0)
                 self.block_table.setRowCount(0)
                 self.dynamic_table.setRowCount(0)
                 self.modify_table.setRowCount(0)
+                self.load_routes()
                 self.load_rules()
                 
                 import os
@@ -2081,8 +2195,12 @@ class GatewayDialog(QDialog):
         """Get the configured gateway settings"""
         # Update config from UI
         self.config.enabled = self.enable_gateway_check.isChecked()
-        self.config.transmit_1_to_2 = self.transmit_1_to_2_check.isChecked()
-        self.config.transmit_2_to_1 = self.transmit_2_to_1_check.isChecked()
+        
+        # Update routes enabled status
+        for row in range(self.routes_table.rowCount()):
+            checkbox = self.routes_table.cellWidget(row, 2)
+            if checkbox and row < len(self.config.routes):
+                self.config.routes[row].enabled = checkbox.isChecked()
         
         # Update enabled status from checkboxes
         for row in range(self.block_table.rowCount()):

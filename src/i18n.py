@@ -1676,11 +1676,60 @@ class I18n:
             'fr': 'Modifier ID'
         },
         'gateway_configure_transmission_first': {
-            'en': 'Please configure transmission direction first (CAN1→CAN2 or CAN2→CAN1).',
-            'pt': 'Por favor, configure a direção de transmissão primeiro (CAN1→CAN2 ou CAN2→CAN1).',
-            'es': 'Por favor, configure la dirección de transmisión primero (CAN1→CAN2 o CAN2→CAN1).',
-            'de': 'Bitte konfigurieren Sie zuerst die Übertragungsrichtung (CAN1→CAN2 oder CAN2→CAN1).',
-            'fr': 'Veuillez d\'abord configurer la direction de transmission (CAN1→CAN2 ou CAN2→CAN1).'
+            'en': 'Please add at least one route first.',
+            'pt': 'Por favor, adicione pelo menos uma rota primeiro.',
+            'es': 'Por favor, agregue al menos una ruta primero.',
+            'de': 'Bitte fügen Sie zuerst mindestens eine Route hinzu.',
+            'fr': 'Veuillez d\'abord ajouter au moins une route.'
+        },
+        'gateway_route': {
+            'en': 'Route',
+            'pt': 'Rota',
+            'es': 'Ruta',
+            'de': 'Route',
+            'fr': 'Route'
+        },
+        'gateway_from': {
+            'en': 'From',
+            'pt': 'De',
+            'es': 'Desde',
+            'de': 'Von',
+            'fr': 'De'
+        },
+        'gateway_to': {
+            'en': 'To',
+            'pt': 'Para',
+            'es': 'A',
+            'de': 'Nach',
+            'fr': 'Vers'
+        },
+        'btn_add_route': {
+            'en': 'Add Route',
+            'pt': 'Adicionar Rota',
+            'es': 'Agregar Ruta',
+            'de': 'Route hinzufügen',
+            'fr': 'Ajouter une route'
+        },
+        'gateway_same_source_dest': {
+            'en': 'Source and destination cannot be the same.',
+            'pt': 'Origem e destino não podem ser iguais.',
+            'es': 'El origen y el destino no pueden ser iguales.',
+            'de': 'Quelle und Ziel können nicht identisch sein.',
+            'fr': 'La source et la destination ne peuvent pas être identiques.'
+        },
+        'gateway_route_exists': {
+            'en': 'This route already exists.',
+            'pt': 'Esta rota já existe.',
+            'es': 'Esta ruta ya existe.',
+            'de': 'Diese Route existiert bereits.',
+            'fr': 'Cette route existe déjà.'
+        },
+        'gateway_select_route': {
+            'en': 'Please select a route to remove.',
+            'pt': 'Por favor, selecione uma rota para remover.',
+            'es': 'Por favor, seleccione una ruta para eliminar.',
+            'de': 'Bitte wählen Sie eine Route zum Entfernen aus.',
+            'fr': 'Veuillez sélectionner une route à supprimer.'
         },
     }
     

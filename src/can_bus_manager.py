@@ -400,21 +400,18 @@ class CANBusManager:
             msg = modify_rule.apply(msg)
             self.gateway_stats['modified'] += 1
         
-        # Determine target bus based on source and gateway config
-        target_bus = None
+        # Determine target bus based on routes (new method)
+        target_bus = self.gateway_config.get_destination_for_source(msg.source)
         
-        # Get bus names (assume first two buses are CAN1 and CAN2)
-        bus_names = self.get_bus_names()
-        if len(bus_names) < 2:
-            return  # Need at least 2 buses for gateway
-        
-        bus1, bus2 = bus_names[0], bus_names[1]
-        
-        # Forward based on configuration
-        if msg.source == bus1 and self.gateway_config.transmit_1_to_2:
-            target_bus = bus2
-        elif msg.source == bus2 and self.gateway_config.transmit_2_to_1:
-            target_bus = bus1
+        # Fallback to old method for backward compatibility
+        if not target_bus:
+            bus_names = self.get_bus_names()
+            if len(bus_names) >= 2:
+                bus1, bus2 = bus_names[0], bus_names[1]
+                if msg.source == bus1 and self.gateway_config.transmit_1_to_2:
+                    target_bus = bus2
+                elif msg.source == bus2 and self.gateway_config.transmit_2_to_1:
+                    target_bus = bus1
         
         # Send to target bus if determined
         if target_bus and target_bus in self.buses:
