@@ -1027,11 +1027,6 @@ class CANAnalyzerWindow(QMainWindow):
                 )
                 self.can_bus_manager.add_bus(config)
             
-            # Update TX source combo with available buses
-            self.tx_source_combo.clear()
-            for bus_name in self.can_bus_manager.get_bus_names():
-                self.tx_source_combo.addItem(bus_name)
-            
             # Tentar conexão real se não estiver em modo simulação
             if not simulation_mode and CAN_AVAILABLE:
                 self.logger.info("Tentando conectar todos os barramentos CAN")
@@ -1047,6 +1042,11 @@ class CANAnalyzerWindow(QMainWindow):
                     if connected_buses:
                         self.logger.info(f"Conexão real estabelecida: {', '.join(connected_buses)}")
                         self.connected = True
+                        
+                        # Update TX source combo with CONNECTED buses only
+                        self.tx_source_combo.clear()
+                        for bus_name in connected_buses:
+                            self.tx_source_combo.addItem(bus_name)
                         
                         # Update status with first bus info (or summary)
                         first_bus = can_buses[0]
@@ -1104,6 +1104,11 @@ class CANAnalyzerWindow(QMainWindow):
                 self.connected = True
                 bus_names = self.can_bus_manager.get_bus_names()
                 baudrate = can_buses[0]['baudrate'] if can_buses else 500000
+                
+                # Update TX source combo with all buses in simulation
+                self.tx_source_combo.clear()
+                for bus_name in bus_names:
+                    self.tx_source_combo.addItem(bus_name)
                 
                 if len(bus_names) > 1:
                     self.connection_status.setText(f"Simulation: {len(bus_names)} buses")
