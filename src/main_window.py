@@ -193,6 +193,12 @@ class CANAnalyzerWindow(QMainWindow):
         self.receive_group = QGroupBox("Receive (Monitor)")
         receive_layout = QVBoxLayout()
         
+        # Container para tabelas (single ou split)
+        self.receive_container = QWidget()
+        self.receive_container_layout = QVBoxLayout(self.receive_container)
+        self.receive_container_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Tabela principal (modo normal)
         self.receive_table = QTableWidget()
         self.setup_receive_table()
         
@@ -211,7 +217,8 @@ class CANAnalyzerWindow(QMainWindow):
         self.receive_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.receive_table.customContextMenuRequested.connect(self.show_receive_context_menu)
         
-        receive_layout.addWidget(self.receive_table)
+        self.receive_container_layout.addWidget(self.receive_table)
+        receive_layout.addWidget(self.receive_container)
         
         # Controles de reprodução do Tracer (inicialmente ocultos)
         self.tracer_controls_widget = QWidget()
@@ -1456,14 +1463,31 @@ class CANAnalyzerWindow(QMainWindow):
                     self.check_and_fire_triggers(msg)
                 
                 # Exibir mensagens na UI
-                if self.tracer_mode:
-                    # Tracer: só exibir se estiver gravando (Record ativo)
-                    if self.recording:
-                        self.recorded_messages.append(msg)  # Adicionar à lista ANTES de exibir
-                        self.add_message_tracer_mode(msg)
+                if self.split_screen_mode and self.receive_table_left and self.receive_table_right:
+                    # Split-screen mode: route to appropriate table
+                    if self.tracer_mode:
+                        if self.recording:
+                            self.recorded_messages.append(msg)
+                            if msg.source == self.split_screen_left_channel:
+                                self._add_message_to_table(msg, self.receive_table_left)
+                            elif msg.source == self.split_screen_right_channel:
+                                self._add_message_to_table(msg, self.receive_table_right)
+                    else:
+                        # Monitor mode in split-screen
+                        if msg.source == self.split_screen_left_channel:
+                            self.add_message_monitor_mode(msg, target_table=self.receive_table_left)
+                        elif msg.source == self.split_screen_right_channel:
+                            self.add_message_monitor_mode(msg, target_table=self.receive_table_right)
                 else:
-                    # Monitor: sempre exibir
-                    self.add_message_monitor_mode(msg)
+                    # Normal single-screen mode
+                    if self.tracer_mode:
+                        # Tracer: só exibir se estiver gravando (Record ativo)
+                        if self.recording:
+                            self.recorded_messages.append(msg)  # Adicionar à lista ANTES de exibir
+                            self.add_message_tracer_mode(msg)
+                    else:
+                        # Monitor: sempre exibir
+                        self.add_message_monitor_mode(msg)
                 
                 self.update_message_count()
         except queue.Empty:
@@ -1522,17 +1546,21 @@ class CANAnalyzerWindow(QMainWindow):
         # Auto-scroll
         self.receive_table.scrollToBottom()
     
-    def add_message_monitor_mode(self, msg: CANMessage, highlight: bool = True):
+    def add_message_monitor_mode(self, msg: CANMessage, highlight: bool = True, target_table: QTableWidget = None):
         """Adiciona mensagem no modo Monitor (agrupa por ID)
         
         Args:
             msg: Mensagem CAN a ser adicionada
             highlight: Se True, destaca linha atualizada (para recepção em tempo real)
                       Se False, não destaca (para carregamento de logs)
+            target_table: Tabela alvo (para split-screen), None = usar self.receive_table
         """
         # Verificar filtro
         if not self.message_passes_filter(msg):
             return
+        
+        # Use target table or default
+        table = target_table if target_table else self.receive_table
         
         pid_str = f"0x{msg.can_id:03X}"
         data_str = " ".join([f"{b:02X}" for b in msg.data])
@@ -1554,9 +1582,9 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Procurar se já existe linha com esse PID E Channel
         existing_row = -1
-        for row in range(self.receive_table.rowCount()):
-            pid_item = self.receive_table.item(row, 3)  # Coluna 3 = PID
-            channel_item = self.receive_table.item(row, 2)  # Coluna 2 = Channel
+        for row in range(table.rowCount()):
+            pid_item = table.item(row, 3)  # Coluna 3 = PID
+            channel_item = table.item(row, 2)  # Coluna 2 = Channel
             if pid_item and channel_item:
                 if pid_item.text() == pid_str and channel_item.text() == msg.source:
                     existing_row = row
@@ -1567,11 +1595,11 @@ class CANAnalyzerWindow(QMainWindow):
             # Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
             count_item = QTableWidgetItem(str(count))
             count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)  # Centralizar Count
-            self.receive_table.setItem(existing_row, 1, count_item)                     # Count
+            table.setItem(existing_row, 1, count_item)                     # Count
             # Channel não muda (mantém o original da primeira mensagem)
-            self.receive_table.setItem(existing_row, 5, QTableWidgetItem(data_str))     # Data
-            self.receive_table.setItem(existing_row, 6, QTableWidgetItem(period_str))   # Period
-            self.receive_table.setItem(existing_row, 7, QTableWidgetItem(ascii_str))    # ASCII
+            table.setItem(existing_row, 5, QTableWidgetItem(data_str))     # Data
+            table.setItem(existing_row, 6, QTableWidgetItem(period_str))   # Period
+            table.setItem(existing_row, 7, QTableWidgetItem(ascii_str))    # ASCII
             
             # NO MONITOR MODE: Destacar APENAS a célula Count em azul claro quando count > 1
             if highlight and count > 1:
@@ -1581,10 +1609,10 @@ class CANAnalyzerWindow(QMainWindow):
                 count_item.setBackground(self.colors['normal_bg'])
                 
             # Limpar background das outras células (caso tenham sido destacadas antes)
-            for col in range(self.receive_table.columnCount()):
+            for col in range(table.columnCount()):
                 if col == 1:  # Pular a coluna Count
                     continue
-                item = self.receive_table.item(existing_row, col)
+                item = table.item(existing_row, col)
                 if item:
                     item.setBackground(self.colors['normal_bg'])
         else:
@@ -1592,11 +1620,11 @@ class CANAnalyzerWindow(QMainWindow):
             # Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
             
             # Encontrar posição correta para inserir (ordenado por PID, depois por Channel)
-            insert_row = self.receive_table.rowCount()  # Por padrão, inserir no final
+            insert_row = table.rowCount()  # Por padrão, inserir no final
             
-            for row in range(self.receive_table.rowCount()):
-                existing_pid_item = self.receive_table.item(row, 3)  # Coluna 3 = PID
-                existing_channel_item = self.receive_table.item(row, 2)  # Coluna 2 = Channel
+            for row in range(table.rowCount()):
+                existing_pid_item = table.item(row, 3)  # Coluna 3 = PID
+                existing_channel_item = table.item(row, 2)  # Coluna 2 = Channel
                 if existing_pid_item:
                     existing_pid_str = existing_pid_item.text()
                     # Comparar PIDs (remover "0x" e converter para int)
@@ -1613,7 +1641,7 @@ class CANAnalyzerWindow(QMainWindow):
                     except ValueError:
                         continue
             
-            self.receive_table.insertRow(insert_row)
+            table.insertRow(insert_row)
             row = insert_row
             
             # Criar items com alinhamento
@@ -1630,27 +1658,28 @@ class CANAnalyzerWindow(QMainWindow):
             period_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
             # Inserir items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
-            self.receive_table.setItem(row, 0, id_item)                            # ID sequencial
-            self.receive_table.setItem(row, 1, count_item)                         # Count
+            table.setItem(row, 0, id_item)                            # ID sequencial
+            table.setItem(row, 1, count_item)                         # Count
             
             # Channel column
             channel_item = QTableWidgetItem(msg.source)
             channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.receive_table.setItem(row, 2, channel_item)                       # Channel
+            table.setItem(row, 2, channel_item)                       # Channel
             
-            self.receive_table.setItem(row, 3, QTableWidgetItem(pid_str))          # PID
-            self.receive_table.setItem(row, 4, dlc_item)                           # DLC
-            self.receive_table.setItem(row, 5, QTableWidgetItem(data_str))         # Data
-            self.receive_table.setItem(row, 6, period_item)                        # Period
-            self.receive_table.setItem(row, 7, QTableWidgetItem(ascii_str))        # ASCII
-            self.receive_table.setItem(row, 8, QTableWidgetItem(msg.comment))      # Comment
+            table.setItem(row, 3, QTableWidgetItem(pid_str))          # PID
+            table.setItem(row, 4, dlc_item)                           # DLC
+            table.setItem(row, 5, QTableWidgetItem(data_str))         # Data
+            table.setItem(row, 6, period_item)                        # Period
+            table.setItem(row, 7, QTableWidgetItem(ascii_str))        # ASCII
+            table.setItem(row, 8, QTableWidgetItem(msg.comment))      # Comment
             
             # NÃO destacar na primeira mensagem (count == 1), manter cor normal
             # Highlight só deve aparecer quando count > 1 (mensagem repetida)
             count_item.setBackground(self.colors['normal_bg'])
             
             # Recalcular IDs sequenciais de todas as linhas (pois a ordem mudou)
-            self.update_sequential_ids()
+            if table == self.receive_table:
+                self.update_sequential_ids()
     
     def update_sequential_ids(self):
         """Atualiza os IDs sequenciais na coluna 0 do modo Monitor"""
@@ -3875,21 +3904,190 @@ class CANAnalyzerWindow(QMainWindow):
     
     def _setup_split_screen_view(self):
         """Setup split-screen view with two tables"""
-        # This is a simplified implementation
-        # In a full implementation, you would:
-        # 1. Create two separate QTableWidget instances
-        # 2. Use a QSplitter to arrange them side by side
-        # 3. Filter messages by channel in update_ui()
-        # 4. Update both tables independently
+        # Clear existing layout
+        while self.receive_container_layout.count():
+            item = self.receive_container_layout.takeAt(0)
+            if item.widget():
+                item.widget().setVisible(False)
         
-        # For now, just show a notification that the feature is active
-        # The actual implementation would require significant refactoring
-        # of the receive panel layout
+        # Create horizontal splitter for two tables
+        split_splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Left panel
+        left_panel = QGroupBox(f"{t('split_screen_left')}: {self.split_screen_left_channel}")
+        left_layout = QVBoxLayout(left_panel)
+        
+        self.receive_table_left = QTableWidget()
+        self.setup_receive_table_for_widget(self.receive_table_left)
+        left_layout.addWidget(self.receive_table_left)
+        
+        # Right panel
+        right_panel = QGroupBox(f"{t('split_screen_right')}: {self.split_screen_right_channel}")
+        right_layout = QVBoxLayout(right_panel)
+        
+        self.receive_table_right = QTableWidget()
+        self.setup_receive_table_for_widget(self.receive_table_right)
+        right_layout.addWidget(self.receive_table_right)
+        
+        # Add panels to splitter
+        split_splitter.addWidget(left_panel)
+        split_splitter.addWidget(right_panel)
+        split_splitter.setSizes([500, 500])  # Equal split
+        
+        # Add splitter to container
+        self.receive_container_layout.addWidget(split_splitter)
+        
+        # Update group box title
+        self.receive_group.setTitle(f"Receive (Monitor) - Split: {self.split_screen_left_channel} | {self.split_screen_right_channel}")
+        
+        # Clear existing messages and reload with split
+        self._reload_messages_split_screen()
+        
         self.logger.info(f"Split-screen view activated: {self.split_screen_left_channel} | {self.split_screen_right_channel}")
     
     def _setup_single_screen_view(self):
         """Restore single screen view"""
+        # Clear existing layout
+        while self.receive_container_layout.count():
+            item = self.receive_container_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        # Restore main table
+        self.receive_table.setVisible(True)
+        self.receive_container_layout.addWidget(self.receive_table)
+        
+        # Clear split tables
+        self.receive_table_left = None
+        self.receive_table_right = None
+        
+        # Update group box title
+        mode_text = "Tracer" if self.tracer_mode else "Monitor"
+        self.receive_group.setTitle(f"Receive ({mode_text})")
+        
+        # Reload all messages
+        self._reload_all_messages()
+        
         self.logger.info("Single screen view restored")
+    
+    def setup_receive_table_for_widget(self, table_widget):
+        """Setup a receive table widget with proper configuration"""
+        if self.tracer_mode:
+            # Modo Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
+            table_widget.setColumnCount(8)
+            table_widget.setHorizontalHeaderLabels(['ID', 'Time', t('col_channel'), 'PID', 'DLC', 'Data', 'ASCII', 'Comment'])
+            table_widget.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked)
+        else:
+            # Modo Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
+            table_widget.setColumnCount(9)
+            table_widget.setHorizontalHeaderLabels(['ID', 'Count', t('col_channel'), 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment'])
+            table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        
+        # Common settings
+        table_widget.verticalHeader().setVisible(False)
+        font = QFont("Courier New", 14)
+        table_widget.setFont(font)
+        table_widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table_widget.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
+        table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table_widget.customContextMenuRequested.connect(self.show_receive_context_menu)
+        
+        # Column sizing
+        header = table_widget.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        
+        if self.tracer_mode:
+            header.resizeSection(0, 60)   # ID
+            header.resizeSection(1, 100)  # Time
+            header.resizeSection(2, 70)   # Channel
+            header.resizeSection(3, 80)   # PID
+            header.resizeSection(4, 60)   # DLC
+            header.resizeSection(5, 250)  # Data
+            header.resizeSection(6, 100)  # ASCII
+            header.resizeSection(7, 150)  # Comment
+        else:
+            header.resizeSection(0, 40)   # ID
+            header.resizeSection(1, 60)   # Count
+            header.resizeSection(2, 70)   # Channel
+            header.resizeSection(3, 80)   # PID
+            header.resizeSection(4, 50)   # DLC
+            header.resizeSection(5, 250)  # Data
+            header.resizeSection(6, 70)   # Period
+            header.resizeSection(7, 100)  # ASCII
+            header.resizeSection(8, 150)  # Comment
+        
+        header.setStretchLastSection(True)
+    
+    def _reload_messages_split_screen(self):
+        """Reload all messages in split-screen mode"""
+        if not self.split_screen_mode or not self.receive_table_left or not self.receive_table_right:
+            return
+        
+        # Clear both tables
+        self.receive_table_left.setRowCount(0)
+        self.receive_table_right.setRowCount(0)
+        
+        # Reload messages from received_messages
+        for msg in self.received_messages:
+            if self.tracer_mode:
+                if msg.source == self.split_screen_left_channel:
+                    self._add_message_to_table(msg, self.receive_table_left, highlight=False)
+                elif msg.source == self.split_screen_right_channel:
+                    self._add_message_to_table(msg, self.receive_table_right, highlight=False)
+            else:
+                # Monitor mode - need to regroup
+                pass  # Will be handled by normal monitor logic
+    
+    def _reload_all_messages(self):
+        """Reload all messages in single screen mode"""
+        self.receive_table.setRowCount(0)
+        self.message_counters.clear()
+        self.message_last_timestamp.clear()
+        
+        # Reload messages
+        for msg in self.received_messages:
+            if self.tracer_mode:
+                self.add_message_tracer_mode(msg, highlight=False)
+            else:
+                self.add_message_monitor_mode(msg, highlight=False)
+    
+    def _add_message_to_table(self, msg: CANMessage, table: QTableWidget, highlight: bool = True):
+        """Add message to a specific table (for split-screen)"""
+        if self.tracer_mode:
+            # Tracer mode
+            dt = datetime.fromtimestamp(msg.timestamp)
+            time_str = dt.strftime("%S.%f")[:-3]
+            pid_str = f"0x{msg.can_id:03X}"
+            data_str = " ".join([f"{b:02X}" for b in msg.data])
+            ascii_str = msg.to_ascii()
+            
+            row = table.rowCount()
+            table.insertRow(row)
+            
+            id_item = QTableWidgetItem(str(row + 1))
+            id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            dlc_item = QTableWidgetItem(str(msg.dlc))
+            dlc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            table.setItem(row, 0, id_item)
+            table.setItem(row, 1, QTableWidgetItem(time_str))
+            
+            channel_item = QTableWidgetItem(msg.source)
+            channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 2, channel_item)
+            
+            table.setItem(row, 3, QTableWidgetItem(pid_str))
+            table.setItem(row, 4, dlc_item)
+            table.setItem(row, 5, QTableWidgetItem(data_str))
+            table.setItem(row, 6, QTableWidgetItem(ascii_str))
+            table.setItem(row, 7, QTableWidgetItem(msg.comment))
+            
+            table.scrollToBottom()
+        else:
+            # Monitor mode - similar to add_message_monitor_mode but for specific table
+            # This would need more complex logic to maintain per-table counters
+            pass
     
     def closeEvent(self, event):
         """Evento chamado ao fechar a janela"""
