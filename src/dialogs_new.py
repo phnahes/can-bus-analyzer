@@ -182,23 +182,17 @@ class SettingsDialog(QDialog):
         multican_info.setWordWrap(True)
         multican_layout.addWidget(multican_info)
         
-        # Table for CAN buses
-        self.can_buses_table = QTableWidget()
-        self.can_buses_table.setColumnCount(5)
-        self.can_buses_table.setHorizontalHeaderLabels([
-            t('multican_name'),
-            t('multican_channel'),
-            t('multican_baudrate'),
-            t('multican_interface'),
-            t('multican_listen_only')
-        ])
-        self.can_buses_table.horizontalHeader().setStretchLastSection(False)
-        self.can_buses_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.can_buses_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.can_buses_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.can_buses_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.can_buses_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self.can_buses_table.setMaximumHeight(150)
+        # Scroll area for CAN bus widgets
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMaximumHeight(250)
+        
+        scroll_widget = QWidget()
+        self.can_buses_layout = QVBoxLayout(scroll_widget)
+        self.can_buses_layout.setSpacing(10)
+        
+        # Store CAN bus widgets
+        self.can_bus_widgets = []
         
         # Load existing CAN buses from config
         can_buses = self.config.get('can_buses', [])
@@ -208,24 +202,21 @@ class SettingsDialog(QDialog):
                 'name': 'CAN1',
                 'channel': self.config.get('channel', 'can0'),
                 'baudrate': self.config.get('baudrate', 500000),
-                'interface': 'socketcan',
                 'listen_only': self.config.get('listen_only', True)
             }]
         
         for bus in can_buses:
-            self._add_can_bus_row(bus)
+            self._add_can_bus_widget(bus)
         
-        multican_layout.addWidget(self.can_buses_table)
+        self.can_buses_layout.addStretch()
+        scroll.setWidget(scroll_widget)
+        multican_layout.addWidget(scroll)
         
         # Buttons for add/remove
         can_buttons_layout = QHBoxLayout()
         self.btn_add_can = QPushButton(t('btn_add_can'))
         self.btn_add_can.clicked.connect(self._add_new_can_bus)
         can_buttons_layout.addWidget(self.btn_add_can)
-        
-        self.btn_remove_can = QPushButton(t('btn_remove_can'))
-        self.btn_remove_can.clicked.connect(self._remove_selected_can_bus)
-        can_buttons_layout.addWidget(self.btn_remove_can)
         
         can_buttons_layout.addStretch()
         multican_layout.addLayout(can_buttons_layout)
@@ -262,55 +253,115 @@ class SettingsDialog(QDialog):
                     f"Description: {device.description}"
                 )
     
-    def _add_can_bus_row(self, bus_config):
-        """Add a CAN bus row to the table"""
-        row = self.can_buses_table.rowCount()
-        self.can_buses_table.insertRow(row)
+    def _add_can_bus_widget(self, bus_config):
+        """Add a CAN bus configuration widget"""
+        # Create widget container
+        bus_widget = QGroupBox()
+        bus_layout = QVBoxLayout()
         
-        # Name
-        name_item = QTableWidgetItem(bus_config.get('name', f'CAN{row+1}'))
-        self.can_buses_table.setItem(row, 0, name_item)
+        # Row 1: Name and Remove button
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel(t('multican_name') + ":"))
+        name_input = QLineEdit(bus_config.get('name', f'CAN{len(self.can_bus_widgets)+1}'))
+        name_input.setMaximumWidth(150)
+        row1.addWidget(name_input)
+        row1.addStretch()
         
-        # Channel
-        channel_item = QTableWidgetItem(bus_config.get('channel', 'can0'))
-        self.can_buses_table.setItem(row, 1, channel_item)
+        # Remove button
+        btn_remove = QPushButton(t('btn_remove_can'))
+        btn_remove.setMaximumWidth(100)
+        btn_remove.clicked.connect(lambda: self._remove_can_bus_widget(bus_widget))
+        row1.addWidget(btn_remove)
+        bus_layout.addLayout(row1)
         
-        # Baudrate
+        # Row 2: Channel and Scan button
+        row2 = QHBoxLayout()
+        row2.addWidget(QLabel(t('multican_channel') + ":"))
+        channel_input = QComboBox()
+        channel_input.setEditable(True)
+        
+        # Add common devices based on platform
+        import sys
+        if sys.platform == "win32":
+            channel_input.addItems(["COM1", "COM3", "COM4", "can0", "vcan0"])
+        elif sys.platform == "linux":
+            channel_input.addItems(["/dev/ttyUSB0", "/dev/ttyACM0", "can0", "vcan0"])
+        else:
+            channel_input.addItems(["/dev/cu.usbserial", "/dev/cu.usbmodem", "can0", "vcan0"])
+        
+        channel_input.setCurrentText(bus_config.get('channel', 'can0'))
+        row2.addWidget(channel_input, 1)
+        
+        # Scan button
+        btn_scan = QPushButton(t('btn_scan_devices'))
+        btn_scan.setMaximumWidth(120)
+        btn_scan.clicked.connect(lambda: self._scan_device_for_bus(channel_input))
+        row2.addWidget(btn_scan)
+        bus_layout.addLayout(row2)
+        
+        # Row 3: Baudrate and Listen Only
+        row3 = QHBoxLayout()
+        row3.addWidget(QLabel(t('multican_baudrate') + ":"))
+        baudrate_combo = QComboBox()
+        baudrate_combo.addItems(["125 Kbit/s", "250 Kbit/s", "500 Kbit/s", "1000 Kbit/s"])
         baudrate = bus_config.get('baudrate', 500000)
-        baudrate_item = QTableWidgetItem(f"{baudrate//1000} Kbit/s")
-        self.can_buses_table.setItem(row, 2, baudrate_item)
+        baudrate_combo.setCurrentText(f"{baudrate//1000} Kbit/s")
+        baudrate_combo.setMaximumWidth(150)
+        row3.addWidget(baudrate_combo)
         
-        # Interface
-        interface_item = QTableWidgetItem(bus_config.get('interface', 'socketcan'))
-        self.can_buses_table.setItem(row, 3, interface_item)
+        row3.addStretch()
         
-        # Listen Only
-        listen_only = bus_config.get('listen_only', True)
-        listen_only_item = QTableWidgetItem("✓" if listen_only else "")
-        listen_only_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.can_buses_table.setItem(row, 4, listen_only_item)
+        # Listen Only checkbox
+        listen_only_check = QCheckBox(t('multican_listen_only'))
+        listen_only_check.setChecked(bus_config.get('listen_only', True))
+        row3.addWidget(listen_only_check)
+        bus_layout.addLayout(row3)
+        
+        bus_widget.setLayout(bus_layout)
+        
+        # Store references to inputs
+        bus_widget.name_input = name_input
+        bus_widget.channel_input = channel_input
+        bus_widget.baudrate_combo = baudrate_combo
+        bus_widget.listen_only_check = listen_only_check
+        
+        # Add to layout and list
+        self.can_buses_layout.insertWidget(len(self.can_bus_widgets), bus_widget)
+        self.can_bus_widgets.append(bus_widget)
     
     def _add_new_can_bus(self):
         """Add a new CAN bus configuration"""
-        row_count = self.can_buses_table.rowCount()
         new_bus = {
-            'name': f'CAN{row_count + 1}',
+            'name': f'CAN{len(self.can_bus_widgets) + 1}',
             'channel': 'can0',
             'baudrate': 500000,
-            'interface': 'socketcan',
             'listen_only': True
         }
-        self._add_can_bus_row(new_bus)
+        self._add_can_bus_widget(new_bus)
     
-    def _remove_selected_can_bus(self):
-        """Remove selected CAN bus from table"""
-        current_row = self.can_buses_table.currentRow()
-        if current_row >= 0:
-            # Don't allow removing the last bus
-            if self.can_buses_table.rowCount() <= 1:
-                QMessageBox.warning(self, t('warning'), t('multican_info'))
-                return
-            self.can_buses_table.removeRow(current_row)
+    def _remove_can_bus_widget(self, widget):
+        """Remove a CAN bus widget"""
+        # Don't allow removing the last bus
+        if len(self.can_bus_widgets) <= 1:
+            QMessageBox.warning(self, t('warning'), t('multican_info'))
+            return
+        
+        self.can_bus_widgets.remove(widget)
+        self.can_buses_layout.removeWidget(widget)
+        widget.deleteLater()
+    
+    def _scan_device_for_bus(self, channel_input):
+        """Scan and select device for a specific CAN bus"""
+        if not self.usb_monitor:
+            QMessageBox.warning(self, t('warning'), t('msg_usb_monitor_not_available'))
+            return
+        
+        dialog = USBDeviceSelectionDialog(self, self.usb_monitor)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            device = dialog.selected_device
+            if device:
+                channel_input.setCurrentText(device.path)
     
     def get_config(self):
         """Retorna configuração atualizada"""
@@ -318,15 +369,25 @@ class SettingsDialog(QDialog):
         selected_language = self.language_combo.currentData()
         selected_theme = self.theme_combo.currentData()
         
-        # Extract CAN buses from table
+        # Extract CAN buses from widgets
         can_buses = []
-        for row in range(self.can_buses_table.rowCount()):
-            name = self.can_buses_table.item(row, 0).text()
-            channel = self.can_buses_table.item(row, 1).text()
-            baudrate_text = self.can_buses_table.item(row, 2).text()
+        for widget in self.can_bus_widgets:
+            name = widget.name_input.text()
+            channel = widget.channel_input.currentText()
+            baudrate_text = widget.baudrate_combo.currentText()
             baudrate = int(baudrate_text.split()[0]) * 1000
-            interface = self.can_buses_table.item(row, 3).text()
-            listen_only = self.can_buses_table.item(row, 4).text() == "✓"
+            listen_only = widget.listen_only_check.isChecked()
+            
+            # Auto-detect interface based on channel
+            channel_upper = channel.upper()
+            if (channel.startswith('/dev/tty.') or channel.startswith('/dev/cu.') or
+                    channel.startswith('/dev/ttyUSB') or channel.startswith('/dev/ttyACM') or
+                    (channel_upper.startswith('COM') and len(channel) >= 4)):
+                interface = 'slcan'
+            elif channel.startswith('can') or channel.startswith('vcan'):
+                interface = 'socketcan'
+            else:
+                interface = 'socketcan'  # default
             
             can_buses.append({
                 'name': name,
