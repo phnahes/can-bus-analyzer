@@ -1,5 +1,8 @@
 # CAN Analyzer
 
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A CANbus analyzer with CANHacker-like functionality. Built with Python and PyQt6. **Runs on macOS and Linux.**
 
 ---
@@ -18,6 +21,7 @@ A CANbus analyzer with CANHacker-like functionality. Built with Python and PyQt6
 - [Documentation](#documentation)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
+- [Changelog](#changelog)
 - [License](#license)
 - [Project Status](#project-status)
 - [Technical Notes](#technical-notes)
@@ -406,6 +410,19 @@ Contributions are welcome! Here's how you can help:
 1. Open an issue
 2. Describe the feature
 3. Explain use case
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
+
+**Latest Release: v0.2.0** - Multi-CAN Support
+- Multiple CAN bus support with independent configuration
+- Channel-specific filters
+- Enhanced status bar with per-channel details
+- Improved terminology aligned with industry standards
+- Save/Load with channel information
 
 ---
 
