@@ -1081,19 +1081,36 @@ class CANAnalyzerWindow(QMainWindow):
                         for bus_name in connected_buses:
                             self.tx_source_combo.addItem(bus_name)
                         
-                        # Update status with first bus info (or summary)
-                        first_bus = can_buses[0]
-                        baudrate = first_bus['baudrate']
-                        channel = first_bus['channel']
-                        
+                        # Update status with detailed info for each bus
                         if len(connected_buses) > 1:
-                            self.connection_status.setText(f"Connected: {len(connected_buses)} buses")
-                            self.device_label.setText(f"Devices: {', '.join(connected_buses)}")
+                            # Multi-CAN: Show detailed status for each channel
+                            status_parts = []
+                            device_parts = []
+                            
+                            for bus_name in connected_buses:
+                                # Find bus config
+                                bus_config = next((b for b in can_buses if b['name'] == bus_name), None)
+                                if bus_config:
+                                    is_connected = self.can_bus_manager.is_bus_connected(bus_name)
+                                    status_icon = "✓" if is_connected else "✗"
+                                    baudrate_kb = bus_config['baudrate'] // 1000
+                                    status_parts.append(f"{bus_name}: {status_icon} {baudrate_kb}k")
+                                    device_parts.append(f"{bus_name}→{bus_config['channel']}")
+                            
+                            self.connection_status.setText(" | ".join(status_parts))
+                            self.device_label.setText(" | ".join(device_parts))
+                            
+                            # Notification with summary
+                            first_bus = can_buses[0]
+                            self.show_notification(t('notif_connected', channel=', '.join(connected_buses), baudrate=first_bus['baudrate']//1000), 5000)
                         else:
+                            # Single CAN: Show simple status
+                            first_bus = can_buses[0]
+                            baudrate = first_bus['baudrate']
+                            channel = first_bus['channel']
                             self.connection_status.setText(f"Connected: {baudrate//1000} kbit/s")
                             self.device_label.setText(f"Device: {channel}")
-                        
-                        self.show_notification(t('notif_connected', channel=', '.join(connected_buses), baudrate=baudrate//1000), 5000)
+                            self.show_notification(t('notif_connected', channel=connected_buses[0], baudrate=baudrate//1000), 5000)
                     else:
                         raise Exception("Nenhum barramento CAN conseguiu conectar")
                     
@@ -1143,10 +1160,24 @@ class CANAnalyzerWindow(QMainWindow):
                 for bus_name in bus_names:
                     self.tx_source_combo.addItem(bus_name)
                 
+                # Update status with detailed info for simulation
                 if len(bus_names) > 1:
-                    self.connection_status.setText(f"Simulation: {len(bus_names)} buses")
-                    self.device_label.setText(f"Devices: {', '.join(bus_names)} (Sim)")
+                    # Multi-CAN simulation: Show detailed status for each channel
+                    status_parts = []
+                    device_parts = []
+                    
+                    for bus_name in bus_names:
+                        # Find bus config
+                        bus_config = next((b for b in can_buses if b['name'] == bus_name), None)
+                        if bus_config:
+                            baudrate_kb = bus_config['baudrate'] // 1000
+                            status_parts.append(f"{bus_name}: SIM {baudrate_kb}k")
+                            device_parts.append(f"{bus_name}→{bus_config['channel']} (Sim)")
+                    
+                    self.connection_status.setText(" | ".join(status_parts))
+                    self.device_label.setText(" | ".join(device_parts))
                 else:
+                    # Single CAN simulation
                     self.connection_status.setText(f"Simulation: {baudrate//1000} kbit/s")
                     device_info = can_buses[0]['channel'] if can_buses else 'can0'
                     self.device_label.setText(f"Device: {device_info} (Sim)")
