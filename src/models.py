@@ -244,9 +244,20 @@ class GatewayModifyRule:
 
 
 @dataclass
+class GatewayRoute:
+    """Rota de encaminhamento do Gateway"""
+    source: str  # Canal de origem (ex: "CAN1")
+    destination: str  # Canal de destino (ex: "CAN2")
+    enabled: bool = True
+
+
+@dataclass
 class GatewayConfig:
     """Configuração completa do CAN Gateway"""
-    # Controle de transmissão entre canais
+    # Nova estrutura de rotas (suporta múltiplas rotas)
+    routes: List[GatewayRoute] = field(default_factory=list)
+    
+    # Mantido para compatibilidade com versões antigas
     transmit_1_to_2: bool = False  # CAN1 → CAN2
     transmit_2_to_1: bool = False  # CAN2 → CAN1
     
@@ -261,6 +272,17 @@ class GatewayConfig:
     
     # Estado
     enabled: bool = False
+    
+    def get_destination_for_source(self, source: str) -> Optional[str]:
+        """Retorna o destino para uma origem específica, se habilitado"""
+        for route in self.routes:
+            if route.enabled and route.source == source:
+                return route.destination
+        return None
+    
+    def has_route_from(self, source: str) -> bool:
+        """Verifica se existe rota ativa para a origem"""
+        return any(r.enabled and r.source == source for r in self.routes)
     
     def should_block(self, msg: CANMessage) -> bool:
         """Verifica se a mensagem deve ser bloqueada"""
@@ -287,6 +309,10 @@ class GatewayConfig:
     def to_dict(self) -> dict:
         """Converte para dicionário"""
         return {
+            'routes': [
+                {'source': r.source, 'destination': r.destination, 'enabled': r.enabled}
+                for r in self.routes
+            ],
             'transmit_1_to_2': self.transmit_1_to_2,
             'transmit_2_to_1': self.transmit_2_to_1,
             'enabled': self.enabled,
@@ -325,6 +351,14 @@ class GatewayConfig:
             transmit_2_to_1=data.get('transmit_2_to_1', False),
             enabled=data.get('enabled', False)
         )
+        
+        # Carrega rotas (novo formato)
+        for route_data in data.get('routes', []):
+            config.routes.append(GatewayRoute(
+                source=route_data['source'],
+                destination=route_data['destination'],
+                enabled=route_data.get('enabled', True)
+            ))
         
         # Carrega regras de bloqueio
         for rule_data in data.get('block_rules', []):
