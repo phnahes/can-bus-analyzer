@@ -120,24 +120,39 @@ class CANBusInstance:
         self.connected = False
         print(f"[{self.config.name}] Disconnected")
     
-    def send(self, msg: CANMessage) -> bool:
-        """Send a CAN message"""
+    def send(self, msg) -> bool:
+        """Send a CAN message (accepts CANMessage or can.Message)"""
         if not self.connected:
             return False
         
         try:
-            if self.bus:
+            # Check if it's a python-can Message or our CANMessage
+            # Use hasattr to check for arbitration_id (python-can) vs can_id (our dataclass)
+            if hasattr(msg, 'arbitration_id'):
+                # Already a python-can Message, send directly
+                can_msg = msg
+                msg_id = msg.arbitration_id
+                msg_data = msg.data
+            elif hasattr(msg, 'can_id'):
+                # Our CANMessage dataclass, convert to python-can Message
                 can_msg = can.Message(
                     arbitration_id=msg.can_id,
                     data=msg.data[:msg.dlc],
                     is_extended_id=msg.is_extended,
                     is_remote_frame=msg.is_rtr
                 )
+                msg_id = msg.can_id
+                msg_data = msg.data
+            else:
+                print(f"[{self.config.name}] Send error: Unknown message type {type(msg)}")
+                return False
+            
+            if self.bus:
                 self.bus.send(can_msg)
                 return True
             else:
                 # Simulation mode
-                print(f"[{self.config.name}] SIM TX: ID=0x{msg.can_id:03X}, Data={msg.to_hex_string()}")
+                print(f"[{self.config.name}] SIM TX: ID=0x{msg_id:03X}, Data={msg_data.hex() if isinstance(msg_data, bytes) else msg_data}")
                 return True
         except Exception as e:
             print(f"[{self.config.name}] Send error: {e}")
@@ -258,14 +273,15 @@ class CANBusManager:
             return True
         return False
     
-    def send_to(self, bus_name: str, msg: CANMessage) -> bool:
-        """Send message to a specific bus"""
+    def send_to(self, bus_name: str, msg) -> bool:
+        """Send message to a specific bus (accepts CANMessage or can.Message)"""
         if bus_name in self.buses:
             return self.buses[bus_name].send(msg)
         return False
     
-    def send_to_all(self, msg: CANMessage) -> Dict[str, bool]:
-        """Send message to all connected buses. Returns dict of {bus_name: success}"""
+    def send_to_all(self, msg) -> Dict[str, bool]:
+        """Send message to all connected buses (accepts CANMessage or can.Message)
+        Returns dict of {bus_name: success}"""
         results = {}
         for name, bus in self.buses.items():
             if bus.connected:
