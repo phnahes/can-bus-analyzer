@@ -658,29 +658,32 @@ class CANAnalyzerWindow(QMainWindow):
             total_messages = len(self.received_messages)
             
             if total_messages > 0:
-                # 1. Agrupar mensagens por ID (MUITO MAIS RÁPIDO que inserir uma por uma)
-                id_data = {}  # {can_id: {'last_msg': msg, 'count': N, 'period': X}}
+                # 1. Agrupar mensagens por (ID, Channel) - MUITO MAIS RÁPIDO que inserir uma por uma
+                id_data = {}  # {(can_id, source): {'last_msg': msg, 'count': N, 'period': X}}
                 
                 for msg in self.received_messages:
                     # Verificar filtro
                     if not self.message_passes_filter(msg):
                         continue
                     
+                    # Chave única: (ID, Channel)
+                    counter_key = (msg.can_id, msg.source)
+                    
                     # Incrementar contador
-                    self.message_counters[msg.can_id] += 1
-                    count = self.message_counters[msg.can_id]
+                    self.message_counters[counter_key] += 1
+                    count = self.message_counters[counter_key]
                     
                     # Calcular period
                     period_str = ""
-                    if msg.can_id in self.message_last_timestamp:
-                        period_ms = int((msg.timestamp - self.message_last_timestamp[msg.can_id]) * 1000)
+                    if counter_key in self.message_last_timestamp:
+                        period_ms = int((msg.timestamp - self.message_last_timestamp[counter_key]) * 1000)
                         period_str = f"{period_ms}"
                     
                     # Atualizar timestamp
-                    self.message_last_timestamp[msg.can_id] = msg.timestamp
+                    self.message_last_timestamp[counter_key] = msg.timestamp
                     
-                    # Armazenar dados (última mensagem de cada ID)
-                    id_data[msg.can_id] = {
+                    # Armazenar dados (última mensagem de cada ID+Channel)
+                    id_data[counter_key] = {
                         'msg': msg,
                         'count': count,
                         'period': period_str
@@ -690,9 +693,9 @@ class CANAnalyzerWindow(QMainWindow):
                 unique_ids = len(id_data)
                 self.receive_table.setRowCount(unique_ids)
                 
-                # 3. Popular tabela com dados agrupados (ORDENADO POR PID)
+                # 3. Popular tabela com dados agrupados (ORDENADO POR PID, depois por Channel)
                 row_idx = 0
-                for can_id, data in sorted(id_data.items(), key=lambda x: x[0]):
+                for (can_id, source), data in sorted(id_data.items(), key=lambda x: (x[0][0], x[0][1])):
                     msg = data['msg']
                     count = data['count']
                     period_str = data['period']
