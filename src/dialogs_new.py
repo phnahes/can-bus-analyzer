@@ -1169,6 +1169,295 @@ class USBDeviceSelectionDialog(QDialog):
             QMessageBox.warning(self, t('warning'), t('msg_select_device'))
 
 
+class ModifyRuleDialog(QDialog):
+    """Dialog para configurar regra de modificação de mensagem com máscara de bits"""
+    def __init__(self, parent=None, channel=None, can_id=None, existing_rule=None):
+        super().__init__(parent)
+        self.channel = channel or "CAN1"
+        self.can_id = can_id or 0x000
+        self.existing_rule = existing_rule
+        self.i18n = get_i18n()
+        
+        # Initialize data
+        if existing_rule:
+            self.new_id = existing_rule.new_id
+            self.data_mask = existing_rule.data_mask.copy()
+            self.new_data = bytearray(existing_rule.new_data)
+        else:
+            self.new_id = None
+            self.data_mask = [False] * 8
+            self.new_data = bytearray([0x00] * 8)
+        
+        self.init_ui()
+    
+    def init_ui(self):
+        self.setWindowTitle(t('gateway_modify_rule_title'))
+        self.setModal(True)
+        self.setMinimumWidth(700)
+        self.setMinimumHeight(500)
+        
+        layout = QVBoxLayout(self)
+        
+        # Get theme
+        colors = get_adaptive_colors('system')
+        
+        # ===== Message Info =====
+        info_group = QGroupBox(t('gateway_message_info'))
+        info_layout = QGridLayout()
+        
+        info_layout.addWidget(QLabel(t('gateway_channel') + ":"), 0, 0)
+        info_layout.addWidget(QLabel(f"<b>{self.channel}</b>"), 0, 1)
+        
+        info_layout.addWidget(QLabel(t('gateway_id') + ":"), 1, 0)
+        info_layout.addWidget(QLabel(f"<b>0x{self.can_id:03X}</b>"), 1, 1)
+        
+        info_group.setLayout(info_layout)
+        layout.addWidget(info_group)
+        
+        # ===== ID Modification =====
+        id_group = QGroupBox(t('gateway_id_modification'))
+        id_layout = QHBoxLayout()
+        
+        self.modify_id_check = QCheckBox(t('gateway_change_id'))
+        self.modify_id_check.setChecked(self.new_id is not None)
+        self.modify_id_check.toggled.connect(self.on_modify_id_toggled)
+        id_layout.addWidget(self.modify_id_check)
+        
+        id_layout.addWidget(QLabel(t('gateway_new_id') + ":"))
+        self.new_id_input = QLineEdit()
+        self.new_id_input.setPlaceholderText("0x000")
+        self.new_id_input.setMaximumWidth(100)
+        self.new_id_input.setEnabled(self.new_id is not None)
+        if self.new_id is not None:
+            self.new_id_input.setText(f"0x{self.new_id:03X}")
+        id_layout.addWidget(self.new_id_input)
+        
+        id_layout.addStretch()
+        id_group.setLayout(id_layout)
+        layout.addWidget(id_group)
+        
+        # ===== Data Modification with Bit Masks =====
+        data_group = QGroupBox(t('gateway_data_modification'))
+        data_layout = QVBoxLayout()
+        
+        # Info label
+        info_label = QLabel(t('gateway_data_modification_info'))
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet(colors['info_text'])
+        data_layout.addWidget(info_label)
+        
+        # Create byte editors (8 bytes)
+        self.byte_editors = []
+        
+        for byte_idx in range(8):
+            byte_widget = QWidget()
+            byte_layout = QVBoxLayout(byte_widget)
+            byte_layout.setContentsMargins(5, 5, 5, 5)
+            
+            # Byte header
+            byte_header = QLabel(f"<b>Byte {byte_idx} (D{byte_idx})</b>")
+            byte_layout.addWidget(byte_header)
+            
+            # Enable checkbox
+            enable_check = QCheckBox(t('gateway_modify_this_byte'))
+            enable_check.setChecked(self.data_mask[byte_idx])
+            enable_check.toggled.connect(lambda checked, idx=byte_idx: self.on_byte_enabled(idx, checked))
+            byte_layout.addWidget(enable_check)
+            
+            # Hex value input
+            hex_layout = QHBoxLayout()
+            hex_layout.addWidget(QLabel("Hex:"))
+            hex_input = QLineEdit(f"{self.new_data[byte_idx]:02X}")
+            hex_input.setMaximumWidth(50)
+            hex_input.setMaxLength(2)
+            hex_input.setInputMask("HH")
+            hex_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hex_input.setEnabled(self.data_mask[byte_idx])
+            hex_input.textChanged.connect(lambda text, idx=byte_idx: self.on_hex_changed(idx, text))
+            hex_layout.addWidget(hex_input)
+            hex_layout.addStretch()
+            byte_layout.addLayout(hex_layout)
+            
+            # Bit checkboxes (8 bits per byte)
+            bits_label = QLabel(t('gateway_bits') + ":")
+            byte_layout.addWidget(bits_label)
+            
+            bits_layout = QHBoxLayout()
+            bit_checks = []
+            for bit_idx in range(7, -1, -1):  # MSB to LSB (7→0)
+                bit_check = QCheckBox(f"{bit_idx}")
+                bit_value = (self.new_data[byte_idx] >> bit_idx) & 1
+                bit_check.setChecked(bool(bit_value))
+                bit_check.setEnabled(self.data_mask[byte_idx])
+                bit_check.toggled.connect(lambda checked, b_idx=byte_idx, bit=bit_idx: self.on_bit_toggled(b_idx, bit, checked))
+                bit_checks.append(bit_check)
+                bits_layout.addWidget(bit_check)
+            bits_layout.addStretch()
+            byte_layout.addLayout(bits_layout)
+            
+            # Decimal value display
+            dec_label = QLabel(f"Dec: {self.new_data[byte_idx]}")
+            dec_label.setStyleSheet("color: gray; font-size: 10px;")
+            byte_layout.addWidget(dec_label)
+            
+            # Store references
+            self.byte_editors.append({
+                'widget': byte_widget,
+                'enable_check': enable_check,
+                'hex_input': hex_input,
+                'bit_checks': bit_checks,
+                'dec_label': dec_label
+            })
+        
+        # Arrange bytes in grid (2 rows x 4 columns)
+        bytes_grid = QWidget()
+        bytes_grid_layout = QGridLayout(bytes_grid)
+        
+        for i, editor in enumerate(self.byte_editors):
+            row = i // 4
+            col = i % 4
+            bytes_grid_layout.addWidget(editor['widget'], row, col)
+        
+        # Add to scrollable area
+        scroll = QScrollArea()
+        scroll.setWidget(bytes_grid)
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumHeight(300)
+        data_layout.addWidget(scroll)
+        
+        data_group.setLayout(data_layout)
+        layout.addWidget(data_group)
+        
+        # ===== Preview =====
+        preview_group = QGroupBox(t('gateway_preview'))
+        preview_layout = QVBoxLayout()
+        
+        self.preview_label = QLabel()
+        self.preview_label.setWordWrap(True)
+        self.update_preview()
+        preview_layout.addWidget(self.preview_label)
+        
+        preview_group.setLayout(preview_layout)
+        layout.addWidget(preview_group)
+        
+        # ===== Buttons =====
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | 
+            QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+    
+    def on_modify_id_toggled(self, checked):
+        """Handle ID modification toggle"""
+        self.new_id_input.setEnabled(checked)
+        if not checked:
+            self.new_id = None
+        self.update_preview()
+    
+    def on_byte_enabled(self, byte_idx, checked):
+        """Handle byte enable/disable"""
+        self.data_mask[byte_idx] = checked
+        
+        # Enable/disable controls
+        editor = self.byte_editors[byte_idx]
+        editor['hex_input'].setEnabled(checked)
+        for bit_check in editor['bit_checks']:
+            bit_check.setEnabled(checked)
+        
+        self.update_preview()
+    
+    def on_hex_changed(self, byte_idx, text):
+        """Handle hex value change"""
+        if len(text) == 2:
+            try:
+                value = int(text, 16)
+                self.new_data[byte_idx] = value
+                
+                # Update bit checkboxes
+                editor = self.byte_editors[byte_idx]
+                for bit_idx in range(8):
+                    bit_value = (value >> bit_idx) & 1
+                    # Temporarily disconnect to avoid recursion
+                    editor['bit_checks'][7 - bit_idx].blockSignals(True)
+                    editor['bit_checks'][7 - bit_idx].setChecked(bool(bit_value))
+                    editor['bit_checks'][7 - bit_idx].blockSignals(False)
+                
+                # Update decimal label
+                editor['dec_label'].setText(f"Dec: {value}")
+                
+                self.update_preview()
+            except ValueError:
+                pass
+    
+    def on_bit_toggled(self, byte_idx, bit_idx, checked):
+        """Handle individual bit toggle"""
+        if checked:
+            self.new_data[byte_idx] |= (1 << bit_idx)
+        else:
+            self.new_data[byte_idx] &= ~(1 << bit_idx)
+        
+        # Update hex input
+        editor = self.byte_editors[byte_idx]
+        editor['hex_input'].blockSignals(True)
+        editor['hex_input'].setText(f"{self.new_data[byte_idx]:02X}")
+        editor['hex_input'].blockSignals(False)
+        
+        # Update decimal label
+        editor['dec_label'].setText(f"Dec: {self.new_data[byte_idx]}")
+        
+        self.update_preview()
+    
+    def update_preview(self):
+        """Update preview of modifications"""
+        preview_text = f"<b>{t('gateway_original')}:</b> ID=0x{self.can_id:03X}, Data=[Original]<br>"
+        
+        # ID modification
+        if self.modify_id_check.isChecked() and self.new_id_input.text():
+            try:
+                id_text = self.new_id_input.text().strip()
+                if id_text.startswith('0x'):
+                    new_id = int(id_text, 16)
+                else:
+                    new_id = int(id_text)
+                self.new_id = new_id
+                preview_text += f"<b>{t('gateway_modified')}:</b> ID=<span style='color: orange;'>0x{new_id:03X}</span>"
+            except ValueError:
+                preview_text += f"<b>{t('gateway_modified')}:</b> ID=0x{self.can_id:03X}"
+        else:
+            self.new_id = None
+            preview_text += f"<b>{t('gateway_modified')}:</b> ID=0x{self.can_id:03X}"
+        
+        # Data modification
+        modified_bytes = []
+        for i in range(8):
+            if self.data_mask[i]:
+                modified_bytes.append(f"<span style='color: orange;'>{self.new_data[i]:02X}</span>")
+            else:
+                modified_bytes.append("--")
+        
+        preview_text += f", Data=[{' '.join(modified_bytes)}]"
+        
+        # Summary
+        mask_count = sum(self.data_mask)
+        if mask_count > 0:
+            preview_text += f"<br><br><i>{t('gateway_bytes_modified')}: {mask_count}</i>"
+        
+        self.preview_label.setText(preview_text)
+    
+    def get_rule(self) -> GatewayModifyRule:
+        """Get the configured modify rule"""
+        return GatewayModifyRule(
+            can_id=self.can_id,
+            channel=self.channel,
+            enabled=True,
+            new_id=self.new_id,
+            data_mask=self.data_mask.copy(),
+            new_data=bytes(self.new_data)
+        )
+
+
 class GatewayDialog(QDialog):
     """Dialog de configuração do CAN Gateway"""
     def __init__(self, parent=None, config=None, bus_names=None):
@@ -1215,6 +1504,12 @@ class GatewayDialog(QDialog):
         transmission_group.setLayout(transmission_layout)
         layout.addWidget(transmission_group)
         
+        # Info label explaining channel logic
+        info_label = QLabel(t('gateway_channel_info'))
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet(colors['info_text'])
+        layout.addWidget(info_label)
+        
         # ===== Static Blocking Rules =====
         blocking_group = QGroupBox(t('gateway_blocking'))
         blocking_layout = QVBoxLayout()
@@ -1222,23 +1517,17 @@ class GatewayDialog(QDialog):
         # Add rule controls
         add_block_layout = QHBoxLayout()
         
-        add_block_layout.addWidget(QLabel(t('gateway_channel')))
-        self.block_channel_combo = QComboBox()
-        for bus_name in self.bus_names:
-            self.block_channel_combo.addItem(bus_name)
-        add_block_layout.addWidget(self.block_channel_combo)
-        
-        add_block_layout.addWidget(QLabel(t('gateway_id')))
+        add_block_layout.addWidget(QLabel(t('gateway_block_id') + ":"))
         self.block_id_input = QLineEdit()
         self.block_id_input.setPlaceholderText("0x000")
         self.block_id_input.setMaximumWidth(100)
         add_block_layout.addWidget(self.block_id_input)
         
-        self.add_block_btn = QPushButton(t('gateway_lock'))
+        self.add_block_btn = QPushButton("➕ " + t('btn_add'))
         self.add_block_btn.clicked.connect(self.add_block_rule)
         add_block_layout.addWidget(self.add_block_btn)
         
-        self.remove_block_btn = QPushButton(t('gateway_unlock'))
+        self.remove_block_btn = QPushButton("➖ " + t('btn_remove'))
         self.remove_block_btn.clicked.connect(self.remove_block_rule)
         add_block_layout.addWidget(self.remove_block_btn)
         
@@ -1249,7 +1538,7 @@ class GatewayDialog(QDialog):
         self.block_table = QTableWidget()
         self.block_table.setColumnCount(3)
         self.block_table.setHorizontalHeaderLabels([
-            t('gateway_channel'),
+            t('gateway_source_channel'),
             t('gateway_id'),
             t('gateway_enabled')
         ])
@@ -1267,36 +1556,30 @@ class GatewayDialog(QDialog):
         # Dynamic block controls
         dyn_control_layout = QHBoxLayout()
         
-        dyn_control_layout.addWidget(QLabel(t('gateway_channel')))
-        self.dyn_channel_combo = QComboBox()
-        for bus_name in self.bus_names:
-            self.dyn_channel_combo.addItem(bus_name)
-        dyn_control_layout.addWidget(self.dyn_channel_combo)
-        
-        dyn_control_layout.addWidget(QLabel(t('gateway_id_from')))
+        dyn_control_layout.addWidget(QLabel(t('gateway_id_from') + ":"))
         self.dyn_id_from_input = QLineEdit()
         self.dyn_id_from_input.setPlaceholderText("0x000")
         self.dyn_id_from_input.setMaximumWidth(100)
         dyn_control_layout.addWidget(self.dyn_id_from_input)
         
-        dyn_control_layout.addWidget(QLabel(t('gateway_id_to')))
+        dyn_control_layout.addWidget(QLabel(t('gateway_id_to') + ":"))
         self.dyn_id_to_input = QLineEdit()
         self.dyn_id_to_input.setPlaceholderText("0x7FF")
         self.dyn_id_to_input.setMaximumWidth(100)
         dyn_control_layout.addWidget(self.dyn_id_to_input)
         
-        dyn_control_layout.addWidget(QLabel(t('gateway_period')))
+        dyn_control_layout.addWidget(QLabel(t('gateway_period') + ":"))
         self.dyn_period_input = QLineEdit()
         self.dyn_period_input.setPlaceholderText("1000")
         self.dyn_period_input.setMaximumWidth(80)
         dyn_control_layout.addWidget(self.dyn_period_input)
         dyn_control_layout.addWidget(QLabel("ms"))
         
-        self.add_dyn_btn = QPushButton(t('gateway_start'))
+        self.add_dyn_btn = QPushButton("➕ " + t('btn_add'))
         self.add_dyn_btn.clicked.connect(self.add_dynamic_block)
         dyn_control_layout.addWidget(self.add_dyn_btn)
         
-        self.remove_dyn_btn = QPushButton(t('gateway_stop'))
+        self.remove_dyn_btn = QPushButton("➖ " + t('btn_remove'))
         self.remove_dyn_btn.clicked.connect(self.remove_dynamic_block)
         dyn_control_layout.addWidget(self.remove_dyn_btn)
         
@@ -1307,7 +1590,7 @@ class GatewayDialog(QDialog):
         self.dynamic_table = QTableWidget()
         self.dynamic_table.setColumnCount(5)
         self.dynamic_table.setHorizontalHeaderLabels([
-            t('gateway_channel'),
+            t('gateway_source_channel'),
             t('gateway_id_from'),
             t('gateway_id_to'),
             t('gateway_period'),
@@ -1319,6 +1602,48 @@ class GatewayDialog(QDialog):
         
         dynamic_group.setLayout(dynamic_layout)
         layout.addWidget(dynamic_group)
+        
+        # ===== Message Modification =====
+        modify_group = QGroupBox(t('gateway_modification'))
+        modify_layout = QVBoxLayout()
+        
+        # Modify controls
+        modify_control_layout = QHBoxLayout()
+        
+        modify_control_layout.addWidget(QLabel(t('gateway_modify_id') + ":"))
+        self.modify_id_input = QLineEdit()
+        self.modify_id_input.setPlaceholderText("0x000")
+        self.modify_id_input.setMaximumWidth(100)
+        modify_control_layout.addWidget(self.modify_id_input)
+        
+        self.add_modify_btn = QPushButton("✏️ " + t('gateway_add_modify'))
+        self.add_modify_btn.clicked.connect(self.show_modify_dialog)
+        modify_control_layout.addWidget(self.add_modify_btn)
+        
+        self.remove_modify_btn = QPushButton("➖ " + t('btn_remove'))
+        self.remove_modify_btn.clicked.connect(self.remove_modify_rule)
+        modify_control_layout.addWidget(self.remove_modify_btn)
+        
+        modify_control_layout.addStretch()
+        modify_layout.addLayout(modify_control_layout)
+        
+        # Modify rules table
+        self.modify_table = QTableWidget()
+        self.modify_table.setColumnCount(5)
+        self.modify_table.setHorizontalHeaderLabels([
+            t('gateway_source_channel'),
+            t('gateway_id'),
+            t('gateway_new_id'),
+            t('gateway_data_mask'),
+            t('gateway_enabled')
+        ])
+        self.modify_table.horizontalHeader().setStretchLastSection(True)
+        self.modify_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.modify_table.itemDoubleClicked.connect(self.edit_modify_rule)
+        modify_layout.addWidget(self.modify_table)
+        
+        modify_group.setLayout(modify_layout)
+        layout.addWidget(modify_group)
         
         # ===== Statistics =====
         stats_group = QGroupBox(t('gateway_statistics'))
@@ -1335,6 +1660,20 @@ class GatewayDialog(QDialog):
         
         stats_group.setLayout(stats_layout)
         layout.addWidget(stats_group)
+        
+        # ===== Save/Load Configuration =====
+        config_layout = QHBoxLayout()
+        
+        self.save_config_btn = QPushButton(t('gateway_save_config'))
+        self.save_config_btn.clicked.connect(self.save_gateway_config)
+        config_layout.addWidget(self.save_config_btn)
+        
+        self.load_config_btn = QPushButton(t('gateway_load_config'))
+        self.load_config_btn.clicked.connect(self.load_gateway_config)
+        config_layout.addWidget(self.load_config_btn)
+        
+        config_layout.addStretch()
+        layout.addLayout(config_layout)
         
         # ===== Buttons =====
         button_box = QDialogButtonBox(
@@ -1371,15 +1710,52 @@ class GatewayDialog(QDialog):
             enabled_check = QCheckBox()
             enabled_check.setChecked(dyn_block.enabled)
             self.dynamic_table.setCellWidget(row, 4, enabled_check)
+        
+        # Load modify rules
+        self.modify_table.setRowCount(len(self.config.modify_rules))
+        for row, rule in enumerate(self.config.modify_rules):
+            self.modify_table.setItem(row, 0, QTableWidgetItem(rule.channel))
+            self.modify_table.setItem(row, 1, QTableWidgetItem(f"0x{rule.can_id:03X}"))
+            
+            # New ID
+            new_id_str = f"0x{rule.new_id:03X}" if rule.new_id is not None else "-"
+            self.modify_table.setItem(row, 2, QTableWidgetItem(new_id_str))
+            
+            # Data mask summary
+            mask_count = sum(rule.data_mask)
+            mask_str = f"{mask_count} bytes" if mask_count > 0 else "-"
+            self.modify_table.setItem(row, 3, QTableWidgetItem(mask_str))
+            
+            enabled_check = QCheckBox()
+            enabled_check.setChecked(rule.enabled)
+            self.modify_table.setCellWidget(row, 4, enabled_check)
+    
+    def _get_source_channels(self):
+        """Get list of source channels based on transmission direction"""
+        channels = []
+        if self.transmit_1_to_2_check.isChecked():
+            channels.append(self.bus_names[0])
+        if self.transmit_2_to_1_check.isChecked():
+            channels.append(self.bus_names[1])
+        return channels if channels else [self.bus_names[0]]  # Default to first
     
     def add_block_rule(self):
-        """Add a new blocking rule"""
+        """Add a new blocking rule (auto-detects channel from transmission direction)"""
         try:
-            channel = self.block_channel_combo.currentText()
             id_text = self.block_id_input.text().strip()
             
             if not id_text:
                 QMessageBox.warning(self, t('warning'), t('gateway_enter_id'))
+                return
+            
+            # Check if transmission is configured
+            source_channels = self._get_source_channels()
+            if not source_channels:
+                QMessageBox.warning(
+                    self,
+                    t('warning'),
+                    t('gateway_configure_transmission_first')
+                )
                 return
             
             # Parse ID (support hex with 0x prefix)
@@ -1388,19 +1764,20 @@ class GatewayDialog(QDialog):
             else:
                 can_id = int(id_text)
             
-            # Add rule
-            rule = GatewayBlockRule(can_id=can_id, channel=channel, enabled=True)
-            self.config.block_rules.append(rule)
-            
-            # Add to table
-            row = self.block_table.rowCount()
-            self.block_table.insertRow(row)
-            self.block_table.setItem(row, 0, QTableWidgetItem(channel))
-            self.block_table.setItem(row, 1, QTableWidgetItem(f"0x{can_id:03X}"))
-            
-            enabled_check = QCheckBox()
-            enabled_check.setChecked(True)
-            self.block_table.setCellWidget(row, 2, enabled_check)
+            # Add rule for each active source channel
+            for channel in source_channels:
+                rule = GatewayBlockRule(can_id=can_id, channel=channel, enabled=True)
+                self.config.block_rules.append(rule)
+                
+                # Add to table
+                row = self.block_table.rowCount()
+                self.block_table.insertRow(row)
+                self.block_table.setItem(row, 0, QTableWidgetItem(channel))
+                self.block_table.setItem(row, 1, QTableWidgetItem(f"0x{can_id:03X}"))
+                
+                enabled_check = QCheckBox()
+                enabled_check.setChecked(True)
+                self.block_table.setCellWidget(row, 2, enabled_check)
             
             # Clear input
             self.block_id_input.clear()
@@ -1420,15 +1797,24 @@ class GatewayDialog(QDialog):
         self.block_table.removeRow(row)
     
     def add_dynamic_block(self):
-        """Add a new dynamic blocking rule"""
+        """Add a new dynamic blocking rule (auto-detects channel)"""
         try:
-            channel = self.dyn_channel_combo.currentText()
             id_from_text = self.dyn_id_from_input.text().strip()
             id_to_text = self.dyn_id_to_input.text().strip()
             period_text = self.dyn_period_input.text().strip()
             
             if not all([id_from_text, id_to_text, period_text]):
                 QMessageBox.warning(self, t('warning'), t('gateway_fill_all_fields'))
+                return
+            
+            # Check if transmission is configured
+            source_channels = self._get_source_channels()
+            if not source_channels:
+                QMessageBox.warning(
+                    self,
+                    t('warning'),
+                    t('gateway_configure_transmission_first')
+                )
                 return
             
             # Parse values
@@ -1444,27 +1830,28 @@ class GatewayDialog(QDialog):
             
             period = int(period_text)
             
-            # Add dynamic block
-            dyn_block = GatewayDynamicBlock(
-                id_from=id_from,
-                id_to=id_to,
-                channel=channel,
-                period=period,
-                enabled=True
-            )
-            self.config.dynamic_blocks.append(dyn_block)
-            
-            # Add to table
-            row = self.dynamic_table.rowCount()
-            self.dynamic_table.insertRow(row)
-            self.dynamic_table.setItem(row, 0, QTableWidgetItem(channel))
-            self.dynamic_table.setItem(row, 1, QTableWidgetItem(f"0x{id_from:03X}"))
-            self.dynamic_table.setItem(row, 2, QTableWidgetItem(f"0x{id_to:03X}"))
-            self.dynamic_table.setItem(row, 3, QTableWidgetItem(f"{period}"))
-            
-            enabled_check = QCheckBox()
-            enabled_check.setChecked(True)
-            self.dynamic_table.setCellWidget(row, 4, enabled_check)
+            # Add dynamic block for each active source channel
+            for channel in source_channels:
+                dyn_block = GatewayDynamicBlock(
+                    id_from=id_from,
+                    id_to=id_to,
+                    channel=channel,
+                    period=period,
+                    enabled=True
+                )
+                self.config.dynamic_blocks.append(dyn_block)
+                
+                # Add to table
+                row = self.dynamic_table.rowCount()
+                self.dynamic_table.insertRow(row)
+                self.dynamic_table.setItem(row, 0, QTableWidgetItem(channel))
+                self.dynamic_table.setItem(row, 1, QTableWidgetItem(f"0x{id_from:03X}"))
+                self.dynamic_table.setItem(row, 2, QTableWidgetItem(f"0x{id_to:03X}"))
+                self.dynamic_table.setItem(row, 3, QTableWidgetItem(f"{period}"))
+                
+                enabled_check = QCheckBox()
+                enabled_check.setChecked(True)
+                self.dynamic_table.setCellWidget(row, 4, enabled_check)
             
             # Clear inputs
             self.dyn_id_from_input.clear()
@@ -1499,6 +1886,197 @@ class GatewayDialog(QDialog):
             modified=stats.get('modified', 0)
         ))
     
+    def show_modify_dialog(self):
+        """Show dialog to add/edit modify rule (auto-detects channel)"""
+        id_text = self.modify_id_input.text().strip()
+        
+        if not id_text:
+            QMessageBox.warning(self, t('warning'), t('gateway_enter_id'))
+            return
+        
+        # Check if transmission is configured
+        source_channels = self._get_source_channels()
+        if not source_channels:
+            QMessageBox.warning(
+                self,
+                t('warning'),
+                t('gateway_configure_transmission_first')
+            )
+            return
+        
+        try:
+            # Parse ID
+            if id_text.startswith('0x') or id_text.startswith('0X'):
+                can_id = int(id_text, 16)
+            else:
+                can_id = int(id_text)
+            
+            # Add rule for each active source channel
+            for channel in source_channels:
+                # Show modify rule editor dialog
+                dialog = ModifyRuleDialog(self, channel, can_id)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    rule = dialog.get_rule()
+                    self.config.modify_rules.append(rule)
+                    
+                    # Add to table
+                    row = self.modify_table.rowCount()
+                    self.modify_table.insertRow(row)
+                    self.modify_table.setItem(row, 0, QTableWidgetItem(rule.channel))
+                    self.modify_table.setItem(row, 1, QTableWidgetItem(f"0x{rule.can_id:03X}"))
+                    
+                    new_id_str = f"0x{rule.new_id:03X}" if rule.new_id is not None else "-"
+                    self.modify_table.setItem(row, 2, QTableWidgetItem(new_id_str))
+                    
+                    mask_count = sum(rule.data_mask)
+                    mask_str = f"{mask_count} bytes" if mask_count > 0 else "-"
+                    self.modify_table.setItem(row, 3, QTableWidgetItem(mask_str))
+                    
+                    enabled_check = QCheckBox()
+                    enabled_check.setChecked(True)
+                    self.modify_table.setCellWidget(row, 4, enabled_check)
+            
+            # Clear input
+            self.modify_id_input.clear()
+                
+        except ValueError:
+            QMessageBox.warning(self, t('error'), t('gateway_invalid_id'))
+    
+    def edit_modify_rule(self, item):
+        """Edit existing modify rule"""
+        row = item.row()
+        if row >= len(self.config.modify_rules):
+            return
+        
+        rule = self.config.modify_rules[row]
+        
+        # Show modify rule editor dialog with existing rule
+        dialog = ModifyRuleDialog(self, rule.channel, rule.can_id, rule)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            updated_rule = dialog.get_rule()
+            self.config.modify_rules[row] = updated_rule
+            
+            # Update table
+            self.modify_table.setItem(row, 0, QTableWidgetItem(updated_rule.channel))
+            self.modify_table.setItem(row, 1, QTableWidgetItem(f"0x{updated_rule.can_id:03X}"))
+            
+            new_id_str = f"0x{updated_rule.new_id:03X}" if updated_rule.new_id is not None else "-"
+            self.modify_table.setItem(row, 2, QTableWidgetItem(new_id_str))
+            
+            mask_count = sum(updated_rule.data_mask)
+            mask_str = f"{mask_count} bytes" if mask_count > 0 else "-"
+            self.modify_table.setItem(row, 3, QTableWidgetItem(mask_str))
+    
+    def remove_modify_rule(self):
+        """Remove selected modify rule"""
+        selected_rows = self.modify_table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, t('warning'), t('gateway_select_rule'))
+            return
+        
+        row = selected_rows[0].row()
+        self.config.modify_rules.pop(row)
+        self.modify_table.removeRow(row)
+    
+    def save_gateway_config(self):
+        """Save gateway configuration to file"""
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            t('gateway_save_config'),
+            "",
+            "Gateway Config (*.gwcfg);;JSON Files (*.json);;All Files (*)"
+        )
+        
+        if filename:
+            try:
+                # Get current config from UI
+                current_config = self.get_config()
+                
+                # Create save data with file type
+                data = {
+                    'version': '1.0',
+                    'file_type': 'gateway',
+                    'gateway_config': current_config.to_dict()
+                }
+                
+                with open(filename, 'w') as f:
+                    json.dump(data, f, indent=2)
+                
+                import os
+                filename_short = os.path.basename(filename)
+                QMessageBox.information(
+                    self,
+                    t('success'),
+                    t('gateway_config_saved').format(filename=filename_short)
+                )
+                
+            except Exception as e:
+                QMessageBox.critical(self, t('error'), f"Error saving: {str(e)}")
+    
+    def load_gateway_config(self):
+        """Load gateway configuration from file"""
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            t('gateway_load_config'),
+            "",
+            "Gateway Config (*.gwcfg);;JSON Files (*.json);;All Files (*)"
+        )
+        
+        if filename:
+            try:
+                with open(filename, 'r') as f:
+                    data = json.load(f)
+                
+                # Validate file type
+                file_type = data.get('file_type', None)
+                if file_type and file_type != 'gateway':
+                    import os
+                    filename_short = os.path.basename(filename)
+                    
+                    type_names = {
+                        'tracer': t('file_type_tracer'),
+                        'monitor': t('file_type_monitor'),
+                        'transmit': t('file_type_transmit'),
+                        'gateway': t('file_type_gateway')
+                    }
+                    
+                    QMessageBox.warning(
+                        self,
+                        t('warning'),
+                        t('msg_wrong_file_type').format(
+                            filename=filename_short,
+                            expected=type_names['gateway'],
+                            found=type_names.get(file_type, file_type)
+                        )
+                    )
+                    return
+                
+                # Load configuration
+                gateway_data = data.get('gateway_config', {})
+                self.config = GatewayConfig.from_dict(gateway_data)
+                
+                # Reload UI
+                self.enable_gateway_check.setChecked(self.config.enabled)
+                self.transmit_1_to_2_check.setChecked(self.config.transmit_1_to_2)
+                self.transmit_2_to_1_check.setChecked(self.config.transmit_2_to_1)
+                
+                # Clear and reload tables
+                self.block_table.setRowCount(0)
+                self.dynamic_table.setRowCount(0)
+                self.modify_table.setRowCount(0)
+                self.load_rules()
+                
+                import os
+                filename_short = os.path.basename(filename)
+                QMessageBox.information(
+                    self,
+                    t('success'),
+                    t('gateway_config_loaded').format(filename=filename_short)
+                )
+                
+            except Exception as e:
+                QMessageBox.critical(self, t('error'), f"Error loading: {str(e)}")
+    
     def get_config(self):
         """Get the configured gateway settings"""
         # Update config from UI
@@ -1516,5 +2094,10 @@ class GatewayDialog(QDialog):
             checkbox = self.dynamic_table.cellWidget(row, 4)
             if checkbox and row < len(self.config.dynamic_blocks):
                 self.config.dynamic_blocks[row].enabled = checkbox.isChecked()
+        
+        for row in range(self.modify_table.rowCount()):
+            checkbox = self.modify_table.cellWidget(row, 4)
+            if checkbox and row < len(self.config.modify_rules):
+                self.config.modify_rules[row].enabled = checkbox.isChecked()
         
         return self.config

@@ -1454,6 +1454,234 @@ class I18n:
             'de': 'Kanal: {channel}',
             'fr': 'Canal: {channel}'
         },
+        
+        # Gateway - Message Modification
+        'gateway_modification': {
+            'en': 'Message Modification',
+            'pt': 'Modificação de Mensagens',
+            'es': 'Modificación de Mensajes',
+            'de': 'Nachrichtenänderung',
+            'fr': 'Modification de Messages'
+        },
+        'gateway_add_modify': {
+            'en': 'Add Modify Rule',
+            'pt': 'Adicionar Regra',
+            'es': 'Agregar Regla',
+            'de': 'Regel hinzufügen',
+            'fr': 'Ajouter Règle'
+        },
+        'gateway_remove': {
+            'en': 'Remove',
+            'pt': 'Remover',
+            'es': 'Eliminar',
+            'de': 'Entfernen',
+            'fr': 'Supprimer'
+        },
+        'gateway_new_id': {
+            'en': 'New ID',
+            'pt': 'Novo ID',
+            'es': 'Nuevo ID',
+            'de': 'Neue ID',
+            'fr': 'Nouvel ID'
+        },
+        'gateway_data_mask': {
+            'en': 'Data Mask',
+            'pt': 'Máscara de Dados',
+            'es': 'Máscara de Datos',
+            'de': 'Datenmaske',
+            'fr': 'Masque de Données'
+        },
+        'gateway_modify_rule_title': {
+            'en': 'Configure Message Modification',
+            'pt': 'Configurar Modificação de Mensagem',
+            'es': 'Configurar Modificación de Mensaje',
+            'de': 'Nachrichtenänderung konfigurieren',
+            'fr': 'Configurer Modification de Message'
+        },
+        'gateway_message_info': {
+            'en': 'Message Information',
+            'pt': 'Informações da Mensagem',
+            'es': 'Información del Mensaje',
+            'de': 'Nachrichteninformation',
+            'fr': 'Information du Message'
+        },
+        'gateway_id_modification': {
+            'en': 'ID Modification',
+            'pt': 'Modificação de ID',
+            'es': 'Modificación de ID',
+            'de': 'ID-Änderung',
+            'fr': 'Modification d\'ID'
+        },
+        'gateway_change_id': {
+            'en': 'Change ID',
+            'pt': 'Alterar ID',
+            'es': 'Cambiar ID',
+            'de': 'ID ändern',
+            'fr': 'Changer ID'
+        },
+        'gateway_data_modification': {
+            'en': 'Data Modification (Bit-Level)',
+            'pt': 'Modificação de Dados (Nível de Bit)',
+            'es': 'Modificación de Datos (Nivel de Bit)',
+            'de': 'Datenänderung (Bit-Ebene)',
+            'fr': 'Modification de Données (Niveau Bit)'
+        },
+        'gateway_data_modification_info': {
+            'en': 'Select bytes to modify and set their values. You can edit hex values or toggle individual bits.',
+            'pt': 'Selecione os bytes a modificar e defina seus valores. Você pode editar valores hex ou alternar bits individuais.',
+            'es': 'Seleccione los bytes a modificar y establezca sus valores. Puede editar valores hex o alternar bits individuales.',
+            'de': 'Wählen Sie die zu ändernden Bytes aus und legen Sie ihre Werte fest. Sie können Hex-Werte bearbeiten oder einzelne Bits umschalten.',
+            'fr': 'Sélectionnez les octets à modifier et définissez leurs valeurs. Vous pouvez éditer les valeurs hex ou basculer les bits individuels.'
+        },
+        'gateway_modify_this_byte': {
+            'en': 'Modify this byte',
+            'pt': 'Modificar este byte',
+            'es': 'Modificar este byte',
+            'de': 'Dieses Byte ändern',
+            'fr': 'Modifier cet octet'
+        },
+        'gateway_bits': {
+            'en': 'Bits',
+            'pt': 'Bits',
+            'es': 'Bits',
+            'de': 'Bits',
+            'fr': 'Bits'
+        },
+        'gateway_preview': {
+            'en': 'Preview',
+            'pt': 'Visualização',
+            'es': 'Vista Previa',
+            'de': 'Vorschau',
+            'fr': 'Aperçu'
+        },
+        'gateway_original': {
+            'en': 'Original',
+            'pt': 'Original',
+            'es': 'Original',
+            'de': 'Original',
+            'fr': 'Original'
+        },
+        'gateway_modified': {
+            'en': 'Modified',
+            'pt': 'Modificado',
+            'es': 'Modificado',
+            'de': 'Geändert',
+            'fr': 'Modifié'
+        },
+        'gateway_bytes_modified': {
+            'en': 'Bytes to be modified',
+            'pt': 'Bytes a serem modificados',
+            'es': 'Bytes a modificar',
+            'de': 'Zu ändernde Bytes',
+            'fr': 'Octets à modifier'
+        },
+        
+        # File Type Validation
+        'file_type_tracer': {
+            'en': 'Tracer Log',
+            'pt': 'Log de Tracer',
+            'es': 'Registro de Tracer',
+            'de': 'Tracer-Protokoll',
+            'fr': 'Journal Tracer'
+        },
+        'file_type_monitor': {
+            'en': 'Monitor Log',
+            'pt': 'Log de Monitor',
+            'es': 'Registro de Monitor',
+            'de': 'Monitor-Protokoll',
+            'fr': 'Journal Monitor'
+        },
+        'file_type_transmit': {
+            'en': 'Transmit List',
+            'pt': 'Lista de Transmissão',
+            'es': 'Lista de Transmisión',
+            'de': 'Sendeliste',
+            'fr': 'Liste de Transmission'
+        },
+        'file_type_gateway': {
+            'en': 'Gateway Configuration',
+            'pt': 'Configuração de Gateway',
+            'es': 'Configuración de Gateway',
+            'de': 'Gateway-Konfiguration',
+            'fr': 'Configuration Gateway'
+        },
+        'msg_wrong_file_type': {
+            'en': 'Wrong file type!\n\nFile: {filename}\nExpected: {expected}\nFound: {found}\n\nPlease load the correct file type.',
+            'pt': 'Tipo de arquivo incorreto!\n\nArquivo: {filename}\nEsperado: {expected}\nEncontrado: {found}\n\nPor favor, carregue o tipo correto de arquivo.',
+            'es': 'Tipo de archivo incorrecto!\n\nArchivo: {filename}\nEsperado: {expected}\nEncontrado: {found}\n\nPor favor, cargue el tipo correcto de archivo.',
+            'de': 'Falscher Dateityp!\n\nDatei: {filename}\nErwartet: {expected}\nGefunden: {found}\n\nBitte laden Sie den richtigen Dateityp.',
+            'fr': 'Type de fichier incorrect!\n\nFichier: {filename}\nAttendu: {expected}\nTrouvé: {found}\n\nVeuillez charger le bon type de fichier.'
+        },
+        'gateway_save_config': {
+            'en': 'Save Gateway Configuration',
+            'pt': 'Salvar Configuração do Gateway',
+            'es': 'Guardar Configuración del Gateway',
+            'de': 'Gateway-Konfiguration speichern',
+            'fr': 'Enregistrer Configuration Gateway'
+        },
+        'gateway_load_config': {
+            'en': 'Load Gateway Configuration',
+            'pt': 'Carregar Configuração do Gateway',
+            'es': 'Cargar Configuración del Gateway',
+            'de': 'Gateway-Konfiguration laden',
+            'fr': 'Charger Configuration Gateway'
+        },
+        'gateway_config_saved': {
+            'en': 'Gateway configuration saved: {filename}',
+            'pt': 'Configuração do Gateway salva: {filename}',
+            'es': 'Configuración del Gateway guardada: {filename}',
+            'de': 'Gateway-Konfiguration gespeichert: {filename}',
+            'fr': 'Configuration Gateway enregistrée: {filename}'
+        },
+        'gateway_config_loaded': {
+            'en': 'Gateway configuration loaded: {filename}',
+            'pt': 'Configuração do Gateway carregada: {filename}',
+            'es': 'Configuración del Gateway cargada: {filename}',
+            'de': 'Gateway-Konfiguration geladen: {filename}',
+            'fr': 'Configuration Gateway chargée: {filename}'
+        },
+        'success': {
+            'en': 'Success',
+            'pt': 'Sucesso',
+            'es': 'Éxito',
+            'de': 'Erfolg',
+            'fr': 'Succès'
+        },
+        'gateway_channel_info': {
+            'en': 'ℹ️ Source channel is automatically determined by transmission direction. Rules apply to messages being forwarded.',
+            'pt': 'ℹ️ O canal de origem é determinado automaticamente pela direção de transmissão. Regras se aplicam às mensagens sendo encaminhadas.',
+            'es': 'ℹ️ El canal de origen se determina automáticamente por la dirección de transmisión. Las reglas se aplican a los mensajes que se reenvían.',
+            'de': 'ℹ️ Der Quellkanal wird automatisch durch die Übertragungsrichtung bestimmt. Regeln gelten für weitergeleitete Nachrichten.',
+            'fr': 'ℹ️ Le canal source est automatiquement déterminé par la direction de transmission. Les règles s\'appliquent aux messages transmis.'
+        },
+        'gateway_source_channel': {
+            'en': 'Source',
+            'pt': 'Origem',
+            'es': 'Origen',
+            'de': 'Quelle',
+            'fr': 'Source'
+        },
+        'gateway_block_id': {
+            'en': 'Block ID',
+            'pt': 'Bloquear ID',
+            'es': 'Bloquear ID',
+            'de': 'ID sperren',
+            'fr': 'Bloquer ID'
+        },
+        'gateway_modify_id': {
+            'en': 'Modify ID',
+            'pt': 'Modificar ID',
+            'es': 'Modificar ID',
+            'de': 'ID ändern',
+            'fr': 'Modifier ID'
+        },
+        'gateway_configure_transmission_first': {
+            'en': 'Please configure transmission direction first (CAN1→CAN2 or CAN2→CAN1).',
+            'pt': 'Por favor, configure a direção de transmissão primeiro (CAN1→CAN2 ou CAN2→CAN1).',
+            'es': 'Por favor, configure la dirección de transmisión primero (CAN1→CAN2 o CAN2→CAN1).',
+            'de': 'Bitte konfigurieren Sie zuerst die Übertragungsrichtung (CAN1→CAN2 oder CAN2→CAN1).',
+            'fr': 'Veuillez d\'abord configurer la direction de transmission (CAN1→CAN2 ou CAN2→CAN1).'
+        },
     }
     
     def __init__(self, language: str = 'en'):
