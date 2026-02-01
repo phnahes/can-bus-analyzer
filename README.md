@@ -1,5 +1,8 @@
 # CAN Analyzer
 
+[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A CANbus analyzer with CANHacker-like functionality. Built with Python and PyQt6. **Runs on macOS and Linux.**
 
 ---
@@ -18,6 +21,7 @@ A CANbus analyzer with CANHacker-like functionality. Built with Python and PyQt6
 - [Documentation](#documentation)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
+- [Changelog](#changelog)
 - [License](#license)
 - [Project Status](#project-status)
 - [Technical Notes](#technical-notes)
@@ -82,8 +86,9 @@ python can_analyzer_qt.py
 ### Core Features
 
 #### **Interface & Visualization**
-- **Monitor Mode**: Groups messages by ID with counter
+- **Monitor Mode**: Groups messages by (ID, Channel) with counter
 - **Tracer Mode**: Chronological list of all messages
+- **Multi-CAN Support**: Work with multiple CAN buses simultaneously
 
 #### **Message Reception**
 - Reception panel with: ID, DLC, Data, Period, Count, ASCII, Comment
@@ -208,6 +213,57 @@ Automatically send a CAN message when a specific message is received. You define
 
 Replay previously recorded traffic back onto the bus. In **Tracer** mode, use **Record** to capture messages; then **Play All** or **Play Selected** sends them with the same timing. Requires an active connection. Use it to reproduce scenarios, test other nodes, or repeat a sequence without manual retyping.
 
+### **Multi-CAN Support**
+
+Work with multiple CAN buses simultaneously. Configure up to multiple CAN interfaces (e.g., two USB adapters, or one adapter with multiple channels) and monitor/transmit on all of them at once.
+
+#### **Configuration**
+
+1. Open **Settings** (Ctrl+,)
+2. Navigate to **Multi-CAN Configuration** section
+3. For each CAN bus:
+   - **Name**: Identifier for the bus (e.g., "CAN1", "CAN2", "Engine", "Body")
+   - **Device**: Physical device path (e.g., `/dev/ttyUSB0`, `can0`, `/dev/cu.usbserial-1`)
+   - **Baudrate**: CAN bus speed (125k, 250k, 500k, 1000k, or custom)
+   - **Listen Only**: Enable for passive monitoring (no ACK, no transmission)
+   - **COM Baudrate**: Serial port speed for SLCAN adapters (115200, 230400, etc.)
+   - **RTS HS**: Hardware handshake for serial adapters
+4. Click **Add CAN** to add more buses
+5. Use **Scan Devices** to auto-detect available devices
+6. Click **OK** to save
+
+#### **Interface Auto-Detection**
+
+The application automatically detects the interface type based on the device name:
+- **SocketCAN**: `can0`, `can1`, `vcan0` → uses `socketcan` interface
+- **SLCAN**: `/dev/ttyUSB*`, `/dev/cu.usbserial*` → uses `slcan` interface
+
+#### **Usage**
+
+**Monitor/Tracer:**
+- Messages from all connected buses appear in the reception table
+- **Channel** column shows which bus received each message (CAN1, CAN2, etc.)
+- Messages are grouped by **(ID, Channel)** in Monitor mode
+- Each (ID, Channel) combination has independent counters and period tracking
+
+**Transmit:**
+- Select target **Channel** from dropdown in TX panel
+- Send messages to specific bus or broadcast to all
+- TX list saves the channel for each message
+
+**Status Bar:**
+- Shows detailed status for each channel:
+  - **Real mode**: `CAN1: ✓ 500k | CAN2: ✓ 250k` (✓ = connected, ✗ = failed)
+  - **Simulation mode**: `CAN1: SIM 500k | CAN2: SIM 250k`
+- Device info shows mapping: `CAN1→/dev/ttyUSB0 | CAN2→can0`
+
+#### **Use Cases**
+
+- **Multi-network vehicles**: Monitor engine CAN and body CAN simultaneously
+- **Gateway testing**: Send on one bus, verify on another
+- **Dual-adapter setups**: Use two USB-CAN adapters for isolated testing
+- **Channel comparison**: Compare same ID on different buses
+
 ---
 
 ## Configuration
@@ -222,14 +278,37 @@ Settings are **automatically saved** to `config.json` in the application directo
 ```json
 {
   "language": "en",
-  "baudrate": 500000,
-  "interface": "socketcan",
-  "channel": "can0",
-  "listen_only": true,
+  "theme": "system",
   "timestamp": true,
-  "com_baudrate": "115200 bit/s",
-  "rts_hs": false,
-  "baudrate_reg": "FFFFFF"
+  "simulation_mode": false,
+  "can_buses": [
+    {
+      "name": "CAN1",
+      "channel": "/dev/ttyUSB0",
+      "baudrate": 500000,
+      "interface": "slcan",
+      "listen_only": false,
+      "com_baudrate": "115200 bit/s",
+      "rts_hs": false
+    },
+    {
+      "name": "CAN2",
+      "channel": "can0",
+      "baudrate": 250000,
+      "interface": "socketcan",
+      "listen_only": true
+    }
+  ]
+}
+```
+
+**Legacy single-CAN format** is still supported for backward compatibility:
+```json
+{
+  "language": "en",
+  "baudrate": 500000,
+  "channel": "can0",
+  "listen_only": true
 }
 ```
 
@@ -331,6 +410,19 @@ Contributions are welcome! Here's how you can help:
 1. Open an issue
 2. Describe the feature
 3. Explain use case
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
+
+**Latest Release: v0.2.0** - Multi-CAN Support
+- Multiple CAN bus support with independent configuration
+- Channel-specific filters
+- Enhanced status bar with per-channel details
+- Improved terminology aligned with industry standards
+- Save/Load with channel information
 
 ---
 
