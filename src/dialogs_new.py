@@ -38,94 +38,24 @@ class SettingsDialog(QDialog):
         theme_pref = self.config.get('theme', 'system')
         colors = get_adaptive_colors(theme_pref)
         
-        # CAN Connection Settings
-        can_group = QGroupBox("CAN Connection")
-        can_layout = QVBoxLayout()
+        # General Settings
+        general_group = QGroupBox("General Settings")
+        general_layout = QVBoxLayout()
         
-        # CAN Device
-        device_layout = QHBoxLayout()
-        device_layout.addWidget(QLabel("CAN Device:"))
-        self.device_combo = QComboBox()
-        # Default device suggestions (platform-specific)
-        import sys
-        if sys.platform == "win32":
-            default_devices = ["COM1", "COM3", "COM4", "can0", "vcan0"]
-        elif sys.platform == "linux":
-            default_devices = ["/dev/ttyUSB0", "/dev/ttyACM0", "can0", "vcan0"]
-        else:
-            default_devices = ["/dev/cu.usbserial", "/dev/cu.usbmodem", "can0", "vcan0"]
-        self.device_combo.addItems(default_devices)
-        self.device_combo.setEditable(True)
-        default_channel = self.config.get('channel') or ("COM1" if sys.platform == "win32" else "can0")
-        self.device_combo.setCurrentText(default_channel)
-        device_layout.addWidget(self.device_combo, 1)
-        
-        # Botão Scan Devices
-        self.scan_btn = QPushButton(t('btn_scan_devices'))
-        self.scan_btn.clicked.connect(self.scan_devices)
-        device_layout.addWidget(self.scan_btn)
-        
-        can_layout.addLayout(device_layout)
-        
-        # COM Baudrate
-        com_baud_layout = QHBoxLayout()
-        com_baud_layout.addWidget(QLabel("COM Baudrate:"))
-        self.com_baudrate_combo = QComboBox()
-        self.com_baudrate_combo.addItems([
-            "9600 bit/s", "19200 bit/s", "38400 bit/s", 
-            "57600 bit/s", "115200 bit/s"
-        ])
-        self.com_baudrate_combo.setCurrentText("115200 bit/s")
-        com_baud_layout.addWidget(self.com_baudrate_combo)
-        can_layout.addLayout(com_baud_layout)
-        
-        # CAN Baudrate
-        can_baud_layout = QHBoxLayout()
-        can_baud_layout.addWidget(QLabel("CAN Baudrate:"))
-        self.can_baudrate_combo = QComboBox()
-        self.can_baudrate_combo.addItems([
-            "125 Kbit/s", "250 Kbit/s", "500 Kbit/s", "1000 Kbit/s"
-        ])
-        baudrate = self.config.get('baudrate', 500000)
-        self.can_baudrate_combo.setCurrentText(f"{baudrate//1000} Kbit/s")
-        can_baud_layout.addWidget(self.can_baudrate_combo)
-        can_layout.addLayout(can_baud_layout)
-        
-        # Checkboxes
-        self.rts_hs_check = QCheckBox("RTS HS")
-        can_layout.addWidget(self.rts_hs_check)
-        
-        self.listen_only_check = QCheckBox("Listen Only")
-        self.listen_only_check.setChecked(self.config.get('listen_only', True))
-        can_layout.addWidget(self.listen_only_check)
-        
-        self.timestamp_check = QCheckBox("Time Stamp")
-        self.timestamp_check.setChecked(True)
-        can_layout.addWidget(self.timestamp_check)
+        # Timestamp checkbox
+        self.timestamp_check = QCheckBox("Enable Timestamps")
+        self.timestamp_check.setChecked(self.config.get('timestamp', True))
+        self.timestamp_check.setToolTip("Add timestamp to received messages")
+        general_layout.addWidget(self.timestamp_check)
         
         # Simulation Mode checkbox
         self.simulation_mode_check = QCheckBox(t('label_simulation_mode'))
         self.simulation_mode_check.setChecked(self.config.get('simulation_mode', False))
         self.simulation_mode_check.setToolTip(t('tooltip_simulation_mode'))
-        can_layout.addWidget(self.simulation_mode_check)
+        general_layout.addWidget(self.simulation_mode_check)
         
-        # Baudrate Register
-        baud_reg_layout = QHBoxLayout()
-        baud_reg_layout.addWidget(QLabel("Baudrate Reg:"))
-        self.baudrate_reg_input = QLineEdit("FFFFFF")
-        self.baudrate_reg_input.setMaximumWidth(100)
-        baud_reg_layout.addWidget(self.baudrate_reg_input)
-        baud_reg_layout.addStretch()
-        can_layout.addLayout(baud_reg_layout)
-        
-        # Info text
-        info_label = QLabel("<BRGCON1>;<BRGCON2>;<BRGCON3> (canhack)\n<BTR0>;<BTR1> (Lawicel, Peak)")
-        info_label.setStyleSheet(colors['info_text'])
-        can_layout.addWidget(info_label)
-        
-        # Close CAN group
-        can_group.setLayout(can_layout)
-        layout.addWidget(can_group)
+        general_group.setLayout(general_layout)
+        layout.addWidget(general_group)
         
         # Language Selection
         language_group = QGroupBox(t('menu_language'))
@@ -230,28 +160,6 @@ class SettingsDialog(QDialog):
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
     
-    def scan_devices(self):
-        """Abre diálogo de seleção de dispositivos USB"""
-        if not self.usb_monitor:
-            QMessageBox.warning(self, t('warning'), t('msg_usb_monitor_not_available'))
-            return
-        
-        dialog = USBDeviceSelectionDialog(self, self.usb_monitor)
-        
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            device = dialog.selected_device
-            if device:
-                # Atualizar combo box com o dispositivo selecionado
-                self.device_combo.setCurrentText(device.path)
-                
-                # Informar ao usuário
-                QMessageBox.information(
-                    self,
-                    t('dialog_usb_device_title'),
-                    f"{t('msg_device_connected').format(device=device.name)}\n\n"
-                    f"Path: {device.path}\n"
-                    f"Description: {device.description}"
-                )
     
     def _add_can_bus_widget(self, bus_config):
         """Add a CAN bus configuration widget"""
@@ -274,9 +182,9 @@ class SettingsDialog(QDialog):
         row1.addWidget(btn_remove)
         bus_layout.addLayout(row1)
         
-        # Row 2: Channel and Scan button
+        # Row 2: Device and Scan button
         row2 = QHBoxLayout()
-        row2.addWidget(QLabel(t('multican_channel') + ":"))
+        row2.addWidget(QLabel(t('multican_device') + ":"))
         channel_input = QComboBox()
         channel_input.setEditable(True)
         
@@ -317,6 +225,35 @@ class SettingsDialog(QDialog):
         row3.addWidget(listen_only_check)
         bus_layout.addLayout(row3)
         
+        # Row 4: Serial-specific settings (COM Baudrate, RTS HS)
+        row4 = QHBoxLayout()
+        row4.addWidget(QLabel("COM Baudrate:"))
+        com_baudrate_combo = QComboBox()
+        com_baudrate_combo.addItems([
+            "9600 bit/s", "19200 bit/s", "38400 bit/s", 
+            "57600 bit/s", "115200 bit/s"
+        ])
+        com_baudrate = bus_config.get('com_baudrate', '115200 bit/s')
+        com_baudrate_combo.setCurrentText(com_baudrate)
+        com_baudrate_combo.setMaximumWidth(150)
+        com_baudrate_combo.setToolTip("Serial port baudrate (for SLCAN/USB devices)")
+        row4.addWidget(com_baudrate_combo)
+        
+        row4.addStretch()
+        
+        # RTS HS checkbox
+        rts_hs_check = QCheckBox("RTS HS")
+        rts_hs_check.setChecked(bus_config.get('rts_hs', False))
+        rts_hs_check.setToolTip("Request To Send Hardware Handshake (for serial devices)")
+        row4.addWidget(rts_hs_check)
+        bus_layout.addLayout(row4)
+        
+        # Info label for serial settings
+        serial_info = QLabel("ℹ️ COM Baudrate and RTS HS only apply to serial/USB devices")
+        serial_info.setStyleSheet("color: gray; font-size: 10px;")
+        serial_info.setWordWrap(True)
+        bus_layout.addWidget(serial_info)
+        
         bus_widget.setLayout(bus_layout)
         
         # Store references to inputs
@@ -324,6 +261,8 @@ class SettingsDialog(QDialog):
         bus_widget.channel_input = channel_input
         bus_widget.baudrate_combo = baudrate_combo
         bus_widget.listen_only_check = listen_only_check
+        bus_widget.com_baudrate_combo = com_baudrate_combo
+        bus_widget.rts_hs_check = rts_hs_check
         
         # Add to layout and list
         self.can_buses_layout.insertWidget(len(self.can_bus_widgets), bus_widget)
@@ -365,7 +304,6 @@ class SettingsDialog(QDialog):
     
     def get_config(self):
         """Retorna configuração atualizada"""
-        baudrate_str = self.can_baudrate_combo.currentText().split()[0]
         selected_language = self.language_combo.currentData()
         selected_theme = self.theme_combo.currentData()
         
@@ -377,6 +315,8 @@ class SettingsDialog(QDialog):
             baudrate_text = widget.baudrate_combo.currentText()
             baudrate = int(baudrate_text.split()[0]) * 1000
             listen_only = widget.listen_only_check.isChecked()
+            com_baudrate = widget.com_baudrate_combo.currentText()
+            rts_hs = widget.rts_hs_check.isChecked()
             
             # Auto-detect interface based on channel
             channel_upper = channel.upper()
@@ -394,17 +334,26 @@ class SettingsDialog(QDialog):
                 'channel': channel,
                 'baudrate': baudrate,
                 'interface': interface,
-                'listen_only': listen_only
+                'listen_only': listen_only,
+                'com_baudrate': com_baudrate,
+                'rts_hs': rts_hs
             })
         
+        # Legacy compatibility: use first bus as default
+        first_bus = can_buses[0] if can_buses else {
+            'channel': 'can0',
+            'baudrate': 500000,
+            'listen_only': True
+        }
+        
         return {
-            'channel': self.device_combo.currentText(),
-            'baudrate': int(baudrate_str) * 1000,
-            'com_baudrate': self.com_baudrate_combo.currentText(),
-            'listen_only': self.listen_only_check.isChecked(),
+            # Legacy fields (for backward compatibility)
+            'channel': first_bus['channel'],
+            'baudrate': first_bus['baudrate'],
+            'listen_only': first_bus.get('listen_only', True),
+            
+            # New fields
             'timestamp': self.timestamp_check.isChecked(),
-            'rts_hs': self.rts_hs_check.isChecked(),
-            'baudrate_reg': self.baudrate_reg_input.text(),
             'language': selected_language,
             'theme': selected_theme,
             'simulation_mode': self.simulation_mode_check.isChecked(),

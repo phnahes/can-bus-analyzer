@@ -424,6 +424,15 @@ class I18n:
             'de': 'Aktualisieren',
             'fr': 'Actualiser'
         },
+        
+        # Table columns
+        'col_channel': {
+            'en': 'Channel',
+            'pt': 'Canal',
+            'es': 'Canal',
+            'de': 'Kanal',
+            'fr': 'Canal'
+        },
         'btn_select': {
             'en': 'Select',
             'pt': 'Selecionar',
@@ -1175,12 +1184,12 @@ class I18n:
             'de': 'Name',
             'fr': 'Nom'
         },
-        'multican_channel': {
-            'en': 'Channel',
-            'pt': 'Canal',
-            'es': 'Canal',
-            'de': 'Kanal',
-            'fr': 'Canal'
+        'multican_device': {
+            'en': 'Device',
+            'pt': 'Dispositivo',
+            'es': 'Dispositivo',
+            'de': 'Gerät',
+            'fr': 'Appareil'
         },
         'multican_baudrate': {
             'en': 'Baudrate',
