@@ -3502,25 +3502,55 @@ class CANAnalyzerWindow(QMainWindow):
         # Aplicar filtro de ID
         for row in range(self.receive_table.rowCount()):
             try:
-                # Obter PID da linha
-                if self.tracer_mode:
-                    id_item = self.receive_table.item(row, 2)  # Coluna PID no Tracer (coluna 2)
-                else:
-                    id_item = self.receive_table.item(row, 2)  # Coluna PID no Monitor (coluna 2)
+                # Obter PID e Channel da linha
+                # Tracer: ID(0), Time(1), Channel(2), PID(3), DLC(4), Data(5), ASCII(6), Comment(7)
+                # Monitor: ID(0), Count(1), Channel(2), PID(3), DLC(4), Data(5), Period(6), ASCII(7), Comment(8)
+                id_item = self.receive_table.item(row, 3)  # Coluna PID (coluna 3)
+                channel_item = self.receive_table.item(row, 2)  # Coluna Channel (coluna 2)
                 
                 if not id_item:
                     continue
                 
                 id_str = id_item.text().replace("0x", "").replace("0X", "")
                 msg_id = int(id_str, 16)
+                channel = channel_item.text() if channel_item else "CAN1"
                 
-                # Aplicar lógica de filtro
-                if show_only:
-                    # Whitelist: mostrar apenas IDs na lista
-                    should_hide = msg_id not in id_filters if id_filters else False
+                # Aplicar lógica de filtro (verificar channel_filters primeiro)
+                channel_filters = self.message_filters.get('channel_filters', {})
+                should_hide = False
+                
+                if channel_filters and len(channel_filters) > 0:
+                    # Usar filtros por canal
+                    if channel in channel_filters:
+                        # Filtro específico para este canal
+                        channel_filter = channel_filters[channel]
+                        channel_ids = channel_filter.get('ids', [])
+                        channel_show_only = channel_filter.get('show_only', True)
+                        
+                        if channel_ids:
+                            if channel_show_only:
+                                should_hide = msg_id not in channel_ids
+                            else:
+                                should_hide = msg_id in channel_ids
+                    elif 'ALL' in channel_filters:
+                        # Filtro "ALL" (aplica a todos os canais)
+                        channel_filter = channel_filters['ALL']
+                        channel_ids = channel_filter.get('ids', [])
+                        channel_show_only = channel_filter.get('show_only', True)
+                        
+                        if channel_ids:
+                            if channel_show_only:
+                                should_hide = msg_id not in channel_ids
+                            else:
+                                should_hide = msg_id in channel_ids
                 else:
-                    # Blacklist: ocultar IDs na lista
-                    should_hide = msg_id in id_filters
+                    # Usar filtros globais (legacy)
+                    if show_only:
+                        # Whitelist: mostrar apenas IDs na lista
+                        should_hide = msg_id not in id_filters if id_filters else False
+                    else:
+                        # Blacklist: ocultar IDs na lista
+                        should_hide = msg_id in id_filters
                 
                 self.receive_table.setRowHidden(row, should_hide)
                 
