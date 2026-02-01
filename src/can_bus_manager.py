@@ -196,9 +196,10 @@ class CANBusInstance:
 class CANBusManager:
     """Manages multiple CAN bus instances"""
     
-    def __init__(self):
+    def __init__(self, message_callback: Optional[Callable[[CANMessage], None]] = None, logger=None):
         self.buses: Dict[str, CANBusInstance] = {}
-        self.message_callback: Optional[Callable[[str, CANMessage], None]] = None
+        self.message_callback = message_callback
+        self.logger = logger
         self._lock = threading.Lock()
     
     def add_bus(self, config: CANBusConfig) -> bool:
@@ -227,11 +228,16 @@ class CANBusManager:
             print(f"Bus '{name}' removed")
             return True
     
-    def connect_all(self) -> Dict[str, bool]:
+    def connect_all(self, simulation: bool = False) -> Dict[str, bool]:
         """Connect all buses. Returns dict of {bus_name: success}"""
         results = {}
         for name, bus in self.buses.items():
-            results[name] = bus.connect()
+            if simulation:
+                # Force simulation mode
+                bus.connect()  # Will use simulation if CAN not available
+                results[name] = True
+            else:
+                results[name] = bus.connect()
         return results
     
     def connect_bus(self, name: str) -> bool:
@@ -285,7 +291,8 @@ class CANBusManager:
     def _on_message_received(self, bus_name: str, msg: CANMessage):
         """Internal callback that forwards to user callback"""
         if self.message_callback:
-            self.message_callback(bus_name, msg)
+            # Message already has source field set, just forward it
+            self.message_callback(msg)
     
     def get_bus_info(self, name: str) -> Optional[Dict]:
         """Get information about a bus"""
