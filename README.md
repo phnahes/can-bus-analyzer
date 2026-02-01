@@ -1,7 +1,7 @@
 # CAN Analyzer
 
 [![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](CHANGELOG.md)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 A CANbus analyzer with CANHacker-like functionality. Built with Python and PyQt6. **Runs on macOS and Linux.**
 
@@ -121,11 +121,13 @@ can-bus-analyzer/
 ├── requirements.txt            # Runtime Python dependencies (included in packaged app)
 ├── requirements-dev.txt        # Build and dev dependencies (py2app, PyInstaller, Pillow)
 ├── run.sh                      # Quick start: creates venv, installs deps, runs the app
+├── LICENSE                     # GNU GPL v3.0 (see License section)
 ├── config.json                 # Saved settings (created at first run)
 ├── icon.icns / icon.ico        # App icons (macOS / Linux); generated from icon.png via extras
 ├── docs/                       # Additional documentation
 │   ├── BUILD.md                # Packaging and standalone build instructions
 │   ├── INTERNATIONALIZATION.md # Adding and editing translations
+│   ├── RELEASE_MANUAL.md       # How to create a release manually on GitHub
 │   ├── PROTOCOL.md             # CAN/protocol notes
 │   └── TOOLS.md                # Overview of tools and scripts
 ├── extras/                     # Build and icon helper scripts (run from project root)
@@ -342,6 +344,7 @@ Additional documentation and references:
 |----------|-------------|
 | [docs/BUILD.md](docs/BUILD.md) | Packaging and standalone build (py2app, PyInstaller, icons) |
 | [docs/INTERNATIONALIZATION.md](docs/INTERNATIONALIZATION.md) | Internationalization (i18n): adding and editing translations |
+| [docs/RELEASE_MANUAL.md](docs/RELEASE_MANUAL.md) | How to create a release manually on GitHub |
 | [docs/TOOLS.md](docs/TOOLS.md) | Overview of tools and scripts in the repository |
 | [tools/README.md](tools/README.md) | CAN testing tools: Python sender, Arduino examples, protocol reference |
 
@@ -446,7 +449,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 **Attribution:** Although not required by GPL-3.0, we recommend that you **reference and credit the original source** (this project and repository) when you use, redistribute, or build upon this software.
 
-**Full license text**: [GNU GPL v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html)
+**Full license text**: [LICENSE](LICENSE) (in this repo) · [GNU GPL v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html) (official)
 
 
 ---
