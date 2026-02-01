@@ -30,6 +30,7 @@ from .logger import get_logger
 from .i18n import get_i18n, t
 from .theme import detect_dark_mode, get_adaptive_colors, should_use_dark_mode
 from .utils import get_platform_display_name
+from .can_bus_manager import CANBusManager, CANBusConfig
 
 # CAN imports
 try:
@@ -62,7 +63,8 @@ class CANAnalyzerWindow(QMainWindow):
         self.paused = False
         self.tracer_mode = False  # Tracer Mode
         self.recorded_messages: List[CANMessage] = []  # Mensagens gravadas para reprodução (Tracer)
-        self.can_bus: Optional[can.BusABC] = None
+        self.can_bus: Optional[can.BusABC] = None  # Legacy single bus (kept for compatibility)
+        self.can_bus_manager: Optional[CANBusManager] = None  # Multi-CAN manager
         self.receive_thread: Optional[threading.Thread] = None
         self.message_queue = queue.Queue()
         self.received_messages: List[CANMessage] = []
@@ -79,11 +81,13 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Message filters
         self.message_filters = {
-            'enabled': False,
-            'id_filters': [],
+            'enabled': False,  # IMPORTANTE: Filtros desabilitados por padrão
+            'id_filters': [],  # Legacy: IDs sem canal específico
             'data_filters': [],
-            'show_only': True
+            'show_only': True,
+            'channel_filters': {}  # Novo: {channel_name: {'ids': [list], 'show_only': bool}}
         }
+        self.logger.info(f"Message filters initialized: enabled={self.message_filters['enabled']}")
         
         # Triggers for automatic transmission
         self.triggers = []
@@ -265,10 +269,10 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Tabela de mensagens para transmitir
         self.transmit_table = QTableWidget()
-        self.transmit_table.setColumnCount(17)
+        self.transmit_table.setColumnCount(18)
         self.transmit_table.setHorizontalHeaderLabels([
             'PID', 'DLC', 'RTR', 'Period', 'TX Mode', 'Trigger ID', 'Trigger Data',
-            'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'Count', 'Comment'
+            'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'Count', 'Comment', t('col_channel')
         ])
         
         # Double-click para carregar mensagem nos campos de edição
@@ -302,6 +306,7 @@ class CANAnalyzerWindow(QMainWindow):
             header_tx.resizeSection(i, 40)
         header_tx.resizeSection(15, 60)  # Count
         header_tx.resizeSection(16, 150) # Comment
+        header_tx.resizeSection(17, 70)  # Source
         
         transmit_layout.addWidget(self.transmit_table)
         
@@ -382,6 +387,17 @@ class CANAnalyzerWindow(QMainWindow):
         self.tx_comment_input = QLineEdit()
         self.tx_comment_input.setPlaceholderText("Optional description")
         row2.addWidget(self.tx_comment_input)
+        
+        # Separador visual
+        sep_source = QLabel("│")
+        sep_source.setStyleSheet(self.colors['separator'])
+        row2.addWidget(sep_source)
+        
+        row2.addWidget(QLabel(f"{t('col_channel')}:"))
+        self.tx_source_combo = QComboBox()
+        self.tx_source_combo.addItem("CAN1")  # Default, será atualizado dinamicamente
+        self.tx_source_combo.setMaximumWidth(100)
+        row2.addWidget(self.tx_source_combo)
         
         row2.addStretch()
         tx_controls_layout.addLayout(row2)
@@ -517,9 +533,9 @@ class CANAnalyzerWindow(QMainWindow):
     def setup_receive_table(self):
         """Configura a tabela de recepção baseado no modo"""
         if self.tracer_mode:
-            # Modo Tracer: ID, Time, PID, DLC, Data, ASCII, Comment
-            self.receive_table.setColumnCount(7)
-            self.receive_table.setHorizontalHeaderLabels(['ID', 'Time', 'PID', 'DLC', 'Data', 'ASCII', 'Comment'])
+            # Modo Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
+            self.receive_table.setColumnCount(8)
+            self.receive_table.setHorizontalHeaderLabels(['ID', 'Time', t('col_channel'), 'PID', 'DLC', 'Data', 'ASCII', 'Comment'])
             
             # Modo Tracer: permitir edição (apenas Comment)
             self.receive_table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked)
@@ -531,18 +547,19 @@ class CANAnalyzerWindow(QMainWindow):
             # Definir larguras iniciais apropriadas
             header.resizeSection(0, 60)   # ID (sequencial)
             header.resizeSection(1, 100)  # Time
-            header.resizeSection(2, 80)   # PID (CAN ID)
-            header.resizeSection(3, 60)   # DLC
-            header.resizeSection(4, 250)  # Data
-            header.resizeSection(5, 100)  # ASCII
-            header.resizeSection(6, 150)  # Comment
+            header.resizeSection(2, 70)   # Channel
+            header.resizeSection(3, 80)   # PID (CAN ID)
+            header.resizeSection(4, 60)   # DLC
+            header.resizeSection(5, 250)  # Data
+            header.resizeSection(6, 100)  # ASCII
+            header.resizeSection(7, 150)  # Comment
             
             # Permitir que a última coluna se expanda se houver espaço
             header.setStretchLastSection(True)
         else:
-            # Modo Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
-            self.receive_table.setColumnCount(8)
-            self.receive_table.setHorizontalHeaderLabels(['ID', 'Count', 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment'])
+            # Modo Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
+            self.receive_table.setColumnCount(9)
+            self.receive_table.setHorizontalHeaderLabels(['ID', 'Count', t('col_channel'), 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment'])
             
             # Modo Monitor: NÃO permitir edição (dados são atualizados automaticamente)
             self.receive_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -554,12 +571,13 @@ class CANAnalyzerWindow(QMainWindow):
             # Definir larguras iniciais apropriadas
             header.resizeSection(0, 40)   # ID (sequencial)
             header.resizeSection(1, 60)   # Count
-            header.resizeSection(2, 80)   # PID (CAN ID)
-            header.resizeSection(3, 50)   # DLC
-            header.resizeSection(4, 250)  # Data
-            header.resizeSection(5, 70)   # Period
-            header.resizeSection(6, 100)  # ASCII
-            header.resizeSection(7, 150)  # Comment
+            header.resizeSection(2, 70)   # Channel
+            header.resizeSection(3, 80)   # PID (CAN ID)
+            header.resizeSection(4, 50)   # DLC
+            header.resizeSection(5, 250)  # Data
+            header.resizeSection(6, 70)   # Period
+            header.resizeSection(7, 100)  # ASCII
+            header.resizeSection(8, 150)  # Comment
             
             # Permitir que a última coluna se expanda se houver espaço
             header.setStretchLastSection(True)
@@ -617,14 +635,20 @@ class CANAnalyzerWindow(QMainWindow):
                     dlc_item = QTableWidgetItem(str(msg.dlc))
                     dlc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
-                    # Inserir items
+                    # Inserir items - Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
                     self.receive_table.setItem(row_idx, 0, id_item)
                     self.receive_table.setItem(row_idx, 1, QTableWidgetItem(time_str))
-                    self.receive_table.setItem(row_idx, 2, QTableWidgetItem(pid_str))
-                    self.receive_table.setItem(row_idx, 3, dlc_item)
-                    self.receive_table.setItem(row_idx, 4, QTableWidgetItem(data_str))
-                    self.receive_table.setItem(row_idx, 5, QTableWidgetItem(ascii_str))
-                    self.receive_table.setItem(row_idx, 6, QTableWidgetItem(msg.comment))
+                    
+                    # Channel column
+                    channel_item = QTableWidgetItem(msg.source)
+                    channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.receive_table.setItem(row_idx, 2, channel_item)
+                    
+                    self.receive_table.setItem(row_idx, 3, QTableWidgetItem(pid_str))
+                    self.receive_table.setItem(row_idx, 4, dlc_item)
+                    self.receive_table.setItem(row_idx, 5, QTableWidgetItem(data_str))
+                    self.receive_table.setItem(row_idx, 6, QTableWidgetItem(ascii_str))
+                    self.receive_table.setItem(row_idx, 7, QTableWidgetItem(msg.comment))
         else:
             # Modo Monitor: reconstruir visualização agrupada
             # Limpar contadores para reconstruir do zero
@@ -636,29 +660,32 @@ class CANAnalyzerWindow(QMainWindow):
             total_messages = len(self.received_messages)
             
             if total_messages > 0:
-                # 1. Agrupar mensagens por ID (MUITO MAIS RÁPIDO que inserir uma por uma)
-                id_data = {}  # {can_id: {'last_msg': msg, 'count': N, 'period': X}}
+                # 1. Agrupar mensagens por (ID, Channel) - MUITO MAIS RÁPIDO que inserir uma por uma
+                id_data = {}  # {(can_id, source): {'last_msg': msg, 'count': N, 'period': X}}
                 
                 for msg in self.received_messages:
                     # Verificar filtro
                     if not self.message_passes_filter(msg):
                         continue
                     
+                    # Chave única: (ID, Channel)
+                    counter_key = (msg.can_id, msg.source)
+                    
                     # Incrementar contador
-                    self.message_counters[msg.can_id] += 1
-                    count = self.message_counters[msg.can_id]
+                    self.message_counters[counter_key] += 1
+                    count = self.message_counters[counter_key]
                     
                     # Calcular period
                     period_str = ""
-                    if msg.can_id in self.message_last_timestamp:
-                        period_ms = int((msg.timestamp - self.message_last_timestamp[msg.can_id]) * 1000)
+                    if counter_key in self.message_last_timestamp:
+                        period_ms = int((msg.timestamp - self.message_last_timestamp[counter_key]) * 1000)
                         period_str = f"{period_ms}"
                     
                     # Atualizar timestamp
-                    self.message_last_timestamp[msg.can_id] = msg.timestamp
+                    self.message_last_timestamp[counter_key] = msg.timestamp
                     
-                    # Armazenar dados (última mensagem de cada ID)
-                    id_data[msg.can_id] = {
+                    # Armazenar dados (última mensagem de cada ID+Channel)
+                    id_data[counter_key] = {
                         'msg': msg,
                         'count': count,
                         'period': period_str
@@ -668,9 +695,9 @@ class CANAnalyzerWindow(QMainWindow):
                 unique_ids = len(id_data)
                 self.receive_table.setRowCount(unique_ids)
                 
-                # 3. Popular tabela com dados agrupados (ORDENADO POR PID)
+                # 3. Popular tabela com dados agrupados (ORDENADO POR PID, depois por Channel)
                 row_idx = 0
-                for can_id, data in sorted(id_data.items(), key=lambda x: x[0]):
+                for (can_id, source), data in sorted(id_data.items(), key=lambda x: (x[0][0], x[0][1])):
                     msg = data['msg']
                     count = data['count']
                     period_str = data['period']
@@ -692,15 +719,21 @@ class CANAnalyzerWindow(QMainWindow):
                     period_item = QTableWidgetItem(period_str)
                     period_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
-                    # Inserir items - Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
+                    # Inserir items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
                     self.receive_table.setItem(row_idx, 0, id_item)                              # ID sequencial
                     self.receive_table.setItem(row_idx, 1, count_item)                           # Count
-                    self.receive_table.setItem(row_idx, 2, QTableWidgetItem(pid_str))            # PID
-                    self.receive_table.setItem(row_idx, 3, dlc_item)                             # DLC
-                    self.receive_table.setItem(row_idx, 4, QTableWidgetItem(data_str))           # Data
-                    self.receive_table.setItem(row_idx, 5, period_item)                          # Period
-                    self.receive_table.setItem(row_idx, 6, QTableWidgetItem(ascii_str))          # ASCII
-                    self.receive_table.setItem(row_idx, 7, QTableWidgetItem(msg.comment))        # Comment
+                    
+                    # Channel column
+                    channel_item = QTableWidgetItem(msg.source)
+                    channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.receive_table.setItem(row_idx, 2, channel_item)                         # Channel
+                    
+                    self.receive_table.setItem(row_idx, 3, QTableWidgetItem(pid_str))            # PID
+                    self.receive_table.setItem(row_idx, 4, dlc_item)                             # DLC
+                    self.receive_table.setItem(row_idx, 5, QTableWidgetItem(data_str))           # Data
+                    self.receive_table.setItem(row_idx, 6, period_item)                          # Period
+                    self.receive_table.setItem(row_idx, 7, QTableWidgetItem(ascii_str))          # ASCII
+                    self.receive_table.setItem(row_idx, 8, QTableWidgetItem(msg.comment))        # Comment
                     
                     row_idx += 1
                     
@@ -963,6 +996,29 @@ class CANAnalyzerWindow(QMainWindow):
         # about_action.triggered.connect(self.show_about)
         # help_menu.addAction(about_action)
     
+    def _on_can_message_received(self, msg: CANMessage):
+        """Callback chamado quando uma mensagem CAN é recebida de qualquer barramento"""
+        # Add message to queue for UI update
+        self.message_queue.put(msg)
+    
+    def _send_can_message(self, can_msg: 'can.Message', target_bus: str = None):
+        """Send CAN message to specified bus or all buses
+        
+        Args:
+            can_msg: python-can Message object
+            target_bus: Bus name to send to (None = send to all)
+        """
+        if self.can_bus_manager:
+            # Multi-CAN mode
+            if target_bus:
+                self.can_bus_manager.send_to(target_bus, can_msg)
+            else:
+                # Send to all connected buses
+                self.can_bus_manager.send_to_all(can_msg)
+        elif self.can_bus:
+            # Legacy single bus mode
+            self.can_bus.send(can_msg)
+    
     def toggle_connection(self):
         """Conecta ou desconecta do barramento CAN"""
         if not self.connected:
@@ -971,66 +1027,104 @@ class CANAnalyzerWindow(QMainWindow):
             self.disconnect()
     
     def connect(self):
-        """Conecta ao barramento CAN"""
+        """Conecta ao barramento CAN (com suporte multi-CAN)"""
         self.logger.info("Tentando conectar ao barramento CAN")
         
         try:
             simulation_mode = self.config.get('simulation_mode', False)
             
+            # Initialize CANBusManager
+            self.can_bus_manager = CANBusManager(
+                message_callback=self._on_can_message_received,
+                logger=self.logger
+            )
+            
+            # Load CAN buses from config
+            can_buses = self.config.get('can_buses', [])
+            if not can_buses:
+                # Fallback to legacy single-bus config
+                can_buses = [{
+                    'name': 'CAN1',
+                    'channel': self.config.get('channel', 'can0'),
+                    'baudrate': self.config.get('baudrate', 500000),
+                    'interface': 'socketcan',
+                    'listen_only': self.config.get('listen_only', True)
+                }]
+            
+            # Add all CAN buses to manager
+            for bus_cfg in can_buses:
+                config = CANBusConfig(
+                    name=bus_cfg['name'],
+                    channel=bus_cfg['channel'],
+                    baudrate=bus_cfg['baudrate'],
+                    listen_only=bus_cfg.get('listen_only', True),
+                    interface=bus_cfg.get('interface', 'socketcan')
+                )
+                self.can_bus_manager.add_bus(config)
+            
             # Tentar conexão real se não estiver em modo simulação
             if not simulation_mode and CAN_AVAILABLE:
-                channel = self.config.get('channel', 'can0')
-                baudrate = self.config.get('baudrate', 500000)
-                
-                self.logger.info(f"Tentando conexão real: Channel={channel}, Baudrate={baudrate}")
+                self.logger.info("Tentando conectar todos os barramentos CAN")
                 
                 try:
-                    # Detect interface type from channel (cross-platform)
-                    channel_upper = channel.upper()
-                    if (channel.startswith('/dev/tty.') or channel.startswith('/dev/cu.') or
-                            channel.startswith('/dev/ttyUSB') or channel.startswith('/dev/ttyACM') or
-                            (channel_upper.startswith('COM') and len(channel) >= 4 and channel[3:].strip().isdigit())):
-                        # Serial device (SLCAN) - macOS, Linux, Windows
-                        bustype = 'slcan'
-                        self.logger.info(f"Using SLCAN interface for {channel}")
-                    elif channel.startswith('can') or channel.startswith('vcan'):
-                        # SocketCAN (Linux)
-                        bustype = 'socketcan'
-                        self.logger.info(f"Using SocketCAN interface for {channel}")
+                    # Connect all CAN buses
+                    self.can_bus_manager.connect_all(simulation=False)
+                    
+                    # Check if at least one bus connected successfully
+                    connected_buses = [name for name in self.can_bus_manager.get_bus_names() 
+                                      if self.can_bus_manager.is_bus_connected(name)]
+                    
+                    if connected_buses:
+                        self.logger.info(f"Conexão real estabelecida: {', '.join(connected_buses)}")
+                        self.connected = True
+                        
+                        # Update TX source combo with CONNECTED buses only
+                        self.tx_source_combo.clear()
+                        for bus_name in connected_buses:
+                            self.tx_source_combo.addItem(bus_name)
+                        
+                        # Update status with detailed info for each bus
+                        if len(connected_buses) > 1:
+                            # Multi-CAN: Show detailed status for each channel
+                            status_parts = []
+                            device_parts = []
+                            
+                            for bus_name in connected_buses:
+                                # Find bus config
+                                bus_config = next((b for b in can_buses if b['name'] == bus_name), None)
+                                if bus_config:
+                                    is_connected = self.can_bus_manager.is_bus_connected(bus_name)
+                                    status_icon = "✓" if is_connected else "✗"
+                                    baudrate_kb = bus_config['baudrate'] // 1000
+                                    status_parts.append(f"{bus_name}: {status_icon} {baudrate_kb}k")
+                                    device_parts.append(f"{bus_name}→{bus_config['channel']}")
+                            
+                            self.connection_status.setText(" | ".join(status_parts))
+                            self.device_label.setText(" | ".join(device_parts))
+                            
+                            # Notification with summary
+                            first_bus = can_buses[0]
+                            self.show_notification(t('notif_connected', channel=', '.join(connected_buses), baudrate=first_bus['baudrate']//1000), 5000)
+                        else:
+                            # Single CAN: Show simple status
+                            first_bus = can_buses[0]
+                            baudrate = first_bus['baudrate']
+                            channel = first_bus['channel']
+                            self.connection_status.setText(f"Connected: {baudrate//1000} kbit/s")
+                            self.device_label.setText(f"Device: {channel}")
+                            self.show_notification(t('notif_connected', channel=connected_buses[0], baudrate=baudrate//1000), 5000)
                     else:
-                        bustype = None
-                        self.logger.info("Auto-detecting interface type")
-                    
-                    # Tentar criar bus CAN
-                    if bustype:
-                        self.can_bus = can.interface.Bus(
-                            channel=channel,
-                            bustype=bustype,
-                            bitrate=baudrate
-                        )
-                    else:
-                        self.can_bus = can.interface.Bus(
-                            channel=channel,
-                            bitrate=baudrate
-                        )
-                    
-                    self.logger.info("Conexão real estabelecida com sucesso!")
-                    
-                    # Configurar interface
-                    self.connected = True
-                    self.connection_status.setText(f"Connected: {baudrate//1000} kbit/s")
-                    self.device_label.setText(f"Device: {channel}")
-                    self.show_notification(t('notif_connected', channel=channel, baudrate=baudrate//1000), 5000)
+                        raise Exception("Nenhum barramento CAN conseguiu conectar")
                     
                 except Exception as e:
-                    self.logger.error(f"Erro ao conectar ao dispositivo real: {str(e)}")
+                    self.logger.error(f"Erro ao conectar aos dispositivos reais: {str(e)}")
                     self.logger.warning("Tentando modo simulação como fallback")
                     
                     # Perguntar ao usuário se quer usar simulação
                     reply = QMessageBox.question(
                         self,
                         "Connection Error",
-                        f"Não foi possível conectar ao dispositivo:\n{str(e)}\n\n"
+                        f"Não foi possível conectar aos dispositivos:\n{str(e)}\n\n"
                         f"Deseja conectar em modo simulação?",
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                     )
@@ -1044,7 +1138,9 @@ class CANAnalyzerWindow(QMainWindow):
             # Modo simulação
             if simulation_mode or not CAN_AVAILABLE:
                 self.logger.warning("Conectando em modo simulação")
-                self.logger.info(f"Configuração: Channel={self.config.get('channel')}, Baudrate={self.config.get('baudrate', 500000)//1000}Kbps")
+                
+                # Connect all buses in simulation mode
+                self.can_bus_manager.connect_all(simulation=True)
                 
                 if not simulation_mode:
                     QMessageBox.information(
@@ -1058,10 +1154,36 @@ class CANAnalyzerWindow(QMainWindow):
                     )
                 
                 self.connected = True
-                baudrate = self.config.get('baudrate', 500000)
-                self.connection_status.setText(f"Simulation: {baudrate//1000} kbit/s")
-                device_info = self.config.get('channel', 'can0')
-                self.device_label.setText(f"Device: {device_info} (Sim)")
+                bus_names = self.can_bus_manager.get_bus_names()
+                baudrate = can_buses[0]['baudrate'] if can_buses else 500000
+                
+                # Update TX source combo with all buses in simulation
+                self.tx_source_combo.clear()
+                for bus_name in bus_names:
+                    self.tx_source_combo.addItem(bus_name)
+                
+                # Update status with detailed info for simulation
+                if len(bus_names) > 1:
+                    # Multi-CAN simulation: Show detailed status for each channel
+                    status_parts = []
+                    device_parts = []
+                    
+                    for bus_name in bus_names:
+                        # Find bus config
+                        bus_config = next((b for b in can_buses if b['name'] == bus_name), None)
+                        if bus_config:
+                            baudrate_kb = bus_config['baudrate'] // 1000
+                            status_parts.append(f"{bus_name}: SIM {baudrate_kb}k")
+                            device_parts.append(f"{bus_name}→{bus_config['channel']} (Sim)")
+                    
+                    self.connection_status.setText(" | ".join(status_parts))
+                    self.device_label.setText(" | ".join(device_parts))
+                else:
+                    # Single CAN simulation
+                    self.connection_status.setText(f"Simulation: {baudrate//1000} kbit/s")
+                    device_info = can_buses[0]['channel'] if can_buses else 'can0'
+                    self.device_label.setText(f"Device: {device_info} (Sim)")
+                
                 self.show_notification(t('notif_simulation_mode', baudrate=baudrate//1000), 5000)
             
             # Configurações comuns
@@ -1075,10 +1197,14 @@ class CANAnalyzerWindow(QMainWindow):
             else:
                 self.mode_label.setText(t('status_normal'))
             
-            # Iniciar thread de recepção
-            self.receive_thread = threading.Thread(target=self.receive_loop, daemon=True)
-            self.receive_thread.start()
-            self.logger.info("Thread de recepção iniciada")
+            # Iniciar thread de recepção (apenas para modo legacy single-CAN)
+            # Multi-CAN usa threads próprias em cada CANBusInstance
+            if not self.can_bus_manager and self.can_bus:
+                self.receive_thread = threading.Thread(target=self.receive_loop, daemon=True)
+                self.receive_thread.start()
+                self.logger.info("Thread de recepção iniciada (legacy mode)")
+            elif self.can_bus_manager:
+                self.logger.info("Usando threads de recepção do CANBusManager")
             
             # Gerar dados de exemplo apenas em modo simulação
             if simulation_mode or not CAN_AVAILABLE:
@@ -1105,15 +1231,24 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_record.setChecked(False)
             self.toggle_recording()
         
+        # Disconnect all CAN buses
+        if self.can_bus_manager:
+            try:
+                self.can_bus_manager.disconnect_all()
+            except Exception as e:
+                self.logger.warning(f"Erro ao fechar interfaces CAN (ignorado): {e}")
+            finally:
+                self.can_bus_manager = None
+                self.logger.info("Todas as interfaces CAN encerradas")
+        
+        # Legacy single bus support
         if self.can_bus:
             try:
                 self.can_bus.shutdown()
             except Exception as e:
-                # Ignorar erros ao desconectar (dispositivo pode já estar desconectado)
                 self.logger.warning(f"Erro ao fechar interface CAN (ignorado): {e}")
             finally:
                 self.can_bus = None
-                self.logger.info("Interface CAN encerrada")
         
         self.connection_status.setText("Not Connected")
         self.device_label.setText("Device: N/A")
@@ -1340,14 +1475,20 @@ class CANAnalyzerWindow(QMainWindow):
         dlc_item = QTableWidgetItem(str(msg.dlc))
         dlc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # ID, Time, PID, DLC, Data, ASCII, Comment
+        # ID, Time, Channel, PID, DLC, Data, ASCII, Comment
         self.receive_table.setItem(row, 0, id_item)                          # ID sequencial
         self.receive_table.setItem(row, 1, QTableWidgetItem(time_str))      # Time
-        self.receive_table.setItem(row, 2, QTableWidgetItem(pid_str))       # PID
-        self.receive_table.setItem(row, 3, dlc_item)                        # DLC
-        self.receive_table.setItem(row, 4, QTableWidgetItem(data_str))      # Data
-        self.receive_table.setItem(row, 5, QTableWidgetItem(ascii_str))     # ASCII
-        self.receive_table.setItem(row, 6, QTableWidgetItem(msg.comment))   # Comment
+        
+        # Channel column
+        channel_item = QTableWidgetItem(msg.source)
+        channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.receive_table.setItem(row, 2, channel_item)                    # Channel
+        
+        self.receive_table.setItem(row, 3, QTableWidgetItem(pid_str))       # PID
+        self.receive_table.setItem(row, 4, dlc_item)                        # DLC
+        self.receive_table.setItem(row, 5, QTableWidgetItem(data_str))      # Data
+        self.receive_table.setItem(row, 6, QTableWidgetItem(ascii_str))     # ASCII
+        self.receive_table.setItem(row, 7, QTableWidgetItem(msg.comment))   # Comment
         
         # NO TRACER MODE: Sem highlight (deixar fluir sem azul)
         # Removido o código de highlight para que as mensagens fluam naturalmente
@@ -1371,35 +1512,40 @@ class CANAnalyzerWindow(QMainWindow):
         data_str = " ".join([f"{b:02X}" for b in msg.data])
         ascii_str = msg.to_ascii()
         
-        # Incrementar contador
-        self.message_counters[msg.can_id] += 1
-        count = self.message_counters[msg.can_id]
+        # Incrementar contador por ID+Channel
+        counter_key = (msg.can_id, msg.source)
+        self.message_counters[counter_key] += 1
+        count = self.message_counters[counter_key]
         
-        # Calcular period (tempo desde última mensagem deste ID)
+        # Calcular period (tempo desde última mensagem deste ID+Channel)
         period_str = ""
-        if msg.can_id in self.message_last_timestamp:
-            period_ms = int((msg.timestamp - self.message_last_timestamp[msg.can_id]) * 1000)
+        if counter_key in self.message_last_timestamp:
+            period_ms = int((msg.timestamp - self.message_last_timestamp[counter_key]) * 1000)
             period_str = f"{period_ms}"
         
-        # Atualizar timestamp da última mensagem deste ID
-        self.message_last_timestamp[msg.can_id] = msg.timestamp
+        # Atualizar timestamp da última mensagem deste ID+Channel
+        self.message_last_timestamp[counter_key] = msg.timestamp
         
-        # Procurar se já existe linha com esse PID
+        # Procurar se já existe linha com esse PID E Channel
         existing_row = -1
         for row in range(self.receive_table.rowCount()):
-            if self.receive_table.item(row, 2).text() == pid_str:  # Coluna 2 agora é PID
-                existing_row = row
-                break
+            pid_item = self.receive_table.item(row, 3)  # Coluna 3 = PID
+            channel_item = self.receive_table.item(row, 2)  # Coluna 2 = Channel
+            if pid_item and channel_item:
+                if pid_item.text() == pid_str and channel_item.text() == msg.source:
+                    existing_row = row
+                    break
         
         if existing_row >= 0:
             # Atualizar linha existente
-            # Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
+            # Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
             count_item = QTableWidgetItem(str(count))
             count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)  # Centralizar Count
             self.receive_table.setItem(existing_row, 1, count_item)                     # Count
-            self.receive_table.setItem(existing_row, 4, QTableWidgetItem(data_str))     # Data
-            self.receive_table.setItem(existing_row, 5, QTableWidgetItem(period_str))   # Period
-            self.receive_table.setItem(existing_row, 6, QTableWidgetItem(ascii_str))    # ASCII
+            # Channel não muda (mantém o original da primeira mensagem)
+            self.receive_table.setItem(existing_row, 5, QTableWidgetItem(data_str))     # Data
+            self.receive_table.setItem(existing_row, 6, QTableWidgetItem(period_str))   # Period
+            self.receive_table.setItem(existing_row, 7, QTableWidgetItem(ascii_str))    # ASCII
             
             # NO MONITOR MODE: Destacar APENAS a célula Count em azul claro quando count > 1
             if highlight and count > 1:
@@ -1419,11 +1565,12 @@ class CANAnalyzerWindow(QMainWindow):
             # Adicionar nova linha NA POSIÇÃO CORRETA (ordenado por PID)
             # Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
             
-            # Encontrar posição correta para inserir (mantendo ordem por PID)
+            # Encontrar posição correta para inserir (ordenado por PID, depois por Channel)
             insert_row = self.receive_table.rowCount()  # Por padrão, inserir no final
             
             for row in range(self.receive_table.rowCount()):
-                existing_pid_item = self.receive_table.item(row, 2)
+                existing_pid_item = self.receive_table.item(row, 3)  # Coluna 3 = PID
+                existing_channel_item = self.receive_table.item(row, 2)  # Coluna 2 = Channel
                 if existing_pid_item:
                     existing_pid_str = existing_pid_item.text()
                     # Comparar PIDs (remover "0x" e converter para int)
@@ -1432,6 +1579,11 @@ class CANAnalyzerWindow(QMainWindow):
                         if msg.can_id < existing_pid:
                             insert_row = row
                             break
+                        elif msg.can_id == existing_pid and existing_channel_item:
+                            # Mesmo PID, ordenar por Channel
+                            if msg.source < existing_channel_item.text():
+                                insert_row = row
+                                break
                     except ValueError:
                         continue
             
@@ -1451,15 +1603,21 @@ class CANAnalyzerWindow(QMainWindow):
             period_item = QTableWidgetItem(period_str)
             period_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            # Inserir items - Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
+            # Inserir items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
             self.receive_table.setItem(row, 0, id_item)                            # ID sequencial
             self.receive_table.setItem(row, 1, count_item)                         # Count
-            self.receive_table.setItem(row, 2, QTableWidgetItem(pid_str))          # PID
-            self.receive_table.setItem(row, 3, dlc_item)                           # DLC
-            self.receive_table.setItem(row, 4, QTableWidgetItem(data_str))         # Data
-            self.receive_table.setItem(row, 5, period_item)                        # Period
-            self.receive_table.setItem(row, 6, QTableWidgetItem(ascii_str))        # ASCII
-            self.receive_table.setItem(row, 7, QTableWidgetItem(msg.comment))      # Comment
+            
+            # Channel column
+            channel_item = QTableWidgetItem(msg.source)
+            channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.receive_table.setItem(row, 2, channel_item)                       # Channel
+            
+            self.receive_table.setItem(row, 3, QTableWidgetItem(pid_str))          # PID
+            self.receive_table.setItem(row, 4, dlc_item)                           # DLC
+            self.receive_table.setItem(row, 5, QTableWidgetItem(data_str))         # Data
+            self.receive_table.setItem(row, 6, period_item)                        # Period
+            self.receive_table.setItem(row, 7, QTableWidgetItem(ascii_str))        # ASCII
+            self.receive_table.setItem(row, 8, QTableWidgetItem(msg.comment))      # Comment
             
             # NÃO destacar na primeira mensagem (count == 1), manter cor normal
             # Highlight só deve aparecer quando count > 1 (mensagem repetida)
@@ -1519,7 +1677,7 @@ class CANAnalyzerWindow(QMainWindow):
     
     def get_tx_message_data_from_table(self, row):
         """Obtém dados de uma mensagem da tabela de transmissão"""
-        # Colunas: ID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16)
+        # Colunas: PID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16), Channel(17)
         
         # ID
         can_id_str = self.transmit_table.item(row, 0).text().replace('0x', '').replace('0X', '')
@@ -1534,6 +1692,14 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Period
         period_str = self.transmit_table.item(row, 3).text()
+        
+        # TX Mode
+        tx_mode_item = self.transmit_table.item(row, 4)
+        tx_mode = tx_mode_item.text() if tx_mode_item else "off"
+        
+        # Channel/Source
+        source_item = self.transmit_table.item(row, 17)
+        source = source_item.text() if source_item else "CAN1"
         
         # Data bytes (D0-D7)
         data_bytes = []
@@ -1551,6 +1717,8 @@ class CANAnalyzerWindow(QMainWindow):
             'dlc': dlc,
             'is_rtr': is_rtr,
             'period': period_str,
+            'tx_mode': tx_mode,
+            'source': source,
             'data': data
         }
     
@@ -1561,15 +1729,17 @@ class CANAnalyzerWindow(QMainWindow):
             dlc = self.tx_dlc_input.value()
             data = self.get_data_from_bytes()
             
-            if self.can_bus:
+            if self.can_bus_manager or self.can_bus:
                 message = can.Message(
                     arbitration_id=can_id,
                     data=data[:dlc],
                     is_extended_id=self.tx_29bit_check.isChecked(),
                     is_remote_frame=self.tx_rtr_check.isChecked()
                 )
-                self.can_bus.send(message)
-                self.logger.info(f"Transmit: Enviado 0x{can_id:03X} - {data.hex()}")
+                # Get target bus from TX source dropdown
+                target_bus = self.tx_source_combo.currentText() if self.can_bus_manager else None
+                self._send_can_message(message, target_bus)
+                self.logger.info(f"Transmit: Enviado 0x{can_id:03X} para {target_bus or 'all'} - {data.hex()}")
                 
                 # Se estamos editando uma linha, incrementar o contador dela
                 if self.editing_tx_row >= 0 and self.editing_tx_row < self.transmit_table.rowCount():
@@ -1671,6 +1841,12 @@ class CANAnalyzerWindow(QMainWindow):
             # 16: Comment
             self.transmit_table.setItem(row, 16, QTableWidgetItem(self.tx_comment_input.text()))
             
+            # 17: Source
+            source = self.tx_source_combo.currentText()
+            source_item = QTableWidgetItem(source)
+            source_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.transmit_table.setItem(row, 17, source_item)
+            
             # Resetar estado de edição
             self.editing_tx_row = -1
             self.clear_tx_fields()
@@ -1724,6 +1900,14 @@ class CANAnalyzerWindow(QMainWindow):
                 comment_item = self.transmit_table.item(current_row, 16)
                 self.tx_comment_input.setText(comment_item.text() if comment_item else "")
                 
+                # 17: Source
+                source_item = self.transmit_table.item(current_row, 17)
+                if source_item:
+                    source_text = source_item.text()
+                    index = self.tx_source_combo.findText(source_text)
+                    if index >= 0:
+                        self.tx_source_combo.setCurrentIndex(index)
+                
                 # Definir que estamos editando esta linha
                 self.editing_tx_row = current_row
                 
@@ -1740,8 +1924,8 @@ class CANAnalyzerWindow(QMainWindow):
             self.transmit_table.removeRow(current_row)
     
     def send_all(self):
-        """Inicia envio periódico de todas as mensagens da tabela de transmissão"""
-        if not self.connected or not self.can_bus:
+        """Inicia envio periódico de todas as mensagens com TX Mode = 'on'"""
+        if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
         
@@ -1755,13 +1939,17 @@ class CANAnalyzerWindow(QMainWindow):
             return
         
         self.periodic_send_active = True
-        
-        # Iniciar thread para cada mensagem com período > 0
         messages_started = 0
+        
         for row in range(self.transmit_table.rowCount()):
             try:
-                # Obter dados da linha usando função auxiliar
+                # Obter dados da linha
                 msg_data = self.get_tx_message_data_from_table(row)
+                tx_mode = msg_data.get('tx_mode', 'off').lower()
+                
+                # Apenas processar mensagens com TX Mode = "on"
+                if tx_mode != 'on':
+                    continue
                 
                 # Verificar se tem período configurado
                 if msg_data['period'] == "off" or msg_data['period'] == "0":
@@ -1803,7 +1991,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_send_all.clicked.connect(self.stop_all)
         else:
             self.periodic_send_active = False
-            self.show_notification(t('notif_no_valid_period'), 2000)
+            self.show_notification("⚠️ Nenhuma mensagem com TX Mode = 'on' e período válido", 2000)
     
     def stop_all(self):
         """Para todas as transmissões periódicas"""
@@ -1842,7 +2030,7 @@ class CANAnalyzerWindow(QMainWindow):
             while not stop_event.is_set():
                 try:
                     # Enviar mensagem
-                    if self.can_bus:
+                    if self.can_bus_manager or self.can_bus:
                         # Garantir que data tenha o tamanho correto (dlc bytes)
                         data_to_send = data[:dlc] if len(data) >= dlc else data + b'\x00' * (dlc - len(data))
                         
@@ -1852,7 +2040,10 @@ class CANAnalyzerWindow(QMainWindow):
                             is_extended_id=(can_id > 0x7FF),
                             is_remote_frame=is_rtr
                         )
-                        self.can_bus.send(can_msg)
+                        # Get target bus from table (column 17)
+                        source_item = self.transmit_table.item(row, 17)
+                        target_bus = source_item.text() if source_item else None
+                        self._send_can_message(can_msg, target_bus)
                         
                         # Incrementar contador na tabela (thread-safe via QTimer)
                         # Usar functools.partial para garantir captura correta do valor
@@ -2144,10 +2335,11 @@ class CANAnalyzerWindow(QMainWindow):
         import csv
         with open(filename, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['Timestamp', 'ID', 'DLC', 'Data', 'Comment'])
+            writer.writerow(['Timestamp', 'Channel', 'ID', 'DLC', 'Data', 'Comment'])
             for msg in messages:
                 writer.writerow([
                     msg.timestamp,
+                    msg.source,
                     f"0x{msg.can_id:03X}",
                     msg.dlc,
                     msg.to_hex_string(),
@@ -2160,13 +2352,13 @@ class CANAnalyzerWindow(QMainWindow):
             f.write(f"; CAN Trace File\n")
             f.write(f"; Generated by CAN Analyzer - {get_platform_display_name()}\n")
             f.write(f"; Mode: {'Tracer' if self.tracer_mode else 'Monitor'}\n")
-            f.write(f"; Baudrate: {self.config['baudrate']} bps\n")
+            f.write(f"; Baudrate: {self.config.get('baudrate', 500000)} bps\n")
             f.write(f"; Messages: {len(messages)}\n")
             f.write(f";\n")
             
             for msg in messages:
-                # Formato: timestamp id dlc data
-                f.write(f"{msg.timestamp:.6f} {msg.can_id:03X} {msg.dlc} {msg.data.hex()}\n")
+                # Formato: timestamp channel id dlc data
+                f.write(f"{msg.timestamp:.6f} {msg.source} {msg.can_id:03X} {msg.dlc} {msg.data.hex()}\n")
     
     def load_log(self):
         """Carrega log de mensagens"""
@@ -2294,21 +2486,38 @@ class CANAnalyzerWindow(QMainWindow):
                 if line.startswith(';') or not line:
                     continue
                 
-                # Parse: timestamp id dlc data
+                # Parse: timestamp [channel] id dlc data
+                # Suporta formato antigo (sem channel) e novo (com channel)
                 parts = line.split()
                 if len(parts) >= 4:
-                    timestamp = float(parts[0])
-                    can_id = int(parts[1], 16)
-                    dlc = int(parts[2])
-                    data = bytes.fromhex(parts[3])
-                    
-                    msg = CANMessage(
-                        timestamp=timestamp,
-                        can_id=can_id,
-                        dlc=dlc,
-                        data=data
-                    )
-                    messages.append(msg)
+                    try:
+                        timestamp = float(parts[0])
+                        
+                        # Tentar detectar se tem channel (segundo campo não é hex válido de 3 dígitos)
+                        if len(parts) >= 5 and not parts[1].isdigit() and len(parts[1]) <= 10:
+                            # Novo formato: timestamp channel id dlc data
+                            source = parts[1]
+                            can_id = int(parts[2], 16)
+                            dlc = int(parts[3])
+                            data = bytes.fromhex(parts[4]) if len(parts) > 4 else b''
+                        else:
+                            # Formato antigo: timestamp id dlc data
+                            source = "CAN1"  # Default
+                            can_id = int(parts[1], 16)
+                            dlc = int(parts[2])
+                            data = bytes.fromhex(parts[3]) if len(parts) > 3 else b''
+                        
+                        msg = CANMessage(
+                            timestamp=timestamp,
+                            can_id=can_id,
+                            dlc=dlc,
+                            data=data,
+                            source=source
+                        )
+                        messages.append(msg)
+                    except Exception as e:
+                        print(f"Erro ao parsear linha: {line} - {e}")
+                        continue
         
         return messages
     
@@ -2422,6 +2631,7 @@ class CANAnalyzerWindow(QMainWindow):
                     trigger_data_item = self.transmit_table.item(row, 6)
                     count_item = self.transmit_table.item(row, 15)
                     comment_item = self.transmit_table.item(row, 16)
+                    source_item = self.transmit_table.item(row, 17)
                     
                     item_data = {
                         'id': f"{msg_data['can_id']:03X}",
@@ -2433,7 +2643,8 @@ class CANAnalyzerWindow(QMainWindow):
                         'trigger_id': trigger_id_item.text() if trigger_id_item else '',
                         'trigger_data': trigger_data_item.text() if trigger_data_item else '',
                         'count': int(count_item.text()) if count_item else 0,
-                        'comment': comment_item.text() if comment_item else ''
+                        'comment': comment_item.text() if comment_item else '',
+                        'source': source_item.text() if source_item else 'CAN1'
                     }
                     transmit_data.append(item_data)
                 
@@ -2543,7 +2754,7 @@ class CANAnalyzerWindow(QMainWindow):
     
     def send_selected_tx_once(self):
         """Envia mensagens selecionadas da tabela de transmissão uma única vez"""
-        if not self.connected or not self.can_bus:
+        if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
         
@@ -2568,7 +2779,10 @@ class CANAnalyzerWindow(QMainWindow):
                     is_extended_id=(msg_data['can_id'] > 0x7FF),
                     is_remote_frame=msg_data['is_rtr']
                 )
-                self.can_bus.send(can_msg)
+                # Get target bus from table (column 17)
+                source_item = self.transmit_table.item(row, 17)
+                target_bus = source_item.text() if source_item else None
+                self._send_can_message(can_msg, target_bus)
                 sent_count += 1
                 self.logger.info(f"Send Once: Enviado 0x{msg_data['can_id']:03X} DLC={msg_data['dlc']} Data={data_to_send.hex()}")
                 
@@ -2592,7 +2806,7 @@ class CANAnalyzerWindow(QMainWindow):
     
     def start_selected_periodic(self):
         """Inicia envio periódico das mensagens selecionadas"""
-        if not self.connected or not self.can_bus:
+        if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
         
@@ -2733,17 +2947,19 @@ class CANAnalyzerWindow(QMainWindow):
             try:
                 # Extrair dados da linha selecionada
                 if self.tracer_mode:
-                    # Modo Tracer: ID, Time, PID, DLC, Data, ASCII, Comment
-                    id_str = self.receive_table.item(row, 2).text()  # PID (coluna 2)
-                    dlc_str = self.receive_table.item(row, 3).text()  # DLC (coluna 3)
-                    data_str = self.receive_table.item(row, 4).text()  # Data (coluna 4)
-                    comment_str = self.receive_table.item(row, 6).text() if self.receive_table.item(row, 6) else ""  # Comment
-                else:
-                    # Modo Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
-                    id_str = self.receive_table.item(row, 2).text()  # PID (coluna 2)
-                    dlc_str = self.receive_table.item(row, 3).text()  # DLC (coluna 3)
-                    data_str = self.receive_table.item(row, 4).text()  # Data (coluna 4)
+                    # Modo Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
+                    id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3)
+                    dlc_str = self.receive_table.item(row, 4).text()  # DLC (coluna 4)
+                    data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5)
                     comment_str = self.receive_table.item(row, 7).text() if self.receive_table.item(row, 7) else ""  # Comment
+                    source_str = self.receive_table.item(row, 2).text() if self.receive_table.item(row, 2) else "CAN1"  # Channel (coluna 2)
+                else:
+                    # Modo Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
+                    id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3)
+                    dlc_str = self.receive_table.item(row, 4).text()  # DLC (coluna 4)
+                    data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5)
+                    comment_str = self.receive_table.item(row, 8).text() if self.receive_table.item(row, 8) else ""  # Comment
+                    source_str = self.receive_table.item(row, 2).text() if self.receive_table.item(row, 2) else "CAN1"  # Channel (coluna 2)
                 
                 # Remover "0x" do ID se presente
                 id_clean = id_str.replace("0x", "").replace("0X", "")
@@ -2795,6 +3011,11 @@ class CANAnalyzerWindow(QMainWindow):
                 # 16: Comment
                 self.transmit_table.setItem(tx_row, 16, QTableWidgetItem(comment_str if comment_str else "From Receive"))
                 
+                # 17: Source
+                source_item = QTableWidgetItem(source_str)
+                source_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.transmit_table.setItem(tx_row, 17, source_item)
+                
                 added_count += 1
                 
             except Exception as e:
@@ -2817,9 +3038,9 @@ class CANAnalyzerWindow(QMainWindow):
         row = selected_rows[0].row()
         
         if self.tracer_mode:
-            id_str = self.receive_table.item(row, 2).text()  # PID (coluna 2) no Tracer
+            id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3) no Tracer
         else:
-            id_str = self.receive_table.item(row, 2).text()  # PID (coluna 2) no Monitor
+            id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3) no Monitor
         
         # Copiar para clipboard
         clipboard = QApplication.clipboard()
@@ -2836,9 +3057,9 @@ class CANAnalyzerWindow(QMainWindow):
         row = selected_rows[0].row()
         
         if self.tracer_mode:
-            data_str = self.receive_table.item(row, 4).text()  # Data (coluna 4) no Tracer
+            data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5) no Tracer
         else:
-            data_str = self.receive_table.item(row, 4).text()  # Data (coluna 4) no Monitor
+            data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5) no Monitor
         
         # Copiar para clipboard
         clipboard = QApplication.clipboard()
@@ -2928,6 +3149,12 @@ class CANAnalyzerWindow(QMainWindow):
                     
                     # 16: Comment
                     self.transmit_table.setItem(row, 16, QTableWidgetItem(item.get('comment', '')))
+                    
+                    # 17: Source
+                    source = item.get('source', 'CAN1')
+                    source_item = QTableWidgetItem(source)
+                    source_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.transmit_table.setItem(row, 17, source_item)
                 
                 # Mostrar notificação
                 import os
@@ -2997,7 +3224,7 @@ class CANAnalyzerWindow(QMainWindow):
             QMessageBox.warning(self, "Playback", "Nenhuma mensagem gravada!\n\nClique em 'Record' para gravar mensagens primeiro.")
             return
         
-        if not self.connected or not self.can_bus:
+        if not self.connected or not self.can_bus_manager:
             QMessageBox.warning(self, "Playback", "Conecte-se ao barramento CAN primeiro!")
             return
         
@@ -3027,7 +3254,7 @@ class CANAnalyzerWindow(QMainWindow):
         if not selected_rows:
             return  # Sem popup, apenas retorna
         
-        if not self.connected or not self.can_bus:
+        if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
         
@@ -3096,8 +3323,9 @@ class CANAnalyzerWindow(QMainWindow):
                     data=msg.data,
                     is_extended_id=(msg.can_id > 0x7FF)
                 )
-                self.can_bus.send(can_msg)
-                self.logger.info(f"Play Selected: Enviado 0x{msg.can_id:03X} - {msg.data.hex()}")
+                # Send to original source bus
+                self._send_can_message(can_msg, msg.source)
+                self.logger.info(f"Play Selected: Enviado 0x{msg.can_id:03X} para {msg.source} - {msg.data.hex()}")
             
             # Sem popup, apenas notificação discreta
             # self.show_notification(f"✅ {len(selected_messages)} msg enviada(s)", 1000)
@@ -3174,8 +3402,9 @@ class CANAnalyzerWindow(QMainWindow):
                         data=msg.data,
                         is_extended_id=(msg.can_id > 0x7FF)
                     )
-                    self.can_bus.send(can_msg)
-                    self.logger.info(f"Playback: [{i+1}/{len(messages)}] Enviado 0x{msg.can_id:03X} - {msg.data.hex()}")
+                    # Send to original source bus
+                    self._send_can_message(can_msg, msg.source)
+                    self.logger.info(f"Playback: [{i+1}/{len(messages)}] Enviado 0x{msg.can_id:03X} para {msg.source} - {msg.data.hex()}")
                     
                     # Atualizar progresso na UI thread
                     progress = f"Playing {i+1}/{len(messages)}"
@@ -3273,25 +3502,55 @@ class CANAnalyzerWindow(QMainWindow):
         # Aplicar filtro de ID
         for row in range(self.receive_table.rowCount()):
             try:
-                # Obter PID da linha
-                if self.tracer_mode:
-                    id_item = self.receive_table.item(row, 2)  # Coluna PID no Tracer (coluna 2)
-                else:
-                    id_item = self.receive_table.item(row, 2)  # Coluna PID no Monitor (coluna 2)
+                # Obter PID e Channel da linha
+                # Tracer: ID(0), Time(1), Channel(2), PID(3), DLC(4), Data(5), ASCII(6), Comment(7)
+                # Monitor: ID(0), Count(1), Channel(2), PID(3), DLC(4), Data(5), Period(6), ASCII(7), Comment(8)
+                id_item = self.receive_table.item(row, 3)  # Coluna PID (coluna 3)
+                channel_item = self.receive_table.item(row, 2)  # Coluna Channel (coluna 2)
                 
                 if not id_item:
                     continue
                 
                 id_str = id_item.text().replace("0x", "").replace("0X", "")
                 msg_id = int(id_str, 16)
+                channel = channel_item.text() if channel_item else "CAN1"
                 
-                # Aplicar lógica de filtro
-                if show_only:
-                    # Whitelist: mostrar apenas IDs na lista
-                    should_hide = msg_id not in id_filters if id_filters else False
+                # Aplicar lógica de filtro (verificar channel_filters primeiro)
+                channel_filters = self.message_filters.get('channel_filters', {})
+                should_hide = False
+                
+                if channel_filters and len(channel_filters) > 0:
+                    # Usar filtros por canal
+                    if channel in channel_filters:
+                        # Filtro específico para este canal
+                        channel_filter = channel_filters[channel]
+                        channel_ids = channel_filter.get('ids', [])
+                        channel_show_only = channel_filter.get('show_only', True)
+                        
+                        if channel_ids:
+                            if channel_show_only:
+                                should_hide = msg_id not in channel_ids
+                            else:
+                                should_hide = msg_id in channel_ids
+                    elif 'ALL' in channel_filters:
+                        # Filtro "ALL" (aplica a todos os canais)
+                        channel_filter = channel_filters['ALL']
+                        channel_ids = channel_filter.get('ids', [])
+                        channel_show_only = channel_filter.get('show_only', True)
+                        
+                        if channel_ids:
+                            if channel_show_only:
+                                should_hide = msg_id not in channel_ids
+                            else:
+                                should_hide = msg_id in channel_ids
                 else:
-                    # Blacklist: ocultar IDs na lista
-                    should_hide = msg_id in id_filters
+                    # Usar filtros globais (legacy)
+                    if show_only:
+                        # Whitelist: mostrar apenas IDs na lista
+                        should_hide = msg_id not in id_filters if id_filters else False
+                    else:
+                        # Blacklist: ocultar IDs na lista
+                        should_hide = msg_id in id_filters
                 
                 self.receive_table.setRowHidden(row, should_hide)
                 
@@ -3339,13 +3598,14 @@ class CANAnalyzerWindow(QMainWindow):
                 self.logger.log_trigger(trigger_id, tx_id, comment)
                 
                 # Enviar mensagem
-                if CAN_AVAILABLE and self.can_bus:
+                if CAN_AVAILABLE and (self.can_bus_manager or self.can_bus):
                     can_msg = can.Message(
                         arbitration_id=tx_id,
                         data=tx_data,
                         is_extended_id=(tx_id > 0x7FF)
                     )
-                    self.can_bus.send(can_msg)
+                    # Send trigger to all buses
+                    self._send_can_message(can_msg, None)
                     self.logger.log_can_message('TX', tx_id, tx_data, len(tx_data))
                     
                     # Feedback no status bar
@@ -3366,9 +3626,46 @@ class CANAnalyzerWindow(QMainWindow):
         id_filters = self.message_filters['id_filters']
         data_filters = self.message_filters['data_filters']
         show_only = self.message_filters['show_only']
+        channel_filters = self.message_filters.get('channel_filters', {})
         
-        # Filtro de ID
-        if id_filters:
+        # Filtro por Canal (prioridade sobre filtro global)
+        # Só aplica se houver filtros definidos (não vazio)
+        if channel_filters and len(channel_filters) > 0:
+            # Verificar se há filtro específico para este canal
+            if msg.source in channel_filters:
+                channel_filter = channel_filters[msg.source]
+                channel_ids = channel_filter.get('ids', [])
+                channel_show_only = channel_filter.get('show_only', True)
+                
+                if channel_ids:
+                    id_match = msg.can_id in channel_ids
+                    if channel_show_only:
+                        # Whitelist: deve estar na lista
+                        if not id_match:
+                            return False
+                    else:
+                        # Blacklist: não deve estar na lista
+                        if id_match:
+                            return False
+            # Se não há filtro para este canal, verificar se há filtro "ALL"
+            elif 'ALL' in channel_filters:
+                channel_filter = channel_filters['ALL']
+                channel_ids = channel_filter.get('ids', [])
+                channel_show_only = channel_filter.get('show_only', True)
+                
+                if channel_ids:
+                    id_match = msg.can_id in channel_ids
+                    if channel_show_only:
+                        if not id_match:
+                            return False
+                    else:
+                        if id_match:
+                            return False
+            # Se channel_filters existe mas não tem filtro para este canal nem "ALL",
+            # deixa passar (não bloqueia canais sem filtro)
+        
+        # Filtro de ID global (legacy, aplicado se não houver filtro por canal)
+        if id_filters and not channel_filters:
             id_match = msg.can_id in id_filters
             if show_only:
                 # Whitelist: deve estar na lista
@@ -3379,7 +3676,7 @@ class CANAnalyzerWindow(QMainWindow):
                 if id_match:
                     return False
         
-        # Filtro de dados
+        # Filtro de dados (aplicado sempre)
         for data_filter in data_filters:
             try:
                 byte_index = data_filter['byte_index']
