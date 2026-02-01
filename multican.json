@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "transmit_messages": [
+    {
+      "id": "160",
+      "dlc": 8,
+      "rtr": false,
+      "data": "0010203040506070",
+      "period": "160",
+      "tx_mode": "on",
+      "trigger_id": "",
+      "trigger_data": "",
+      "count": 10079,
+      "comment": "",
+      "source": "CAN2"
+    },
+    {
+      "id": "250",
+      "dlc": 8,
+      "rtr": false,
+      "data": "AABBCCDDEEFF0000",
+      "period": "250",
+      "tx_mode": "on",
+      "trigger_id": "",
+      "trigger_data": "",
+      "count": 1751,
+      "comment": "",
+      "source": "CAN1"
+    }
+  ]
+}
