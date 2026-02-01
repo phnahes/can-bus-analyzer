@@ -24,6 +24,8 @@ hidden_imports = [
     'src.i18n',
     'src.models',
     'src.can_interface',
+    'src.can_bus_manager',
+    'src.theme',
     'src.usb_device_monitor',
     'src.utils',
 ]

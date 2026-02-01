@@ -453,7 +453,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 ## Project Status
 
-**Version**: 0.1.0  
+**Version**: 0.2.0  
 **Status**: Active  
 **Last Updated**: January 2026
 
@@ -469,6 +469,8 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 - Comprehensive logging
 - USB device auto-detection
 - Hot-swap device support
+- Multi-CAN support (multiple buses simultaneously)
+- Per-channel filters and improved terminology (Channel/Device)
 
 ### Planned Features
 - Hardware filters (28 configurable)
@@ -477,7 +479,6 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 - Statistics & analytics
 - DBC file support
 - Real-time plotting
-- Multiple CANbus devices
 
 
 ---
