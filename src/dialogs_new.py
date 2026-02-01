@@ -594,6 +594,65 @@ class FilterDialog(QDialog):
         id_group.setLayout(id_layout)
         layout.addWidget(id_group)
         
+        # Channel-specific ID Filters
+        channel_group = QGroupBox("Channel-Specific ID Filters")
+        channel_layout = QVBoxLayout()
+        
+        channel_help = QLabel("Filter IDs per channel (overrides global ID filters)\nLeave empty to use global filters")
+        channel_help.setStyleSheet(colors['info_text'])
+        channel_layout.addWidget(channel_help)
+        
+        # Scroll area for channel filters
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setMaximumHeight(200)
+        scroll_widget = QWidget()
+        self.channel_filters_layout = QVBoxLayout(scroll_widget)
+        
+        # Get available channels from parent
+        self.channel_filter_inputs = {}
+        available_channels = ['ALL']  # ALL = applies to all channels
+        parent_window = self.parent()
+        if parent_window and hasattr(parent_window, 'can_bus_manager'):
+            available_channels.extend(parent_window.can_bus_manager.get_bus_names())
+        
+        # Create input for each channel
+        for channel in available_channels:
+            channel_row = QHBoxLayout()
+            channel_label = QLabel(f"{channel}:")
+            channel_label.setMinimumWidth(80)
+            channel_row.addWidget(channel_label)
+            
+            channel_input = QLineEdit()
+            channel_input.setPlaceholderText("0x280, 0x284, 0x300-0x310")
+            
+            # Load existing filters
+            channel_filters = self.current_filters.get('channel_filters', {})
+            if channel in channel_filters:
+                channel_ids = channel_filters[channel].get('ids', [])
+                if channel_ids:
+                    id_text = ", ".join([f"0x{id:03X}" for id in channel_ids])
+                    channel_input.setText(id_text)
+            
+            channel_row.addWidget(channel_input)
+            
+            # Mode checkbox
+            channel_mode = QCheckBox("Show Only")
+            if channel in channel_filters:
+                channel_mode.setChecked(channel_filters[channel].get('show_only', True))
+            else:
+                channel_mode.setChecked(True)
+            channel_row.addWidget(channel_mode)
+            
+            self.channel_filters_layout.addLayout(channel_row)
+            self.channel_filter_inputs[channel] = {'input': channel_input, 'mode': channel_mode}
+        
+        scroll.setWidget(scroll_widget)
+        channel_layout.addWidget(scroll)
+        
+        channel_group.setLayout(channel_layout)
+        layout.addWidget(channel_group)
+        
         # Data Filters
         data_group = QGroupBox("Data Filters (Advanced)")
         data_layout = QVBoxLayout()
@@ -706,6 +765,37 @@ class FilterDialog(QDialog):
                     except:
                         pass
         
+        # Parse channel-specific filters
+        channel_filters = {}
+        for channel, widgets in self.channel_filter_inputs.items():
+            channel_text = widgets['input'].text().strip()
+            if channel_text:
+                channel_ids = []
+                parts = channel_text.replace(',', ' ').split()
+                for part in parts:
+                    part = part.strip()
+                    if '-' in part:
+                        # Range: 0x300-0x310
+                        try:
+                            start, end = part.split('-')
+                            start_id = int(start.strip(), 16)
+                            end_id = int(end.strip(), 16)
+                            channel_ids.extend(range(start_id, end_id + 1))
+                        except:
+                            pass
+                    else:
+                        # Single ID
+                        try:
+                            channel_ids.append(int(part, 16))
+                        except:
+                            pass
+                
+                if channel_ids:
+                    channel_filters[channel] = {
+                        'ids': channel_ids,
+                        'show_only': widgets['mode'].isChecked()
+                    }
+        
         # Parse data filters
         data_filters = []
         for row in range(self.data_filter_table.rowCount()):
@@ -725,7 +815,8 @@ class FilterDialog(QDialog):
             'enabled': self.enable_check.isChecked(),
             'id_filters': id_filters,
             'data_filters': data_filters,
-            'show_only': self.show_only_radio.isChecked()
+            'show_only': self.show_only_radio.isChecked(),
+            'channel_filters': channel_filters
         }
 
 

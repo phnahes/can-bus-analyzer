@@ -81,11 +81,13 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Message filters
         self.message_filters = {
-            'enabled': False,
-            'id_filters': [],
+            'enabled': False,  # IMPORTANTE: Filtros desabilitados por padrão
+            'id_filters': [],  # Legacy: IDs sem canal específico
             'data_filters': [],
-            'show_only': True
+            'show_only': True,
+            'channel_filters': {}  # Novo: {channel_name: {'ids': [list], 'show_only': bool}}
         }
+        self.logger.info(f"Message filters initialized: enabled={self.message_filters['enabled']}")
         
         # Triggers for automatic transmission
         self.triggers = []
@@ -1195,10 +1197,14 @@ class CANAnalyzerWindow(QMainWindow):
             else:
                 self.mode_label.setText(t('status_normal'))
             
-            # Iniciar thread de recepção
-            self.receive_thread = threading.Thread(target=self.receive_loop, daemon=True)
-            self.receive_thread.start()
-            self.logger.info("Thread de recepção iniciada")
+            # Iniciar thread de recepção (apenas para modo legacy single-CAN)
+            # Multi-CAN usa threads próprias em cada CANBusInstance
+            if not self.can_bus_manager and self.can_bus:
+                self.receive_thread = threading.Thread(target=self.receive_loop, daemon=True)
+                self.receive_thread.start()
+                self.logger.info("Thread de recepção iniciada (legacy mode)")
+            elif self.can_bus_manager:
+                self.logger.info("Usando threads de recepção do CANBusManager")
             
             # Gerar dados de exemplo apenas em modo simulação
             if simulation_mode or not CAN_AVAILABLE:
@@ -1671,7 +1677,7 @@ class CANAnalyzerWindow(QMainWindow):
     
     def get_tx_message_data_from_table(self, row):
         """Obtém dados de uma mensagem da tabela de transmissão"""
-        # Colunas: ID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16)
+        # Colunas: PID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16), Channel(17)
         
         # ID
         can_id_str = self.transmit_table.item(row, 0).text().replace('0x', '').replace('0X', '')
@@ -1686,6 +1692,14 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Period
         period_str = self.transmit_table.item(row, 3).text()
+        
+        # TX Mode
+        tx_mode_item = self.transmit_table.item(row, 4)
+        tx_mode = tx_mode_item.text() if tx_mode_item else "off"
+        
+        # Channel/Source
+        source_item = self.transmit_table.item(row, 17)
+        source = source_item.text() if source_item else "CAN1"
         
         # Data bytes (D0-D7)
         data_bytes = []
@@ -1703,6 +1717,8 @@ class CANAnalyzerWindow(QMainWindow):
             'dlc': dlc,
             'is_rtr': is_rtr,
             'period': period_str,
+            'tx_mode': tx_mode,
+            'source': source,
             'data': data
         }
     
@@ -1908,7 +1924,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.transmit_table.removeRow(current_row)
     
     def send_all(self):
-        """Inicia envio periódico de todas as mensagens da tabela de transmissão"""
+        """Inicia envio periódico de todas as mensagens com TX Mode = 'on'"""
         if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
@@ -1923,13 +1939,17 @@ class CANAnalyzerWindow(QMainWindow):
             return
         
         self.periodic_send_active = True
-        
-        # Iniciar thread para cada mensagem com período > 0
         messages_started = 0
+        
         for row in range(self.transmit_table.rowCount()):
             try:
-                # Obter dados da linha usando função auxiliar
+                # Obter dados da linha
                 msg_data = self.get_tx_message_data_from_table(row)
+                tx_mode = msg_data.get('tx_mode', 'off').lower()
+                
+                # Apenas processar mensagens com TX Mode = "on"
+                if tx_mode != 'on':
+                    continue
                 
                 # Verificar se tem período configurado
                 if msg_data['period'] == "off" or msg_data['period'] == "0":
@@ -1971,7 +1991,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_send_all.clicked.connect(self.stop_all)
         else:
             self.periodic_send_active = False
-            self.show_notification(t('notif_no_valid_period'), 2000)
+            self.show_notification("⚠️ Nenhuma mensagem com TX Mode = 'on' e período válido", 2000)
     
     def stop_all(self):
         """Para todas as transmissões periódicas"""
@@ -2315,10 +2335,11 @@ class CANAnalyzerWindow(QMainWindow):
         import csv
         with open(filename, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['Timestamp', 'ID', 'DLC', 'Data', 'Comment'])
+            writer.writerow(['Timestamp', 'Channel', 'ID', 'DLC', 'Data', 'Comment'])
             for msg in messages:
                 writer.writerow([
                     msg.timestamp,
+                    msg.source,
                     f"0x{msg.can_id:03X}",
                     msg.dlc,
                     msg.to_hex_string(),
@@ -2331,13 +2352,13 @@ class CANAnalyzerWindow(QMainWindow):
             f.write(f"; CAN Trace File\n")
             f.write(f"; Generated by CAN Analyzer - {get_platform_display_name()}\n")
             f.write(f"; Mode: {'Tracer' if self.tracer_mode else 'Monitor'}\n")
-            f.write(f"; Baudrate: {self.config['baudrate']} bps\n")
+            f.write(f"; Baudrate: {self.config.get('baudrate', 500000)} bps\n")
             f.write(f"; Messages: {len(messages)}\n")
             f.write(f";\n")
             
             for msg in messages:
-                # Formato: timestamp id dlc data
-                f.write(f"{msg.timestamp:.6f} {msg.can_id:03X} {msg.dlc} {msg.data.hex()}\n")
+                # Formato: timestamp channel id dlc data
+                f.write(f"{msg.timestamp:.6f} {msg.source} {msg.can_id:03X} {msg.dlc} {msg.data.hex()}\n")
     
     def load_log(self):
         """Carrega log de mensagens"""
@@ -2465,21 +2486,38 @@ class CANAnalyzerWindow(QMainWindow):
                 if line.startswith(';') or not line:
                     continue
                 
-                # Parse: timestamp id dlc data
+                # Parse: timestamp [channel] id dlc data
+                # Suporta formato antigo (sem channel) e novo (com channel)
                 parts = line.split()
                 if len(parts) >= 4:
-                    timestamp = float(parts[0])
-                    can_id = int(parts[1], 16)
-                    dlc = int(parts[2])
-                    data = bytes.fromhex(parts[3])
-                    
-                    msg = CANMessage(
-                        timestamp=timestamp,
-                        can_id=can_id,
-                        dlc=dlc,
-                        data=data
-                    )
-                    messages.append(msg)
+                    try:
+                        timestamp = float(parts[0])
+                        
+                        # Tentar detectar se tem channel (segundo campo não é hex válido de 3 dígitos)
+                        if len(parts) >= 5 and not parts[1].isdigit() and len(parts[1]) <= 10:
+                            # Novo formato: timestamp channel id dlc data
+                            source = parts[1]
+                            can_id = int(parts[2], 16)
+                            dlc = int(parts[3])
+                            data = bytes.fromhex(parts[4]) if len(parts) > 4 else b''
+                        else:
+                            # Formato antigo: timestamp id dlc data
+                            source = "CAN1"  # Default
+                            can_id = int(parts[1], 16)
+                            dlc = int(parts[2])
+                            data = bytes.fromhex(parts[3]) if len(parts) > 3 else b''
+                        
+                        msg = CANMessage(
+                            timestamp=timestamp,
+                            can_id=can_id,
+                            dlc=dlc,
+                            data=data,
+                            source=source
+                        )
+                        messages.append(msg)
+                    except Exception as e:
+                        print(f"Erro ao parsear linha: {line} - {e}")
+                        continue
         
         return messages
     
@@ -3558,9 +3596,46 @@ class CANAnalyzerWindow(QMainWindow):
         id_filters = self.message_filters['id_filters']
         data_filters = self.message_filters['data_filters']
         show_only = self.message_filters['show_only']
+        channel_filters = self.message_filters.get('channel_filters', {})
         
-        # Filtro de ID
-        if id_filters:
+        # Filtro por Canal (prioridade sobre filtro global)
+        # Só aplica se houver filtros definidos (não vazio)
+        if channel_filters and len(channel_filters) > 0:
+            # Verificar se há filtro específico para este canal
+            if msg.source in channel_filters:
+                channel_filter = channel_filters[msg.source]
+                channel_ids = channel_filter.get('ids', [])
+                channel_show_only = channel_filter.get('show_only', True)
+                
+                if channel_ids:
+                    id_match = msg.can_id in channel_ids
+                    if channel_show_only:
+                        # Whitelist: deve estar na lista
+                        if not id_match:
+                            return False
+                    else:
+                        # Blacklist: não deve estar na lista
+                        if id_match:
+                            return False
+            # Se não há filtro para este canal, verificar se há filtro "ALL"
+            elif 'ALL' in channel_filters:
+                channel_filter = channel_filters['ALL']
+                channel_ids = channel_filter.get('ids', [])
+                channel_show_only = channel_filter.get('show_only', True)
+                
+                if channel_ids:
+                    id_match = msg.can_id in channel_ids
+                    if channel_show_only:
+                        if not id_match:
+                            return False
+                    else:
+                        if id_match:
+                            return False
+            # Se channel_filters existe mas não tem filtro para este canal nem "ALL",
+            # deixa passar (não bloqueia canais sem filtro)
+        
+        # Filtro de ID global (legacy, aplicado se não houver filtro por canal)
+        if id_filters and not channel_filters:
             id_match = msg.can_id in id_filters
             if show_only:
                 # Whitelist: deve estar na lista
@@ -3571,7 +3646,7 @@ class CANAnalyzerWindow(QMainWindow):
                 if id_match:
                     return False
         
-        # Filtro de dados
+        # Filtro de dados (aplicado sempre)
         for data_filter in data_filters:
             try:
                 byte_index = data_filter['byte_index']
