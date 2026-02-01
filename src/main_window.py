@@ -174,6 +174,17 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_tracer.clicked.connect(self.toggle_tracer_mode)
         toolbar_layout.addWidget(self.btn_tracer)
         
+        # Separador
+        toolbar_layout.addWidget(QLabel("|"))
+        
+        # Botão Gateway Enable/Disable
+        self.btn_gateway = QPushButton("🌉 Gateway: OFF")
+        self.btn_gateway.setCheckable(True)
+        self.btn_gateway.setToolTip("Enable/Disable CAN Gateway")
+        self.btn_gateway.clicked.connect(self.toggle_gateway_from_toolbar)
+        self.btn_gateway.setEnabled(False)  # Habilitado apenas quando conectado
+        toolbar_layout.addWidget(self.btn_gateway)
+        
         # Espaço expansível para empurrar botão TX para direita
         toolbar_layout.addStretch()
         
@@ -1224,6 +1235,11 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_disconnect.setEnabled(True)
             self.btn_pause.setEnabled(True)
             
+            # Habilitar botão Gateway se houver 2+ barramentos
+            if self.can_bus_manager and len(self.can_bus_manager.get_bus_names()) >= 2:
+                self.btn_gateway.setEnabled(True)
+                self.update_gateway_button_state()
+            
             # Atualizar label de modo
             if self.config.get('listen_only', True):
                 self.mode_label.setText(t('status_listen_only'))
@@ -1289,6 +1305,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_connect.setEnabled(True)
         self.btn_disconnect.setEnabled(False)
         self.btn_pause.setEnabled(False)
+        self.btn_gateway.setEnabled(False)  # Desabilitar Gateway ao desconectar
         
         # Resetar label de modo ao desconectar
         if self.config.get('listen_only', True):
@@ -1298,8 +1315,15 @@ class CANAnalyzerWindow(QMainWindow):
     
     def reset(self):
         """Reseta a aplicação sem derrubar a conexão"""
-        # Limpar tabela
+        # Limpar tabela(s)
         self.receive_table.setRowCount(0)
+        
+        # Limpar tabelas do split-screen se existirem
+        if self.split_screen_mode:
+            if self.receive_table_left:
+                self.receive_table_left.setRowCount(0)
+            if self.receive_table_right:
+                self.receive_table_right.setRowCount(0)
         
         # Limpar dados
         self.received_messages.clear()
@@ -1393,8 +1417,16 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_pause.setStyleSheet("")
     
     def clear_receive(self):
-        """Limpa a tabela de recepção"""
+        """Limpa a tabela de recepção (e split-screen se ativo)"""
         self.receive_table.setRowCount(0)
+        
+        # Limpar tabelas do split-screen se existirem
+        if self.split_screen_mode:
+            if self.receive_table_left:
+                self.receive_table_left.setRowCount(0)
+            if self.receive_table_right:
+                self.receive_table_right.setRowCount(0)
+        
         self.update_message_count()
     
     def receive_loop(self):
@@ -2375,9 +2407,10 @@ class CANAnalyzerWindow(QMainWindow):
                 QMessageBox.critical(self, "Save Error", f"Erro ao salvar: {str(e)}")
     
     def _save_log_json(self, filename: str, messages: List[CANMessage]):
-        """Salva log em formato JSON"""
+        """Salva log em formato JSON com tipo de arquivo"""
         data = {
             'version': '1.0',
+            'file_type': 'tracer' if self.tracer_mode else 'monitor',  # Tipo do arquivo
             'mode': 'tracer' if self.tracer_mode else 'monitor',
             'config': self.config,
             'messages': [msg.to_dict() for msg in messages]
@@ -2476,10 +2509,61 @@ class CANAnalyzerWindow(QMainWindow):
                 self.logger.error(f"Erro ao carregar log: {e}", exc_info=True)
                 QMessageBox.critical(self, "Load Error", f"Erro ao carregar: {str(e)}")
     
+    def _validate_file_type(self, data: dict, expected_type: str, filename: str) -> bool:
+        """Valida o tipo de arquivo carregado
+        
+        Args:
+            data: Dados carregados do JSON
+            expected_type: Tipo esperado ('tracer', 'monitor', 'transmit', 'gateway')
+            filename: Nome do arquivo (para mensagem de erro)
+        
+        Returns:
+            True se válido, False caso contrário (mostra mensagem de erro)
+        """
+        if isinstance(data, list):
+            # Formato antigo (sem tipo), permitir
+            return True
+        
+        file_type = data.get('file_type', data.get('mode', None))
+        
+        if file_type is None:
+            # Arquivo sem tipo, permitir (compatibilidade)
+            return True
+        
+        if file_type != expected_type:
+            # Tipo incorreto
+            type_names = {
+                'tracer': t('file_type_tracer'),
+                'monitor': t('file_type_monitor'),
+                'transmit': t('file_type_transmit'),
+                'gateway': t('file_type_gateway')
+            }
+            
+            import os
+            filename_short = os.path.basename(filename)
+            
+            QMessageBox.warning(
+                self,
+                t('warning'),
+                t('msg_wrong_file_type').format(
+                    filename=filename_short,
+                    expected=type_names.get(expected_type, expected_type),
+                    found=type_names.get(file_type, file_type)
+                )
+            )
+            return False
+        
+        return True
+    
     def _load_log_json(self, filename: str) -> List[CANMessage]:
-        """Carrega log de formato JSON"""
+        """Carrega log de formato JSON com validação de tipo"""
         with open(filename, 'r') as f:
             data = json.load(f)
+        
+        # Validar tipo de arquivo
+        expected_type = 'tracer' if self.tracer_mode else 'monitor'
+        if not self._validate_file_type(data, expected_type, filename):
+            return []
         
         # Suportar formato antigo (lista) e novo (dict com metadata)
         if isinstance(data, list):
@@ -2496,7 +2580,8 @@ class CANAnalyzerWindow(QMainWindow):
                 data=bytes.fromhex(item['data']),
                 comment=item.get('comment', ''),
                 period=item.get('period', 0),
-                count=item.get('count', 0)
+                count=item.get('count', 0),
+                source=item.get('source', 'CAN1')
             )
             messages.append(msg)
         
@@ -2703,9 +2788,10 @@ class CANAnalyzerWindow(QMainWindow):
                     }
                     transmit_data.append(item_data)
                 
-                # Salvar com metadata
+                # Salvar com metadata e tipo
                 data = {
                     'version': '1.0',
+                    'file_type': 'transmit',  # Tipo do arquivo
                     'transmit_messages': transmit_data
                 }
                 
@@ -2723,9 +2809,13 @@ class CANAnalyzerWindow(QMainWindow):
                 QMessageBox.critical(self, "Save Error", f"Erro ao salvar: {str(e)}")
     
     def show_receive_context_menu(self, position):
-        """Mostra menu de contexto na tabela de recepção"""
+        """Mostra menu de contexto na tabela de recepção principal"""
+        self._show_context_menu_for_table(self.receive_table, position)
+    
+    def _show_context_menu_for_table(self, table: QTableWidget, position):
+        """Mostra menu de contexto para qualquer tabela de recepção"""
         # Verificar se há linhas selecionadas
-        selected_rows = self.receive_table.selectionModel().selectedRows()
+        selected_rows = table.selectionModel().selectedRows()
         if not selected_rows:
             return
         
@@ -2738,15 +2828,15 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Ações do menu
         add_to_tx_action = QAction("➕ Add to Transmit", self)
-        add_to_tx_action.triggered.connect(self.add_selected_to_transmit)
+        add_to_tx_action.triggered.connect(lambda: self.add_selected_to_transmit(table))
         menu.addAction(add_to_tx_action)
         
         copy_id_action = QAction("📋 Copy ID", self)
-        copy_id_action.triggered.connect(self.copy_selected_id)
+        copy_id_action.triggered.connect(lambda: self.copy_selected_id(table))
         menu.addAction(copy_id_action)
         
         copy_data_action = QAction("📋 Copy Data", self)
-        copy_data_action.triggered.connect(self.copy_selected_data)
+        copy_data_action.triggered.connect(lambda: self.copy_selected_data(table))
         menu.addAction(copy_data_action)
         
         menu.addSeparator()
@@ -2754,16 +2844,16 @@ class CANAnalyzerWindow(QMainWindow):
         # Bit Field Viewer (apenas para uma mensagem selecionada)
         if len(selected_rows) == 1:
             bit_viewer_action = QAction("🔬 Bit Field Viewer", self)
-            bit_viewer_action.triggered.connect(self.show_bit_field_viewer)
+            bit_viewer_action.triggered.connect(lambda: self.show_bit_field_viewer(table))
             menu.addAction(bit_viewer_action)
             menu.addSeparator()
         
         clear_selection_action = QAction("❌ Clear Selection", self)
-        clear_selection_action.triggered.connect(self.receive_table.clearSelection)
+        clear_selection_action.triggered.connect(table.clearSelection)
         menu.addAction(clear_selection_action)
         
         # Mostrar menu na posição do cursor (exec é bloqueante e fecha automaticamente)
-        menu.exec(self.receive_table.viewport().mapToGlobal(position))
+        menu.exec(table.viewport().mapToGlobal(position))
     
     def show_transmit_context_menu(self, position):
         """Mostra menu de contexto na tabela de transmissão"""
@@ -2988,9 +3078,12 @@ class CANAnalyzerWindow(QMainWindow):
         
         self.show_notification(t('notif_messages_deleted', count=len(rows_to_delete)), 2000)
     
-    def add_selected_to_transmit(self):
+    def add_selected_to_transmit(self, table: QTableWidget = None):
         """Adiciona mensagens selecionadas à lista de transmissão"""
-        selected_rows = self.receive_table.selectionModel().selectedRows()
+        if table is None:
+            table = self.receive_table
+        
+        selected_rows = table.selectionModel().selectedRows()
         if not selected_rows:
             return
         
@@ -3003,18 +3096,18 @@ class CANAnalyzerWindow(QMainWindow):
                 # Extrair dados da linha selecionada
                 if self.tracer_mode:
                     # Modo Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
-                    id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3)
-                    dlc_str = self.receive_table.item(row, 4).text()  # DLC (coluna 4)
-                    data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5)
-                    comment_str = self.receive_table.item(row, 7).text() if self.receive_table.item(row, 7) else ""  # Comment
-                    source_str = self.receive_table.item(row, 2).text() if self.receive_table.item(row, 2) else "CAN1"  # Channel (coluna 2)
+                    id_str = table.item(row, 3).text()  # PID (coluna 3)
+                    dlc_str = table.item(row, 4).text()  # DLC (coluna 4)
+                    data_str = table.item(row, 5).text()  # Data (coluna 5)
+                    comment_str = table.item(row, 7).text() if table.item(row, 7) else ""  # Comment
+                    source_str = table.item(row, 2).text() if table.item(row, 2) else "CAN1"  # Channel (coluna 2)
                 else:
                     # Modo Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
-                    id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3)
-                    dlc_str = self.receive_table.item(row, 4).text()  # DLC (coluna 4)
-                    data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5)
-                    comment_str = self.receive_table.item(row, 8).text() if self.receive_table.item(row, 8) else ""  # Comment
-                    source_str = self.receive_table.item(row, 2).text() if self.receive_table.item(row, 2) else "CAN1"  # Channel (coluna 2)
+                    id_str = table.item(row, 3).text()  # PID (coluna 3)
+                    dlc_str = table.item(row, 4).text()  # DLC (coluna 4)
+                    data_str = table.item(row, 5).text()  # Data (coluna 5)
+                    comment_str = table.item(row, 8).text() if table.item(row, 8) else ""  # Comment
+                    source_str = table.item(row, 2).text() if table.item(row, 2) else "CAN1"  # Channel (coluna 2)
                 
                 # Remover "0x" do ID se presente
                 id_clean = id_str.replace("0x", "").replace("0X", "")
@@ -3084,18 +3177,21 @@ class CANAnalyzerWindow(QMainWindow):
                 3000  # 3 segundos
             )
     
-    def copy_selected_id(self):
+    def copy_selected_id(self, table: QTableWidget = None):
         """Copia ID da mensagem selecionada"""
-        selected_rows = self.receive_table.selectionModel().selectedRows()
+        if table is None:
+            table = self.receive_table
+        
+        selected_rows = table.selectionModel().selectedRows()
         if not selected_rows:
             return
         
         row = selected_rows[0].row()
         
         if self.tracer_mode:
-            id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3) no Tracer
+            id_str = table.item(row, 3).text()  # PID (coluna 3) no Tracer
         else:
-            id_str = self.receive_table.item(row, 3).text()  # PID (coluna 3) no Monitor
+            id_str = table.item(row, 3).text()  # PID (coluna 3) no Monitor
         
         # Copiar para clipboard
         clipboard = QApplication.clipboard()
@@ -3103,18 +3199,21 @@ class CANAnalyzerWindow(QMainWindow):
         
         self.show_notification(t('notif_id_copied', id=id_str), 2000)
     
-    def copy_selected_data(self):
+    def copy_selected_data(self, table: QTableWidget = None):
         """Copia dados da mensagem selecionada"""
-        selected_rows = self.receive_table.selectionModel().selectedRows()
+        if table is None:
+            table = self.receive_table
+        
+        selected_rows = table.selectionModel().selectedRows()
         if not selected_rows:
             return
         
         row = selected_rows[0].row()
         
         if self.tracer_mode:
-            data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5) no Tracer
+            data_str = table.item(row, 5).text()  # Data (coluna 5) no Tracer
         else:
-            data_str = self.receive_table.item(row, 5).text()  # Data (coluna 5) no Monitor
+            data_str = table.item(row, 5).text()  # Data (coluna 5) no Monitor
         
         # Copiar para clipboard
         clipboard = QApplication.clipboard()
@@ -3123,7 +3222,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.show_notification(t('notif_data_copied', data=data_str), 2000)
     
     def load_transmit_list(self):
-        """Carrega lista de mensagens de transmissão"""
+        """Carrega lista de mensagens de transmissão com validação de tipo"""
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Load Transmit List",
@@ -3134,6 +3233,10 @@ class CANAnalyzerWindow(QMainWindow):
             try:
                 with open(filename, 'r') as f:
                     data = json.load(f)
+                
+                # Validar tipo de arquivo
+                if not self._validate_file_type(data, 'transmit', filename):
+                    return
                 
                 # Suportar formato antigo (lista) e novo (dict com metadata)
                 if isinstance(data, list):
@@ -3479,17 +3582,53 @@ class CANAnalyzerWindow(QMainWindow):
             QTimer.singleShot(0, self.clear_playback_highlight)
             QTimer.singleShot(0, self.stop_playback)
     
-    def show_bit_field_viewer(self):
+    def show_bit_field_viewer(self, table: QTableWidget = None):
         """Mostra o Bit Field Viewer para a mensagem selecionada"""
-        selected_rows = self.receive_table.selectionModel().selectedRows()
+        if table is None:
+            table = self.receive_table
+        
+        selected_rows = table.selectionModel().selectedRows()
         if not selected_rows:
             return
         
         row = selected_rows[0].row()
         
-        # Obter mensagem correspondente
-        if row < len(self.received_messages):
-            message = self.received_messages[row]
+        # Get message data from table
+        if self.tracer_mode:
+            # Tracer mode: reconstruct message from table
+            pid_str = table.item(row, 3).text() if table.item(row, 3) else "0x000"
+            dlc_str = table.item(row, 4).text() if table.item(row, 4) else "0"
+            data_str = table.item(row, 5).text() if table.item(row, 5) else ""
+            
+            can_id = int(pid_str.replace('0x', ''), 16)
+            dlc = int(dlc_str)
+            data = bytes.fromhex(data_str.replace(' ', ''))
+            
+            message = CANMessage(
+                timestamp=0,
+                can_id=can_id,
+                dlc=dlc,
+                data=data
+            )
+        else:
+            # Monitor mode: reconstruct from table
+            pid_str = table.item(row, 3).text() if table.item(row, 3) else "0x000"
+            dlc_str = table.item(row, 4).text() if table.item(row, 4) else "0"
+            data_str = table.item(row, 5).text() if table.item(row, 5) else ""
+            
+            can_id = int(pid_str.replace('0x', ''), 16)
+            dlc = int(dlc_str)
+            data = bytes.fromhex(data_str.replace(' ', ''))
+            
+            message = CANMessage(
+                timestamp=0,
+                can_id=can_id,
+                dlc=dlc,
+                data=data
+            )
+        
+        # Show bit field viewer
+        if message:
             
             # Criar e mostrar dialog
             dialog = BitFieldViewerDialog(self, message)
@@ -3827,12 +3966,56 @@ class CANAnalyzerWindow(QMainWindow):
                 self.can_bus_manager.set_gateway_config(self.gateway_config)
                 self.logger.info(f"Gateway config updated: enabled={self.gateway_config.enabled}")
                 
+                # Update toolbar button
+                self.update_gateway_button_state()
+                
                 if self.gateway_config.enabled:
                     self.show_notification("Gateway enabled", 3000)
                 else:
                     self.show_notification("Gateway disabled", 3000)
         
         stats_timer.stop()
+    
+    def toggle_gateway_from_toolbar(self):
+        """Toggle Gateway enable/disable from toolbar button"""
+        if not self.can_bus_manager or len(self.can_bus_manager.get_bus_names()) < 2:
+            QMessageBox.warning(
+                self,
+                t('warning'),
+                "Gateway requires at least 2 CAN buses configured.\n"
+                "Please configure multiple CAN buses in Settings first."
+            )
+            self.btn_gateway.setChecked(False)
+            return
+        
+        # Toggle gateway state
+        self.gateway_config.enabled = self.btn_gateway.isChecked()
+        
+        # Apply to CAN bus manager
+        if self.can_bus_manager:
+            self.can_bus_manager.set_gateway_config(self.gateway_config)
+        
+        # Update button appearance
+        self.update_gateway_button_state()
+        
+        # Show notification
+        if self.gateway_config.enabled:
+            self.show_notification("🌉 Gateway enabled", 2000)
+            self.logger.info("Gateway enabled from toolbar")
+        else:
+            self.show_notification("Gateway disabled", 2000)
+            self.logger.info("Gateway disabled from toolbar")
+    
+    def update_gateway_button_state(self):
+        """Update gateway button text and style based on state"""
+        if self.gateway_config.enabled:
+            self.btn_gateway.setText("🌉 Gateway: ON")
+            self.btn_gateway.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold;")
+            self.btn_gateway.setChecked(True)
+        else:
+            self.btn_gateway.setText("🌉 Gateway: OFF")
+            self.btn_gateway.setStyleSheet("")
+            self.btn_gateway.setChecked(False)
     
     def toggle_split_screen(self):
         """Toggle split-screen mode"""
@@ -3990,7 +4173,10 @@ class CANAnalyzerWindow(QMainWindow):
         table_widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table_widget.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        table_widget.customContextMenuRequested.connect(self.show_receive_context_menu)
+        # Connect context menu with lambda to pass the table
+        table_widget.customContextMenuRequested.connect(
+            lambda pos, t=table_widget: self._show_context_menu_for_table(t, pos)
+        )
         
         # Column sizing
         header = table_widget.horizontalHeader()
