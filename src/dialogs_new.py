@@ -172,6 +172,67 @@ class SettingsDialog(QDialog):
         theme_group.setLayout(theme_layout)
         layout.addWidget(theme_group)
         
+        # Multi-CAN Configuration
+        multican_group = QGroupBox(t('multican_group'))
+        multican_layout = QVBoxLayout()
+        
+        # Info label
+        multican_info = QLabel(t('multican_info'))
+        multican_info.setStyleSheet(colors['info_text'])
+        multican_info.setWordWrap(True)
+        multican_layout.addWidget(multican_info)
+        
+        # Table for CAN buses
+        self.can_buses_table = QTableWidget()
+        self.can_buses_table.setColumnCount(5)
+        self.can_buses_table.setHorizontalHeaderLabels([
+            t('multican_name'),
+            t('multican_channel'),
+            t('multican_baudrate'),
+            t('multican_interface'),
+            t('multican_listen_only')
+        ])
+        self.can_buses_table.horizontalHeader().setStretchLastSection(False)
+        self.can_buses_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.can_buses_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.can_buses_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.can_buses_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.can_buses_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.can_buses_table.setMaximumHeight(150)
+        
+        # Load existing CAN buses from config
+        can_buses = self.config.get('can_buses', [])
+        if not can_buses:
+            # Default: single CAN bus with current settings
+            can_buses = [{
+                'name': 'CAN1',
+                'channel': self.config.get('channel', 'can0'),
+                'baudrate': self.config.get('baudrate', 500000),
+                'interface': 'socketcan',
+                'listen_only': self.config.get('listen_only', True)
+            }]
+        
+        for bus in can_buses:
+            self._add_can_bus_row(bus)
+        
+        multican_layout.addWidget(self.can_buses_table)
+        
+        # Buttons for add/remove
+        can_buttons_layout = QHBoxLayout()
+        self.btn_add_can = QPushButton(t('btn_add_can'))
+        self.btn_add_can.clicked.connect(self._add_new_can_bus)
+        can_buttons_layout.addWidget(self.btn_add_can)
+        
+        self.btn_remove_can = QPushButton(t('btn_remove_can'))
+        self.btn_remove_can.clicked.connect(self._remove_selected_can_bus)
+        can_buttons_layout.addWidget(self.btn_remove_can)
+        
+        can_buttons_layout.addStretch()
+        multican_layout.addLayout(can_buttons_layout)
+        
+        multican_group.setLayout(multican_layout)
+        layout.addWidget(multican_group)
+        
         # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self.accept)
@@ -201,11 +262,79 @@ class SettingsDialog(QDialog):
                     f"Description: {device.description}"
                 )
     
+    def _add_can_bus_row(self, bus_config):
+        """Add a CAN bus row to the table"""
+        row = self.can_buses_table.rowCount()
+        self.can_buses_table.insertRow(row)
+        
+        # Name
+        name_item = QTableWidgetItem(bus_config.get('name', f'CAN{row+1}'))
+        self.can_buses_table.setItem(row, 0, name_item)
+        
+        # Channel
+        channel_item = QTableWidgetItem(bus_config.get('channel', 'can0'))
+        self.can_buses_table.setItem(row, 1, channel_item)
+        
+        # Baudrate
+        baudrate = bus_config.get('baudrate', 500000)
+        baudrate_item = QTableWidgetItem(f"{baudrate//1000} Kbit/s")
+        self.can_buses_table.setItem(row, 2, baudrate_item)
+        
+        # Interface
+        interface_item = QTableWidgetItem(bus_config.get('interface', 'socketcan'))
+        self.can_buses_table.setItem(row, 3, interface_item)
+        
+        # Listen Only
+        listen_only = bus_config.get('listen_only', True)
+        listen_only_item = QTableWidgetItem("✓" if listen_only else "")
+        listen_only_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.can_buses_table.setItem(row, 4, listen_only_item)
+    
+    def _add_new_can_bus(self):
+        """Add a new CAN bus configuration"""
+        row_count = self.can_buses_table.rowCount()
+        new_bus = {
+            'name': f'CAN{row_count + 1}',
+            'channel': 'can0',
+            'baudrate': 500000,
+            'interface': 'socketcan',
+            'listen_only': True
+        }
+        self._add_can_bus_row(new_bus)
+    
+    def _remove_selected_can_bus(self):
+        """Remove selected CAN bus from table"""
+        current_row = self.can_buses_table.currentRow()
+        if current_row >= 0:
+            # Don't allow removing the last bus
+            if self.can_buses_table.rowCount() <= 1:
+                QMessageBox.warning(self, t('warning'), t('multican_info'))
+                return
+            self.can_buses_table.removeRow(current_row)
+    
     def get_config(self):
         """Retorna configuração atualizada"""
         baudrate_str = self.can_baudrate_combo.currentText().split()[0]
         selected_language = self.language_combo.currentData()
         selected_theme = self.theme_combo.currentData()
+        
+        # Extract CAN buses from table
+        can_buses = []
+        for row in range(self.can_buses_table.rowCount()):
+            name = self.can_buses_table.item(row, 0).text()
+            channel = self.can_buses_table.item(row, 1).text()
+            baudrate_text = self.can_buses_table.item(row, 2).text()
+            baudrate = int(baudrate_text.split()[0]) * 1000
+            interface = self.can_buses_table.item(row, 3).text()
+            listen_only = self.can_buses_table.item(row, 4).text() == "✓"
+            
+            can_buses.append({
+                'name': name,
+                'channel': channel,
+                'baudrate': baudrate,
+                'interface': interface,
+                'listen_only': listen_only
+            })
         
         return {
             'channel': self.device_combo.currentText(),
@@ -217,7 +346,8 @@ class SettingsDialog(QDialog):
             'baudrate_reg': self.baudrate_reg_input.text(),
             'language': selected_language,
             'theme': selected_theme,
-            'simulation_mode': self.simulation_mode_check.isChecked()
+            'simulation_mode': self.simulation_mode_check.isChecked(),
+            'can_buses': can_buses
         }
 
 
