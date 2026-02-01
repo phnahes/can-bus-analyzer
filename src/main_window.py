@@ -531,9 +531,9 @@ class CANAnalyzerWindow(QMainWindow):
     def setup_receive_table(self):
         """Configura a tabela de recepção baseado no modo"""
         if self.tracer_mode:
-            # Modo Tracer: ID, Time, PID, DLC, Data, ASCII, Comment, Channel
+            # Modo Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
             self.receive_table.setColumnCount(8)
-            self.receive_table.setHorizontalHeaderLabels(['ID', 'Time', 'PID', 'DLC', 'Data', 'ASCII', 'Comment', t('col_channel')])
+            self.receive_table.setHorizontalHeaderLabels(['ID', 'Time', t('col_channel'), 'PID', 'DLC', 'Data', 'ASCII', 'Comment'])
             
             # Modo Tracer: permitir edição (apenas Comment)
             self.receive_table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked)
@@ -545,19 +545,19 @@ class CANAnalyzerWindow(QMainWindow):
             # Definir larguras iniciais apropriadas
             header.resizeSection(0, 60)   # ID (sequencial)
             header.resizeSection(1, 100)  # Time
-            header.resizeSection(2, 80)   # PID (CAN ID)
-            header.resizeSection(3, 60)   # DLC
-            header.resizeSection(4, 250)  # Data
-            header.resizeSection(5, 100)  # ASCII
-            header.resizeSection(6, 150)  # Comment
-            header.resizeSection(7, 70)   # Source
+            header.resizeSection(2, 70)   # Channel
+            header.resizeSection(3, 80)   # PID (CAN ID)
+            header.resizeSection(4, 60)   # DLC
+            header.resizeSection(5, 250)  # Data
+            header.resizeSection(6, 100)  # ASCII
+            header.resizeSection(7, 150)  # Comment
             
             # Permitir que a última coluna se expanda se houver espaço
             header.setStretchLastSection(True)
         else:
-            # Modo Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment, Channel
+            # Modo Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
             self.receive_table.setColumnCount(9)
-            self.receive_table.setHorizontalHeaderLabels(['ID', 'Count', 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment', t('col_channel')])
+            self.receive_table.setHorizontalHeaderLabels(['ID', 'Count', t('col_channel'), 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment'])
             
             # Modo Monitor: NÃO permitir edição (dados são atualizados automaticamente)
             self.receive_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -569,13 +569,13 @@ class CANAnalyzerWindow(QMainWindow):
             # Definir larguras iniciais apropriadas
             header.resizeSection(0, 40)   # ID (sequencial)
             header.resizeSection(1, 60)   # Count
-            header.resizeSection(2, 80)   # PID (CAN ID)
-            header.resizeSection(3, 50)   # DLC
-            header.resizeSection(4, 250)  # Data
-            header.resizeSection(5, 70)   # Period
-            header.resizeSection(6, 100)  # ASCII
-            header.resizeSection(7, 150)  # Comment
-            header.resizeSection(8, 70)   # Source
+            header.resizeSection(2, 70)   # Channel
+            header.resizeSection(3, 80)   # PID (CAN ID)
+            header.resizeSection(4, 50)   # DLC
+            header.resizeSection(5, 250)  # Data
+            header.resizeSection(6, 70)   # Period
+            header.resizeSection(7, 100)  # ASCII
+            header.resizeSection(8, 150)  # Comment
             
             # Permitir que a última coluna se expanda se houver espaço
             header.setStretchLastSection(True)
@@ -633,14 +633,20 @@ class CANAnalyzerWindow(QMainWindow):
                     dlc_item = QTableWidgetItem(str(msg.dlc))
                     dlc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
-                    # Inserir items
+                    # Inserir items - Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
                     self.receive_table.setItem(row_idx, 0, id_item)
                     self.receive_table.setItem(row_idx, 1, QTableWidgetItem(time_str))
-                    self.receive_table.setItem(row_idx, 2, QTableWidgetItem(pid_str))
-                    self.receive_table.setItem(row_idx, 3, dlc_item)
-                    self.receive_table.setItem(row_idx, 4, QTableWidgetItem(data_str))
-                    self.receive_table.setItem(row_idx, 5, QTableWidgetItem(ascii_str))
-                    self.receive_table.setItem(row_idx, 6, QTableWidgetItem(msg.comment))
+                    
+                    # Channel column
+                    channel_item = QTableWidgetItem(msg.source)
+                    channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.receive_table.setItem(row_idx, 2, channel_item)
+                    
+                    self.receive_table.setItem(row_idx, 3, QTableWidgetItem(pid_str))
+                    self.receive_table.setItem(row_idx, 4, dlc_item)
+                    self.receive_table.setItem(row_idx, 5, QTableWidgetItem(data_str))
+                    self.receive_table.setItem(row_idx, 6, QTableWidgetItem(ascii_str))
+                    self.receive_table.setItem(row_idx, 7, QTableWidgetItem(msg.comment))
         else:
             # Modo Monitor: reconstruir visualização agrupada
             # Limpar contadores para reconstruir do zero
@@ -708,15 +714,21 @@ class CANAnalyzerWindow(QMainWindow):
                     period_item = QTableWidgetItem(period_str)
                     period_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
-                    # Inserir items - Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
+                    # Inserir items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
                     self.receive_table.setItem(row_idx, 0, id_item)                              # ID sequencial
                     self.receive_table.setItem(row_idx, 1, count_item)                           # Count
-                    self.receive_table.setItem(row_idx, 2, QTableWidgetItem(pid_str))            # PID
-                    self.receive_table.setItem(row_idx, 3, dlc_item)                             # DLC
-                    self.receive_table.setItem(row_idx, 4, QTableWidgetItem(data_str))           # Data
-                    self.receive_table.setItem(row_idx, 5, period_item)                          # Period
-                    self.receive_table.setItem(row_idx, 6, QTableWidgetItem(ascii_str))          # ASCII
-                    self.receive_table.setItem(row_idx, 7, QTableWidgetItem(msg.comment))        # Comment
+                    
+                    # Channel column
+                    channel_item = QTableWidgetItem(msg.source)
+                    channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.receive_table.setItem(row_idx, 2, channel_item)                         # Channel
+                    
+                    self.receive_table.setItem(row_idx, 3, QTableWidgetItem(pid_str))            # PID
+                    self.receive_table.setItem(row_idx, 4, dlc_item)                             # DLC
+                    self.receive_table.setItem(row_idx, 5, QTableWidgetItem(data_str))           # Data
+                    self.receive_table.setItem(row_idx, 6, period_item)                          # Period
+                    self.receive_table.setItem(row_idx, 7, QTableWidgetItem(ascii_str))          # ASCII
+                    self.receive_table.setItem(row_idx, 8, QTableWidgetItem(msg.comment))        # Comment
                     
                     row_idx += 1
                     
@@ -1423,19 +1435,20 @@ class CANAnalyzerWindow(QMainWindow):
         dlc_item = QTableWidgetItem(str(msg.dlc))
         dlc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # ID, Time, PID, DLC, Data, ASCII, Comment, Source
+        # ID, Time, Channel, PID, DLC, Data, ASCII, Comment
         self.receive_table.setItem(row, 0, id_item)                          # ID sequencial
         self.receive_table.setItem(row, 1, QTableWidgetItem(time_str))      # Time
-        self.receive_table.setItem(row, 2, QTableWidgetItem(pid_str))       # PID
-        self.receive_table.setItem(row, 3, dlc_item)                        # DLC
-        self.receive_table.setItem(row, 4, QTableWidgetItem(data_str))      # Data
-        self.receive_table.setItem(row, 5, QTableWidgetItem(ascii_str))     # ASCII
-        self.receive_table.setItem(row, 6, QTableWidgetItem(msg.comment))   # Comment
         
-        # Source column
-        source_item = QTableWidgetItem(msg.source)
-        source_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.receive_table.setItem(row, 7, source_item)                      # Source
+        # Channel column
+        channel_item = QTableWidgetItem(msg.source)
+        channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.receive_table.setItem(row, 2, channel_item)                    # Channel
+        
+        self.receive_table.setItem(row, 3, QTableWidgetItem(pid_str))       # PID
+        self.receive_table.setItem(row, 4, dlc_item)                        # DLC
+        self.receive_table.setItem(row, 5, QTableWidgetItem(data_str))      # Data
+        self.receive_table.setItem(row, 6, QTableWidgetItem(ascii_str))     # ASCII
+        self.receive_table.setItem(row, 7, QTableWidgetItem(msg.comment))   # Comment
         
         # NO TRACER MODE: Sem highlight (deixar fluir sem azul)
         # Removido o código de highlight para que as mensagens fluam naturalmente
@@ -1473,11 +1486,11 @@ class CANAnalyzerWindow(QMainWindow):
         # Atualizar timestamp da última mensagem deste ID+Channel
         self.message_last_timestamp[counter_key] = msg.timestamp
         
-        # Procurar se já existe linha com esse PID E Channel (coluna 8)
+        # Procurar se já existe linha com esse PID E Channel
         existing_row = -1
         for row in range(self.receive_table.rowCount()):
-            pid_item = self.receive_table.item(row, 2)  # Coluna 2 = PID
-            channel_item = self.receive_table.item(row, 8)  # Coluna 8 = Channel
+            pid_item = self.receive_table.item(row, 3)  # Coluna 3 = PID
+            channel_item = self.receive_table.item(row, 2)  # Coluna 2 = Channel
             if pid_item and channel_item:
                 if pid_item.text() == pid_str and channel_item.text() == msg.source:
                     existing_row = row
@@ -1485,14 +1498,14 @@ class CANAnalyzerWindow(QMainWindow):
         
         if existing_row >= 0:
             # Atualizar linha existente
-            # Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment, Source
+            # Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
             count_item = QTableWidgetItem(str(count))
             count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)  # Centralizar Count
             self.receive_table.setItem(existing_row, 1, count_item)                     # Count
-            self.receive_table.setItem(existing_row, 4, QTableWidgetItem(data_str))     # Data
-            self.receive_table.setItem(existing_row, 5, QTableWidgetItem(period_str))   # Period
-            self.receive_table.setItem(existing_row, 6, QTableWidgetItem(ascii_str))    # ASCII
-            # Source não muda (mantém o original da primeira mensagem)
+            # Channel não muda (mantém o original da primeira mensagem)
+            self.receive_table.setItem(existing_row, 5, QTableWidgetItem(data_str))     # Data
+            self.receive_table.setItem(existing_row, 6, QTableWidgetItem(period_str))   # Period
+            self.receive_table.setItem(existing_row, 7, QTableWidgetItem(ascii_str))    # ASCII
             
             # NO MONITOR MODE: Destacar APENAS a célula Count em azul claro quando count > 1
             if highlight and count > 1:
@@ -1516,8 +1529,8 @@ class CANAnalyzerWindow(QMainWindow):
             insert_row = self.receive_table.rowCount()  # Por padrão, inserir no final
             
             for row in range(self.receive_table.rowCount()):
-                existing_pid_item = self.receive_table.item(row, 2)
-                existing_channel_item = self.receive_table.item(row, 8)
+                existing_pid_item = self.receive_table.item(row, 3)  # Coluna 3 = PID
+                existing_channel_item = self.receive_table.item(row, 2)  # Coluna 2 = Channel
                 if existing_pid_item:
                     existing_pid_str = existing_pid_item.text()
                     # Comparar PIDs (remover "0x" e converter para int)
@@ -1550,20 +1563,21 @@ class CANAnalyzerWindow(QMainWindow):
             period_item = QTableWidgetItem(period_str)
             period_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            # Inserir items - Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment, Source
+            # Inserir items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
             self.receive_table.setItem(row, 0, id_item)                            # ID sequencial
             self.receive_table.setItem(row, 1, count_item)                         # Count
-            self.receive_table.setItem(row, 2, QTableWidgetItem(pid_str))          # PID
-            self.receive_table.setItem(row, 3, dlc_item)                           # DLC
-            self.receive_table.setItem(row, 4, QTableWidgetItem(data_str))         # Data
-            self.receive_table.setItem(row, 5, period_item)                        # Period
-            self.receive_table.setItem(row, 6, QTableWidgetItem(ascii_str))        # ASCII
-            self.receive_table.setItem(row, 7, QTableWidgetItem(msg.comment))      # Comment
             
-            # Source column
-            source_item = QTableWidgetItem(msg.source)
-            source_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.receive_table.setItem(row, 8, source_item)                        # Source
+            # Channel column
+            channel_item = QTableWidgetItem(msg.source)
+            channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.receive_table.setItem(row, 2, channel_item)                       # Channel
+            
+            self.receive_table.setItem(row, 3, QTableWidgetItem(pid_str))          # PID
+            self.receive_table.setItem(row, 4, dlc_item)                           # DLC
+            self.receive_table.setItem(row, 5, QTableWidgetItem(data_str))         # Data
+            self.receive_table.setItem(row, 6, period_item)                        # Period
+            self.receive_table.setItem(row, 7, QTableWidgetItem(ascii_str))        # ASCII
+            self.receive_table.setItem(row, 8, QTableWidgetItem(msg.comment))      # Comment
             
             # NÃO destacar na primeira mensagem (count == 1), manter cor normal
             # Highlight só deve aparecer quando count > 1 (mensagem repetida)

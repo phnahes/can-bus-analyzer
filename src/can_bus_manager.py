@@ -149,11 +149,9 @@ class CANBusInstance:
             
             if self.bus:
                 self.bus.send(can_msg)
-                print(f"[{self.config.name}] TX: ID=0x{msg_id:03X}, Data={msg_data.hex() if isinstance(msg_data, bytes) else msg_data}")
                 return True
             else:
-                # Simulation mode
-                print(f"[{self.config.name}] SIM TX: ID=0x{msg_id:03X}, Data={msg_data.hex() if isinstance(msg_data, bytes) else msg_data}")
+                # Simulation mode (no print needed, logger handles it)
                 return True
         except Exception as e:
             print(f"[{self.config.name}] Send error: {e}")
