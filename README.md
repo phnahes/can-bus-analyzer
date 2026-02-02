@@ -50,31 +50,31 @@ python can_analyzer_qt.py
 ### Monitor & Tracer Modes
 | | |
 |:---:|:---:|
-| ![Monitor Mode](docs/image1.png) | ![Tracer Mode](docs/image2.png) |
+| ![Monitor Mode](docs/images/image1.png) | ![Tracer Mode](docs/images/image2.png) |
 | *Monitor Mode - Grouped by ID* | *Tracer Mode - Chronological List* |
 
 ### Configuration & Tools
 | | |
 |:---:|:---:|
-| ![CAN Bus Config](docs/image3.png) | ![Bit Viewer](docs/image4.png) |
+| ![CAN Bus Config](docs/images/image3.png) | ![Bit Viewer](docs/images/image4.png) |
 | *Multi-CAN Bus Configuration* | *Bit Field Viewer* |
 
 ### Split-Screen Monitor (Dual Channel View)
 | | |
 |:---:|:---:|
-| ![Split with TX Panel](docs/image5.png) | ![Split Clean View](docs/image6.png) |
+| ![Split with TX Panel](docs/images/image5.png) | ![Split Clean View](docs/images/image6.png) |
 | *Split-Screen + Transmit Panel* | *Split-Screen (TX Hidden)* |
-| ![Multi-CAN View](docs/image7.png) | ![Split Channel Selection](docs/image8.png) |
+| ![Multi-CAN View](docs/images/image7.png) | ![Split Channel Selection](docs/images/image8.png) |
 | *Multi-CAN Without Split* | *Split-Screen Channel Selection Dialog* |
-| ![Split with Active TX](docs/image9.png) | ![Tracer Multi-CAN](docs/image10.png) |
+| ![Split with Active TX](docs/images/image9.png) | ![Tracer Multi-CAN](docs/images/image10.png) |
 | *Split-Screen + Active Transmission* | *Tracer Mode with Multi-CAN* |
 
 ### CAN Gateway (Message Routing & Modification)
 | | |
 |:---:|:---:|
-| ![Gateway Configuration](docs/image11.png) | ![Message Modification Editor](docs/image12.png) |
+| ![Gateway Configuration](docs/images/image11.png) | ![Message Modification Editor](docs/images/image12.png) |
 | *Gateway Basic Configuration* | *Bit-Level Message Modification* |
-| ![Modified Message Result](docs/image13.png) | |
+| ![Modified Message Result](docs/images/image13.png) | |
 | *Original vs Modified Message Result* | |
 
 ---
@@ -150,6 +150,7 @@ can-bus-analyzer/
 ├── config.json                 # Saved settings (created at first run)
 ├── icon.icns / icon.ico        # App icons (macOS / Linux); generated from icon.png via extras
 ├── docs/                       # Additional documentation
+│   ├── images/                 # Screenshots and app images (used in README)
 │   ├── BUILD.md                # Packaging and standalone build instructions
 │   ├── INTERNATIONALIZATION.md # Adding and editing translations
 │   ├── RELEASE_MANUAL.md       # How to create a release manually on GitHub
