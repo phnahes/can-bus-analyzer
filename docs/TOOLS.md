@@ -7,7 +7,7 @@ The `tools/` folder contains ready-to-use code for testing and interfacing with 
 #### **Python Tools**
 
 **`send_can_message.py`** - Python CAN message sender
-- Direct serial communication with CanHacker/Lawicel devices
+- Direct serial communication with Lawicel SLCAN devices
 - No external dependencies (only pyserial)
 - Automatically cycles through 7 test messages
 - Listen-only mode available
@@ -39,7 +39,7 @@ python3 tools/send_can_message.py --listen --debug
 
 ### Using Arduino as CAN Interface
 
-You can use an **Arduino with MCP2515** as a low-cost CAN interface using the **CanHacker protocol**:
+You can use an **Arduino with MCP2515** as a low-cost CAN interface using the **Lawicel SLCAN protocol**:
 
 **Hardware Setup:**
 - Arduino Uno/Nano/Mega
@@ -48,16 +48,16 @@ You can use an **Arduino with MCP2515** as a low-cost CAN interface using the **
 
 **Software Setup:**
 
-1. **Install the arduino-canhacker library:**
+1. **Install an Arduino library that implements Lawicel SLCAN:**
    - Arduino IDE → **Sketch** → **Include Library** → **Manage Libraries...**
-   - Search for **"CanHacker"**
-   - Install **"CanHacker by autowp"**
+   - Search for **"SLCAN"** or **"Lawicel"**
+   - Install a library that implements the Lawicel SLCAN protocol (e.g. by autowp)
    - Also install **"MCP2515 by autowp"** (dependency)
 
 2. **Use the official example:**
-   - **Library Repository**: [arduino-canhacker](https://github.com/autowp/arduino-canhacker/tree/master)
+   - **Library Repository**: [arduino SLCAN library](https://github.com/autowp/arduino-canhacker/tree/master)
    - **Example Code**: [usb_cdc.ino](https://github.com/autowp/arduino-canhacker/blob/master/examples/usb_cdc/usb_cdc/usb_cdc.ino)
-   - Open the example in Arduino IDE: **File** → **Examples** → **CanHacker** → **usb_cdc**
+   - Open the example in Arduino IDE: **File** → **Examples** → **SLCAN** (or Lawicel) → **usb_cdc**
 
 3. **Upload to Arduino:**
    - Select your board: **Tools** → **Board** → **Arduino Uno** (or your board)
@@ -74,17 +74,17 @@ You can use an **Arduino with MCP2515** as a low-cost CAN interface using the **
 
 **Advantages:**
 - **Low-cost** - Arduino + MCP2515 module (~$10 total)
-- **Compatible** - Works with CanHacker, python-can, and other tools
+- **Compatible** - Works with python-can and other SLCAN tools
 - **Open-source** - Fully customizable and documented
 - **No drivers** - Uses standard USB serial (CDC)
 
 
 ### Protocol Reference
 
-The Arduino CanHacker implementation follows the **Lawicel SLCAN protocol**:
+The Arduino SLCAN implementation follows the **Lawicel SLCAN protocol**:
 
-- **Protocol Documentation**: [CanHacker Protocol](https://github.com/autowp/arduino-canhacker/blob/master/docs/en/protocol.md)
-- **Library Repository**: [arduino-canhacker](https://github.com/autowp/arduino-canhacker)
+- **Protocol Documentation**: [Lawicel SLCAN Protocol](https://github.com/autowp/arduino-canhacker/blob/master/docs/en/protocol.md)
+- **Library Repository**: [arduino SLCAN library](https://github.com/autowp/arduino-canhacker)
 
 **Key Commands:**
 - `Sn` - Set bitrate (S6 = 500 Kbps)
@@ -109,7 +109,7 @@ The Arduino CanHacker implementation follows the **Lawicel SLCAN protocol**:
 4. Watch Arduino Serial Monitor for received messages
 
 **Option 3: Arduino as CAN Interface**
-1. Upload `arduino_canhacker.ino` to Arduino
+1. Upload the SLCAN (usb_cdc) example to Arduino
 2. Use Arduino as your CAN adapter
 3. No separate CAN adapter needed!
 

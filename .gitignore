@@ -66,3 +66,7 @@ icon.iconset/
 can_analyzer_icon.png
 *.iconset/
 
+# Article (not part of repo distribution)
+docs/ARTICLE_CAN_ANALYZER.md
+docs/ARTICLE_CAN_ANALYZER_EN.md
+

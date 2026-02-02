@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CAN Message Sender - Direct serial communication with CanHacker/Lawicel protocol devices
+CAN Message Sender - Direct serial communication with Lawicel SLCAN protocol devices
 No external dependencies required (only pyserial)
 
 Features:
@@ -26,7 +26,7 @@ import time
 import sys
 
 class CANInterface:
-    """Direct serial communication with CanHacker/Lawicel protocol devices"""
+    """Direct serial communication with Lawicel SLCAN protocol devices"""
     
     def __init__(self, port, baudrate=115200, timeout=1):
         self.port = port
@@ -135,7 +135,7 @@ class CANInterface:
         """
         Open CAN channel with specified bitrate
         
-        Bitrate codes (CanHacker/Lawicel protocol):
+        Bitrate codes (Lawicel SLCAN protocol):
         S0 = 10 kbit/s
         S1 = 20 kbit/s
         S2 = 50 kbit/s
@@ -195,7 +195,7 @@ class CANInterface:
         """
         Send CAN message
         
-        CanHacker/Lawicel format: tIIILDDDDDDDDDDDDDDDD<CR>
+        Lawicel SLCAN format: tIIILDDDDDDDDDDDDDDDD<CR>
         - t: transmit standard frame
         - III: CAN ID (3 hex digits)
         - L: DLC (1 digit)
@@ -205,7 +205,7 @@ class CANInterface:
             print("✗ Data too long (max 8 bytes)")
             return False
         
-        # Format message in CanHacker/Lawicel protocol
+        # Format message in Lawicel SLCAN protocol
         dlc = len(data)
         data_hex = ''.join(f'{byte:02X}' for byte in data)
         message = f"t{can_id:03X}{dlc}{data_hex}"
