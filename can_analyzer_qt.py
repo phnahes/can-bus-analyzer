@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CAN Analyzer - Entry Point
-CAN bus analyzer with CANHacker-like functionality. Runs on macOS and Linux.
+CAN bus analyzer with SLCAN-based real-time analysis. Runs on macOS and Linux.
 """
 
 import sys

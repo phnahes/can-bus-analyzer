@@ -213,11 +213,11 @@ class I18n:
             'fr': 'Analyseur de bus CAN complet'
         },
         'about_replicates': {
-            'en': 'Replicates CANHacker functionalities for {platform}',
-            'pt': 'Replica funcionalidades do CANHacker para {platform}',
-            'es': 'Replica funcionalidades de CANHacker para {platform}',
-            'de': 'Repliziert CANHacker-Funktionen für {platform}',
-            'fr': 'Réplique les fonctionnalités de CANHacker pour {platform}'
+            'en': 'CAN bus analyzer for {platform}',
+            'pt': 'Analisador de barramento CAN para {platform}',
+            'es': 'Analizador de bus CAN para {platform}',
+            'de': 'CAN-Bus-Analyzer für {platform}',
+            'fr': 'Analyseur de bus CAN pour {platform}'
         },
         'about_features': {
             'en': 'Features',
@@ -801,11 +801,11 @@ class I18n:
             'fr': 'À propos de CAN Analyzer'
         },
         'dialog_about_text': {
-            'en': 'CAN Analyzer for macOS\n\nVersion 1.0\n\nCAN bus analysis tool with CANHacker-like functionality',
-            'pt': 'CAN Analyzer para macOS\n\nVersão 1.0\n\nFerramenta de análise de barramento CAN com funcionalidades similares ao CANHacker',
-            'es': 'CAN Analyzer para macOS\n\nVersión 1.0\n\nHerramienta de análisis de bus CAN con funcionalidad similar a CANHacker',
-            'de': 'CAN Analyzer für macOS\n\nVersion 1.0\n\nCAN-Bus-Analysetool mit CANHacker-ähnlicher Funktionalität',
-            'fr': 'CAN Analyzer pour macOS\n\nVersion 1.0\n\nOutil d\'analyse de bus CAN avec des fonctionnalités similaires à CANHacker'
+            'en': 'CAN Analyzer for macOS\n\nVersion 1.0\n\nCAN bus analysis tool with SLCAN-based real-time analysis',
+            'pt': 'CAN Analyzer para macOS\n\nVersão 1.0\n\nFerramenta de análise de barramento CAN com análise em tempo real baseada em SLCAN',
+            'es': 'CAN Analyzer para macOS\n\nVersión 1.0\n\nHerramienta de análisis de bus CAN con análisis en tiempo real basado en SLCAN',
+            'de': 'CAN Analyzer für macOS\n\nVersion 1.0\n\nCAN-Bus-Analysetool mit SLCAN-basierter Echtzeitanalyse',
+            'fr': 'CAN Analyzer pour macOS\n\nVersion 1.0\n\nOutil d\'analyse de bus CAN avec analyse en temps réel basée sur SLCAN'
         },
         'dialog_usb_device_title': {
             'en': 'Select USB Device',

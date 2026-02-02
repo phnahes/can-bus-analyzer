@@ -3,7 +3,7 @@
 [![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
-A CANbus analyzer with CANHacker-like functionality. Built with Python and PyQt6. **Runs on macOS and Linux.**
+A CANbus analyzer with SLCAN-based, real-time analysis. Built with Python and PyQt6. **Runs on macOS and Linux.**
 
 ---
 
@@ -563,7 +563,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 ### CAN Protocol Implementation
 
-The application uses `python-can` library which abstracts the CANHacker/Lawicel SLCAN protocol:
+The application uses `python-can` library which abstracts the Lawicel SLCAN protocol:
 
 **Supported Interfaces:**
 - **SLCAN** (Serial CAN): For USB-serial adapters implementing Lawicel protocol

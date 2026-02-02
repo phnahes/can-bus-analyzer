@@ -15,7 +15,7 @@ Practical examples for testing and using the CAN Analyzer with different devices
 
 ### send_can_message.py
 
-Python script for direct serial communication with CanHacker/Lawicel protocol devices.
+Python script for direct serial communication with Lawicel SLCAN protocol devices.
 
 **Features:**
 - Direct serial communication (no external dependencies except pyserial)
@@ -87,7 +87,7 @@ If you see "Failed to configure bitrate":
    - Wrong port (verify with `ls /dev/tty.*`)
    - Device already open (close other programs)
    - Wrong baudrate (try 9600 or 19200)
-   - Arduino not programmed with CanHacker firmware
+   - Arduino not programmed with SLCAN (Lawicel) firmware
 
 4. Test device manually:
    ```bash
@@ -205,12 +205,12 @@ Where:
 
 ## Arduino as CAN Interface
 
-Transform your **Arduino + MCP2515** into a professional CAN interface compatible with the **CanHacker/Lawicel SLCAN** protocol.
+Transform your **Arduino + MCP2515** into a professional CAN interface compatible with the **Lawicel SLCAN** protocol.
 
 ### Advantages
 
 - **Low cost**: Arduino + MCP2515 costs ~$10 (vs $50-100 for commercial adapters)
-- **Standard protocol**: Compatible with CanHacker, python-can, and other tools
+- **Standard protocol**: Compatible with python-can and other SLCAN tools
 - **Open-source**: Fully customizable code
 - **No proprietary drivers**: Uses standard serial communication
 - **Full functionality**: Supports all Lawicel protocol features
@@ -255,8 +255,8 @@ Transform your **Arduino + MCP2515** into a professional CAN interface compatibl
 
 1. Open Arduino IDE
 2. Go to **Sketch** → **Include Library** → **Manage Libraries...**
-3. Search for **"CanHacker"**
-4. Install **"CanHacker by autowp"**
+3. Search for **"SLCAN"** or **"Lawicel"**
+4. Install a library that implements the Lawicel SLCAN protocol (e.g. by autowp)
 5. Also install **"MCP2515 by autowp"** (dependency)
 
 **Method 2: Manual**
@@ -269,13 +269,13 @@ git clone https://github.com/autowp/arduino-canhacker.git
 
 ### Arduino Code
 
-**Use the official example from arduino-canhacker library:**
+**Use the official example from the SLCAN/Lawicel library:**
 
 1. **Open example in Arduino IDE:**
-   - **File** → **Examples** → **CanHacker** → **usb_cdc**
+   - **File** → **Examples** → **SLCAN** (or Lawicel) → **usb_cdc**
 
 2. **Or access directly:**
-   - **Repository**: [arduino-canhacker](https://github.com/autowp/arduino-canhacker)
+   - **Repository**: [arduino SLCAN library](https://github.com/autowp/arduino-canhacker)
    - **Example**: [usb_cdc.ino](https://github.com/autowp/arduino-canhacker/blob/master/examples/usb_cdc/usb_cdc/usb_cdc.ino)
 
 3. **Default pin configuration:**
@@ -355,9 +355,9 @@ t2805BB8E000029FA2929
 
 ## Protocol Reference
 
-### CanHacker/Lawicel SLCAN Protocol
+### Lawicel SLCAN Protocol
 
-The Arduino implements the **Lawicel SLCAN** protocol, used by CanHacker, USBtin, LAWICEL CANUSB, and other devices.
+The Arduino implements the **Lawicel SLCAN** protocol, used by USBtin, LAWICEL CANUSB, and other devices.
 
 ### Main Commands
 
@@ -509,7 +509,7 @@ m000007FF    # Mask = 0x7FF (all standard ID bits)
 **Scenario:** Developing a CAN device and need to test communication.
 
 **Setup:**
-1. **Arduino 1** with CanHacker firmware → PC interface
+1. **Arduino 1** with SLCAN firmware → PC interface
 2. **Arduino 2** with message generator → Simulate your device
 3. **CAN Analyzer** on PC → Monitor and send messages
 
@@ -523,7 +523,7 @@ m000007FF    # Mask = 0x7FF (all standard ID bits)
 **Scenario:** Analyze CAN messages from your car.
 
 **Setup:**
-1. Arduino with CanHacker firmware
+1. Arduino with SLCAN (Lawicel) firmware
 2. Connect to vehicle's OBD-II (via OBD-CAN adapter)
 3. CAN Analyzer on laptop
 
@@ -538,7 +538,7 @@ m000007FF    # Mask = 0x7FF (all standard ID bits)
 
 **Setup:**
 1. 2x Arduino with MCP2515
-2. One with CanHacker firmware (interface)
+2. One with SLCAN firmware (interface)
 3. Other with message generator
 4. CAN Analyzer to visualize
 
@@ -554,7 +554,7 @@ m000007FF    # Mask = 0x7FF (all standard ID bits)
 | Feature | Arduino + MCP2515 | USBtin | PEAK PCAN-USB | Vector CANcase |
 |---------|-------------------|--------|---------------|----------------|
 | **Price** | ~$10 | ~$50 | ~$100 | ~$500+ |
-| **Protocol** | CanHacker/Lawicel | CanHacker/Lawicel | Proprietary | Proprietary |
+| **Protocol** | Lawicel SLCAN | Lawicel SLCAN | Proprietary | Proprietary |
 | **Open-source** | Yes | No | No | No |
 | **Customizable** | Yes | No | No | No |
 | **Max Bitrate** | 1 Mbps | 1 Mbps | 1 Mbps | 1 Mbps |
@@ -569,13 +569,12 @@ m000007FF    # Mask = 0x7FF (all standard ID bits)
 
 ### Official Documentation
 
-- **CanHacker Protocol**: https://github.com/autowp/arduino-canhacker/blob/master/docs/en/protocol.md
-- **Arduino Library**: https://github.com/autowp/arduino-canhacker
+- **Lawicel SLCAN Protocol**: https://github.com/autowp/arduino-canhacker/blob/master/docs/en/protocol.md
+- **Arduino SLCAN Library**: https://github.com/autowp/arduino-canhacker
 - **MCP2515 Library**: https://github.com/autowp/arduino-mcp2515
 
 ### Original Lawicel Protocol
 
 - **LAWICEL CANUSB**: http://www.can232.com/docs/canusb_manual.pdf
-- **CanHacker for Windows**: http://www.mictronics.de/projects/usb-can-bus/
 
 
