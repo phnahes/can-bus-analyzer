@@ -88,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated keyboard shortcuts table
 - Added use cases and examples for both features
 - Reference to CAN-Hacker Gateway implementation
+- Screenshots moved to `docs/images/` directory (README paths updated)
 
 ### Technical Notes
 - Gateway implementation inspired by CAN-Hacker Gateway
