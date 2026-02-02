@@ -1233,6 +1233,504 @@ class I18n:
             'de': 'Konfigurieren Sie mehrere CAN-Busse. Mindestens ein Bus ist erforderlich.',
             'fr': 'Configurez plusieurs bus CAN. Au moins un bus est requis.'
         },
+        
+        # Gateway
+        'gateway_title': {
+            'en': 'CAN Gateway Configuration',
+            'pt': 'Configuração do Gateway CAN',
+            'es': 'Configuración del Gateway CAN',
+            'de': 'CAN Gateway Konfiguration',
+            'fr': 'Configuration du Gateway CAN'
+        },
+        'gateway_transmission': {
+            'en': 'Transmission Control',
+            'pt': 'Controle de Transmissão',
+            'es': 'Control de Transmisión',
+            'de': 'Übertragungssteuerung',
+            'fr': 'Contrôle de Transmission'
+        },
+        'gateway_enable': {
+            'en': 'Enable Gateway',
+            'pt': 'Ativar Gateway',
+            'es': 'Activar Gateway',
+            'de': 'Gateway aktivieren',
+            'fr': 'Activer Gateway'
+        },
+        'gateway_transmit_from': {
+            'en': 'Transmit from',
+            'pt': 'Transmitir de',
+            'es': 'Transmitir desde',
+            'de': 'Übertragen von',
+            'fr': 'Transmettre de'
+        },
+        'gateway_to': {
+            'en': 'to',
+            'pt': 'para',
+            'es': 'a',
+            'de': 'zu',
+            'fr': 'à'
+        },
+        'gateway_blocking': {
+            'en': 'Static Blocking Rules',
+            'pt': 'Regras de Bloqueio Estático',
+            'es': 'Reglas de Bloqueo Estático',
+            'de': 'Statische Sperrregeln',
+            'fr': 'Règles de Blocage Statique'
+        },
+        'gateway_channel': {
+            'en': 'Channel',
+            'pt': 'Canal',
+            'es': 'Canal',
+            'de': 'Kanal',
+            'fr': 'Canal'
+        },
+        'gateway_id': {
+            'en': 'ID',
+            'pt': 'ID',
+            'es': 'ID',
+            'de': 'ID',
+            'fr': 'ID'
+        },
+        'gateway_lock': {
+            'en': 'Lock',
+            'pt': 'Bloquear',
+            'es': 'Bloquear',
+            'de': 'Sperren',
+            'fr': 'Bloquer'
+        },
+        'gateway_unlock': {
+            'en': 'Unlock',
+            'pt': 'Desbloquear',
+            'es': 'Desbloquear',
+            'de': 'Entsperren',
+            'fr': 'Débloquer'
+        },
+        'gateway_enabled': {
+            'en': 'Enabled',
+            'pt': 'Ativado',
+            'es': 'Activado',
+            'de': 'Aktiviert',
+            'fr': 'Activé'
+        },
+        'gateway_dynamic_blocking': {
+            'en': 'Dynamic Blocking',
+            'pt': 'Bloqueio Dinâmico',
+            'es': 'Bloqueo Dinámico',
+            'de': 'Dynamische Sperrung',
+            'fr': 'Blocage Dynamique'
+        },
+        'gateway_id_from': {
+            'en': 'ID From',
+            'pt': 'ID De',
+            'es': 'ID Desde',
+            'de': 'ID Von',
+            'fr': 'ID De'
+        },
+        'gateway_id_to': {
+            'en': 'ID To',
+            'pt': 'ID Até',
+            'es': 'ID Hasta',
+            'de': 'ID Bis',
+            'fr': 'ID À'
+        },
+        'gateway_period': {
+            'en': 'Period',
+            'pt': 'Período',
+            'es': 'Período',
+            'de': 'Periode',
+            'fr': 'Période'
+        },
+        'gateway_start': {
+            'en': 'Start',
+            'pt': 'Iniciar',
+            'es': 'Iniciar',
+            'de': 'Starten',
+            'fr': 'Démarrer'
+        },
+        'gateway_stop': {
+            'en': 'Stop',
+            'pt': 'Parar',
+            'es': 'Detener',
+            'de': 'Stoppen',
+            'fr': 'Arrêter'
+        },
+        'gateway_statistics': {
+            'en': 'Statistics',
+            'pt': 'Estatísticas',
+            'es': 'Estadísticas',
+            'de': 'Statistiken',
+            'fr': 'Statistiques'
+        },
+        'gateway_stats_template': {
+            'en': 'Forwarded: {forwarded} | Blocked: {blocked} | Modified: {modified}',
+            'pt': 'Encaminhadas: {forwarded} | Bloqueadas: {blocked} | Modificadas: {modified}',
+            'es': 'Reenviadas: {forwarded} | Bloqueadas: {blocked} | Modificadas: {modified}',
+            'de': 'Weitergeleitet: {forwarded} | Blockiert: {blocked} | Modifiziert: {modified}',
+            'fr': 'Transmis: {forwarded} | Bloqués: {blocked} | Modifiés: {modified}'
+        },
+        'gateway_reset_stats': {
+            'en': 'Reset Statistics',
+            'pt': 'Resetar Estatísticas',
+            'es': 'Restablecer Estadísticas',
+            'de': 'Statistiken zurücksetzen',
+            'fr': 'Réinitialiser les Statistiques'
+        },
+        'gateway_enter_id': {
+            'en': 'Please enter an ID',
+            'pt': 'Por favor, insira um ID',
+            'es': 'Por favor, ingrese un ID',
+            'de': 'Bitte geben Sie eine ID ein',
+            'fr': 'Veuillez entrer un ID'
+        },
+        'gateway_invalid_id': {
+            'en': 'Invalid ID format',
+            'pt': 'Formato de ID inválido',
+            'es': 'Formato de ID inválido',
+            'de': 'Ungültiges ID-Format',
+            'fr': 'Format d\'ID invalide'
+        },
+        'gateway_select_rule': {
+            'en': 'Please select a rule to remove',
+            'pt': 'Por favor, selecione uma regra para remover',
+            'es': 'Por favor, seleccione una regla para eliminar',
+            'de': 'Bitte wählen Sie eine Regel zum Entfernen',
+            'fr': 'Veuillez sélectionner une règle à supprimer'
+        },
+        'gateway_fill_all_fields': {
+            'en': 'Please fill all fields',
+            'pt': 'Por favor, preencha todos os campos',
+            'es': 'Por favor, complete todos los campos',
+            'de': 'Bitte füllen Sie alle Felder aus',
+            'fr': 'Veuillez remplir tous les champs'
+        },
+        'gateway_invalid_values': {
+            'en': 'Invalid values entered',
+            'pt': 'Valores inválidos inseridos',
+            'es': 'Valores inválidos ingresados',
+            'de': 'Ungültige Werte eingegeben',
+            'fr': 'Valeurs invalides saisies'
+        },
+        'menu_gateway': {
+            'en': 'Gateway',
+            'pt': 'Gateway',
+            'es': 'Gateway',
+            'de': 'Gateway',
+            'fr': 'Gateway'
+        },
+        
+        # Split-Screen Monitor
+        'split_screen_mode': {
+            'en': 'Split-Screen Mode',
+            'pt': 'Modo Tela Dividida',
+            'es': 'Modo Pantalla Dividida',
+            'de': 'Geteilter Bildschirm',
+            'fr': 'Mode Écran Partagé'
+        },
+        'split_screen_enable': {
+            'en': 'Enable Split-Screen',
+            'pt': 'Ativar Tela Dividida',
+            'es': 'Activar Pantalla Dividida',
+            'de': 'Geteilten Bildschirm aktivieren',
+            'fr': 'Activer l\'Écran Partagé'
+        },
+        'split_screen_left': {
+            'en': 'Left Panel',
+            'pt': 'Painel Esquerdo',
+            'es': 'Panel Izquierdo',
+            'de': 'Linkes Panel',
+            'fr': 'Panneau Gauche'
+        },
+        'split_screen_right': {
+            'en': 'Right Panel',
+            'pt': 'Painel Direito',
+            'es': 'Panel Derecho',
+            'de': 'Rechtes Panel',
+            'fr': 'Panneau Droit'
+        },
+        'split_screen_channel': {
+            'en': 'Channel: {channel}',
+            'pt': 'Canal: {channel}',
+            'es': 'Canal: {channel}',
+            'de': 'Kanal: {channel}',
+            'fr': 'Canal: {channel}'
+        },
+        
+        # Gateway - Message Modification
+        'gateway_modification': {
+            'en': 'Message Modification',
+            'pt': 'Modificação de Mensagens',
+            'es': 'Modificación de Mensajes',
+            'de': 'Nachrichtenänderung',
+            'fr': 'Modification de Messages'
+        },
+        'gateway_add_modify': {
+            'en': 'Add Modify Rule',
+            'pt': 'Adicionar Regra',
+            'es': 'Agregar Regla',
+            'de': 'Regel hinzufügen',
+            'fr': 'Ajouter Règle'
+        },
+        'gateway_remove': {
+            'en': 'Remove',
+            'pt': 'Remover',
+            'es': 'Eliminar',
+            'de': 'Entfernen',
+            'fr': 'Supprimer'
+        },
+        'gateway_new_id': {
+            'en': 'New ID',
+            'pt': 'Novo ID',
+            'es': 'Nuevo ID',
+            'de': 'Neue ID',
+            'fr': 'Nouvel ID'
+        },
+        'gateway_data_mask': {
+            'en': 'Data Mask',
+            'pt': 'Máscara de Dados',
+            'es': 'Máscara de Datos',
+            'de': 'Datenmaske',
+            'fr': 'Masque de Données'
+        },
+        'gateway_modify_rule_title': {
+            'en': 'Configure Message Modification',
+            'pt': 'Configurar Modificação de Mensagem',
+            'es': 'Configurar Modificación de Mensaje',
+            'de': 'Nachrichtenänderung konfigurieren',
+            'fr': 'Configurer Modification de Message'
+        },
+        'gateway_message_info': {
+            'en': 'Message Information',
+            'pt': 'Informações da Mensagem',
+            'es': 'Información del Mensaje',
+            'de': 'Nachrichteninformation',
+            'fr': 'Information du Message'
+        },
+        'gateway_id_modification': {
+            'en': 'ID Modification',
+            'pt': 'Modificação de ID',
+            'es': 'Modificación de ID',
+            'de': 'ID-Änderung',
+            'fr': 'Modification d\'ID'
+        },
+        'gateway_change_id': {
+            'en': 'Change ID',
+            'pt': 'Alterar ID',
+            'es': 'Cambiar ID',
+            'de': 'ID ändern',
+            'fr': 'Changer ID'
+        },
+        'gateway_data_modification': {
+            'en': 'Data Modification (Bit-Level)',
+            'pt': 'Modificação de Dados (Nível de Bit)',
+            'es': 'Modificación de Datos (Nivel de Bit)',
+            'de': 'Datenänderung (Bit-Ebene)',
+            'fr': 'Modification de Données (Niveau Bit)'
+        },
+        'gateway_data_modification_info': {
+            'en': 'Select bytes to modify and set their values. You can edit hex values or toggle individual bits.',
+            'pt': 'Selecione os bytes a modificar e defina seus valores. Você pode editar valores hex ou alternar bits individuais.',
+            'es': 'Seleccione los bytes a modificar y establezca sus valores. Puede editar valores hex o alternar bits individuales.',
+            'de': 'Wählen Sie die zu ändernden Bytes aus und legen Sie ihre Werte fest. Sie können Hex-Werte bearbeiten oder einzelne Bits umschalten.',
+            'fr': 'Sélectionnez les octets à modifier et définissez leurs valeurs. Vous pouvez éditer les valeurs hex ou basculer les bits individuels.'
+        },
+        'gateway_modify_this_byte': {
+            'en': 'Modify this byte',
+            'pt': 'Modificar este byte',
+            'es': 'Modificar este byte',
+            'de': 'Dieses Byte ändern',
+            'fr': 'Modifier cet octet'
+        },
+        'gateway_bits': {
+            'en': 'Bits',
+            'pt': 'Bits',
+            'es': 'Bits',
+            'de': 'Bits',
+            'fr': 'Bits'
+        },
+        'gateway_preview': {
+            'en': 'Preview',
+            'pt': 'Visualização',
+            'es': 'Vista Previa',
+            'de': 'Vorschau',
+            'fr': 'Aperçu'
+        },
+        'gateway_original': {
+            'en': 'Original',
+            'pt': 'Original',
+            'es': 'Original',
+            'de': 'Original',
+            'fr': 'Original'
+        },
+        'gateway_modified': {
+            'en': 'Modified',
+            'pt': 'Modificado',
+            'es': 'Modificado',
+            'de': 'Geändert',
+            'fr': 'Modifié'
+        },
+        'gateway_bytes_modified': {
+            'en': 'Bytes to be modified',
+            'pt': 'Bytes a serem modificados',
+            'es': 'Bytes a modificar',
+            'de': 'Zu ändernde Bytes',
+            'fr': 'Octets à modifier'
+        },
+        
+        # File Type Validation
+        'file_type_tracer': {
+            'en': 'Tracer Log',
+            'pt': 'Log de Tracer',
+            'es': 'Registro de Tracer',
+            'de': 'Tracer-Protokoll',
+            'fr': 'Journal Tracer'
+        },
+        'file_type_monitor': {
+            'en': 'Monitor Log',
+            'pt': 'Log de Monitor',
+            'es': 'Registro de Monitor',
+            'de': 'Monitor-Protokoll',
+            'fr': 'Journal Monitor'
+        },
+        'file_type_transmit': {
+            'en': 'Transmit List',
+            'pt': 'Lista de Transmissão',
+            'es': 'Lista de Transmisión',
+            'de': 'Sendeliste',
+            'fr': 'Liste de Transmission'
+        },
+        'file_type_gateway': {
+            'en': 'Gateway Configuration',
+            'pt': 'Configuração de Gateway',
+            'es': 'Configuración de Gateway',
+            'de': 'Gateway-Konfiguration',
+            'fr': 'Configuration Gateway'
+        },
+        'msg_wrong_file_type': {
+            'en': 'Wrong file type!\n\nFile: {filename}\nExpected: {expected}\nFound: {found}\n\nPlease load the correct file type.',
+            'pt': 'Tipo de arquivo incorreto!\n\nArquivo: {filename}\nEsperado: {expected}\nEncontrado: {found}\n\nPor favor, carregue o tipo correto de arquivo.',
+            'es': 'Tipo de archivo incorrecto!\n\nArchivo: {filename}\nEsperado: {expected}\nEncontrado: {found}\n\nPor favor, cargue el tipo correcto de archivo.',
+            'de': 'Falscher Dateityp!\n\nDatei: {filename}\nErwartet: {expected}\nGefunden: {found}\n\nBitte laden Sie den richtigen Dateityp.',
+            'fr': 'Type de fichier incorrect!\n\nFichier: {filename}\nAttendu: {expected}\nTrouvé: {found}\n\nVeuillez charger le bon type de fichier.'
+        },
+        'gateway_save_config': {
+            'en': 'Save Gateway Configuration',
+            'pt': 'Salvar Configuração do Gateway',
+            'es': 'Guardar Configuración del Gateway',
+            'de': 'Gateway-Konfiguration speichern',
+            'fr': 'Enregistrer Configuration Gateway'
+        },
+        'gateway_load_config': {
+            'en': 'Load Gateway Configuration',
+            'pt': 'Carregar Configuração do Gateway',
+            'es': 'Cargar Configuración del Gateway',
+            'de': 'Gateway-Konfiguration laden',
+            'fr': 'Charger Configuration Gateway'
+        },
+        'gateway_config_saved': {
+            'en': 'Gateway configuration saved: {filename}',
+            'pt': 'Configuração do Gateway salva: {filename}',
+            'es': 'Configuración del Gateway guardada: {filename}',
+            'de': 'Gateway-Konfiguration gespeichert: {filename}',
+            'fr': 'Configuration Gateway enregistrée: {filename}'
+        },
+        'gateway_config_loaded': {
+            'en': 'Gateway configuration loaded: {filename}',
+            'pt': 'Configuração do Gateway carregada: {filename}',
+            'es': 'Configuración del Gateway cargada: {filename}',
+            'de': 'Gateway-Konfiguration geladen: {filename}',
+            'fr': 'Configuration Gateway chargée: {filename}'
+        },
+        'success': {
+            'en': 'Success',
+            'pt': 'Sucesso',
+            'es': 'Éxito',
+            'de': 'Erfolg',
+            'fr': 'Succès'
+        },
+        'gateway_channel_info': {
+            'en': 'ℹ️ Source channel is automatically determined by transmission direction. Rules apply to messages being forwarded.',
+            'pt': 'ℹ️ O canal de origem é determinado automaticamente pela direção de transmissão. Regras se aplicam às mensagens sendo encaminhadas.',
+            'es': 'ℹ️ El canal de origen se determina automáticamente por la dirección de transmisión. Las reglas se aplican a los mensajes que se reenvían.',
+            'de': 'ℹ️ Der Quellkanal wird automatisch durch die Übertragungsrichtung bestimmt. Regeln gelten für weitergeleitete Nachrichten.',
+            'fr': 'ℹ️ Le canal source est automatiquement déterminé par la direction de transmission. Les règles s\'appliquent aux messages transmis.'
+        },
+        'gateway_source_channel': {
+            'en': 'Source',
+            'pt': 'Origem',
+            'es': 'Origen',
+            'de': 'Quelle',
+            'fr': 'Source'
+        },
+        'gateway_block_id': {
+            'en': 'Block ID',
+            'pt': 'Bloquear ID',
+            'es': 'Bloquear ID',
+            'de': 'ID sperren',
+            'fr': 'Bloquer ID'
+        },
+        'gateway_modify_id': {
+            'en': 'Modify ID',
+            'pt': 'Modificar ID',
+            'es': 'Modificar ID',
+            'de': 'ID ändern',
+            'fr': 'Modifier ID'
+        },
+        'gateway_configure_transmission_first': {
+            'en': 'Please add at least one route first.',
+            'pt': 'Por favor, adicione pelo menos uma rota primeiro.',
+            'es': 'Por favor, agregue al menos una ruta primero.',
+            'de': 'Bitte fügen Sie zuerst mindestens eine Route hinzu.',
+            'fr': 'Veuillez d\'abord ajouter au moins une route.'
+        },
+        'gateway_route': {
+            'en': 'Route',
+            'pt': 'Rota',
+            'es': 'Ruta',
+            'de': 'Route',
+            'fr': 'Route'
+        },
+        'gateway_from': {
+            'en': 'From',
+            'pt': 'De',
+            'es': 'Desde',
+            'de': 'Von',
+            'fr': 'De'
+        },
+        'gateway_to': {
+            'en': 'To',
+            'pt': 'Para',
+            'es': 'A',
+            'de': 'Nach',
+            'fr': 'Vers'
+        },
+        'btn_add_route': {
+            'en': 'Add Route',
+            'pt': 'Adicionar Rota',
+            'es': 'Agregar Ruta',
+            'de': 'Route hinzufügen',
+            'fr': 'Ajouter une route'
+        },
+        'gateway_same_source_dest': {
+            'en': 'Source and destination cannot be the same.',
+            'pt': 'Origem e destino não podem ser iguais.',
+            'es': 'El origen y el destino no pueden ser iguales.',
+            'de': 'Quelle und Ziel können nicht identisch sein.',
+            'fr': 'La source et la destination ne peuvent pas être identiques.'
+        },
+        'gateway_route_exists': {
+            'en': 'This route already exists.',
+            'pt': 'Esta rota já existe.',
+            'es': 'Esta ruta ya existe.',
+            'de': 'Diese Route existiert bereits.',
+            'fr': 'Cette route existe déjà.'
+        },
+        'gateway_select_route': {
+            'en': 'Please select a route to remove.',
+            'pt': 'Por favor, selecione uma rota para remover.',
+            'es': 'Por favor, seleccione una ruta para eliminar.',
+            'de': 'Bitte wählen Sie eine Route zum Entfernen aus.',
+            'fr': 'Veuillez sélectionner une route à supprimer.'
+        },
     }
     
     def __init__(self, language: str = 'en'):
