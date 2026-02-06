@@ -159,6 +159,9 @@ class CANBusInstance:
     
     def _receive_loop(self):
         """Receive loop for real CAN bus"""
+        error_count = 0
+        last_error_time = 0
+        
         while self.running:
             try:
                 if self.bus:
@@ -174,11 +177,30 @@ class CANBusInstance:
                             source=self.config.name  # Mark source bus
                         )
                         self.message_callback(self.config.name, can_msg)
+                        # Reset error count on successful receive
+                        error_count = 0
                 else:
                     time.sleep(0.1)
             except Exception as e:
                 if self.running:  # Only log if not shutting down
-                    print(f"[{self.config.name}] Receive error: {e}")
+                    # Suppress repetitive serial/parsing errors (common with SLCAN noise)
+                    error_str = str(e)
+                    is_parse_error = any(x in error_str for x in [
+                        'invalid literal', 'non-hexadecimal', 'Could not read from serial'
+                    ])
+                    
+                    current_time = time.time()
+                    
+                    if is_parse_error:
+                        error_count += 1
+                        # Only log every 10th error or every 5 seconds
+                        if error_count % 10 == 1 or (current_time - last_error_time) > 5.0:
+                            print(f"[{self.config.name}] Serial/parse errors detected ({error_count} total) - possible line noise")
+                            last_error_time = current_time
+                    else:
+                        # Log non-parse errors normally
+                        print(f"[{self.config.name}] Receive error: {e}")
+                
                 time.sleep(0.1)
     
     def _receive_loop_simulation(self):
@@ -323,8 +345,8 @@ class CANBusManager:
         
         # Forward to user callback
         if self.message_callback:
-            # Message already has source field set, just forward it
-            self.message_callback(msg)
+            # Forward with bus_name and message
+            self.message_callback(bus_name, msg)
     
     def get_bus_info(self, name: str) -> Optional[Dict]:
         """Get information about a bus"""

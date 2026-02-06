@@ -72,23 +72,23 @@ class CANLogger:
         self.logger.info("=" * 80)
     
     def debug(self, message: str):
-        """Log de debug"""
+        """Debug log"""
         self.logger.debug(message)
     
     def info(self, message: str):
-        """Log de informação"""
+        """Info log"""
         self.logger.info(message)
     
     def warning(self, message: str):
-        """Log de aviso"""
+        """Warning log"""
         self.logger.warning(message)
     
     def error(self, message: str, exc_info=False):
-        """Log de erro"""
+        """Error log"""
         self.logger.error(message, exc_info=exc_info)
     
     def critical(self, message: str, exc_info=False):
-        """Log crítico"""
+        """Critical log"""
         self.logger.critical(message, exc_info=exc_info)
     
     def log_can_message(self, direction: str, msg_id: int, data: bytes, dlc: int):
