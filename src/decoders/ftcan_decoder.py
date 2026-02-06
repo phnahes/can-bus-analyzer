@@ -1,7 +1,16 @@
 """
 FTCAN 2.0 Protocol Decoder
-Decodifica mensagens do protocolo FTCAN 2.0 da FuelTech
-Baseado no documento: Protocol_FTCAN20_Public_R026.pdf
+
+Component responsible for decoding the FuelTech FTCAN 2.0 protocol, as defined in Protocol_FTCAN20_Public_R026.pdf.
+
+ftcan_decoder.py: Implements the core protocol logic, including:
+- Extended (29-bit) CAN ID decoding
+- Segmented message reassembly
+- MEASURE_IDS definitions
+- ProductType enumeration
+- FTCANDecoder.decode_message() method
+
+This component is application-agnostic and has no external dependencies.
 """
 
 from dataclasses import dataclass
