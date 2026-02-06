@@ -17,7 +17,7 @@ except ImportError:
 
 
 class CANInterface:
-    """Gerencia a comunicação com o barramento CAN"""
+    """Manages communication with the CAN bus"""
     
     def __init__(self, config: CANConfig):
         self.config = config
@@ -83,7 +83,7 @@ class CANInterface:
         self.message_callback = callback
     
     def _receive_loop(self):
-        """Loop de recepção de mensagens"""
+        """Message receive loop"""
         while self.running:
             try:
                 if self.bus:
@@ -105,7 +105,7 @@ class CANInterface:
                 time.sleep(0.1)
     
     def is_connected(self) -> bool:
-        """Verifica se está conectado"""
+        """Check if connected"""
         return self.running
 
 
@@ -123,7 +123,7 @@ class SimulatedCANInterface(CANInterface):
         self.message_index = 0
     
     def _receive_loop(self):
-        """Loop simulado de recepção"""
+        """Simulated receive loop"""
         while self.running:
             if self.message_callback:
                 # Gerar mensagem simulada

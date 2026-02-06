@@ -205,13 +205,6 @@ class I18n:
             'de': 'Beschreibung',
             'fr': 'Description'
         },
-        'about_desc_text': {
-            'en': 'Complete CAN bus analyzer',
-            'pt': 'Analisador de barramento CAN completo',
-            'es': 'Analizador de bus CAN completo',
-            'de': 'Vollständiger CAN-Bus-Analysator',
-            'fr': 'Analyseur de bus CAN complet'
-        },
         'about_replicates': {
             'en': 'CAN bus analyzer for {platform}',
             'pt': 'Analisador de barramento CAN para {platform}',
@@ -239,6 +232,90 @@ class I18n:
             'es': 'Año',
             'de': 'Jahr',
             'fr': 'Année'
+        },
+        'about_heading': {
+            'en': 'CAN Analyzer – {platform}',
+            'pt': 'CAN Analyzer – {platform}',
+            'es': 'CAN Analyzer – {platform}',
+            'de': 'CAN Analyzer – {platform}',
+            'fr': 'CAN Analyzer – {platform}'
+        },
+        'about_build': {
+            'en': 'Build',
+            'pt': 'Build',
+            'es': 'Build',
+            'de': 'Build',
+            'fr': 'Build'
+        },
+        'about_desc_heading': {
+            'en': 'Description',
+            'pt': 'Descrição',
+            'es': 'Descripción',
+            'de': 'Beschreibung',
+            'fr': 'Description'
+        },
+        'about_desc_text': {
+            'en': 'Multiplatform CAN bus analyzer with real-time capture, filtered monitoring, playback, and controlled message transmission.',
+            'pt': 'Analisador de barramento CAN multiplataforma com captura em tempo real, monitoramento filtrado, reprodução e transmissão controlada de mensagens.',
+            'es': 'Analizador de bus CAN multiplataforma con captura en tiempo real, monitoreo filtrado, reproducción y transmisión controlada de mensajes.',
+            'de': 'Plattformübergreifender CAN-Bus-Analysator mit Echtzeitaufnahme, gefilterter Überwachung, Wiedergabe und gesteuerter Nachrichtenübertragung.',
+            'fr': 'Analyseur de bus CAN multiplateforme avec capture en temps réel, surveillance filtrée, lecture et transmission contrôlée des messages.'
+        },
+        'about_platforms_heading': {
+            'en': 'Supported Platforms',
+            'pt': 'Plataformas Suportadas',
+            'es': 'Plataformas Soportadas',
+            'de': 'Unterstützte Plattformen',
+            'fr': 'Plateformes prises en charge'
+        },
+        'about_platform_macos': {
+            'en': 'macOS (packaged .app supported)',
+            'pt': 'macOS (pacote .app suportado)',
+            'es': 'macOS (paquete .app soportado)',
+            'de': 'macOS (verpackte .app unterstützt)',
+            'fr': 'macOS (application .app prise en charge)'
+        },
+        'about_platform_linux': {
+            'en': 'Linux (GUI via PyQt6)',
+            'pt': 'Linux (interface via PyQt6)',
+            'es': 'Linux (interfaz vía PyQt6)',
+            'de': 'Linux (GUI via PyQt6)',
+            'fr': 'Linux (interface via PyQt6)'
+        },
+        'about_dependencies_heading': {
+            'en': 'Dependencies',
+            'pt': 'Dependências',
+            'es': 'Dependencias',
+            'de': 'Abhängigkeiten',
+            'fr': 'Dépendances'
+        },
+        'about_dependencies_text': {
+            'en': 'Python ≥ 3.9 • python-can ≥ 4.3.1 • pyserial ≥ 3.5 • PyQt6 ≥ 6.6.0',
+            'pt': 'Python ≥ 3.9 • python-can ≥ 4.3.1 • pyserial ≥ 3.5 • PyQt6 ≥ 6.6.0',
+            'es': 'Python ≥ 3.9 • python-can ≥ 4.3.1 • pyserial ≥ 3.5 • PyQt6 ≥ 6.6.0',
+            'de': 'Python ≥ 3.9 • python-can ≥ 4.3.1 • pyserial ≥ 3.5 • PyQt6 ≥ 6.6.0',
+            'fr': 'Python ≥ 3.9 • python-can ≥ 4.3.1 • pyserial ≥ 3.5 • PyQt6 ≥ 6.6.0'
+        },
+        'about_license_heading': {
+            'en': 'License',
+            'pt': 'Licença',
+            'es': 'Licencia',
+            'de': 'Lizenz',
+            'fr': 'Licence'
+        },
+        'about_license_text': {
+            'en': 'GNU GPLv3.0 – Open source project',
+            'pt': 'GNU GPLv3.0 – Projeto open source',
+            'es': 'GNU GPLv3.0 – Proyecto de código abierto',
+            'de': 'GNU GPLv3.0 – Open-Source-Projekt',
+            'fr': 'GNU GPLv3.0 – Projet open source'
+        },
+        'about_copyright': {
+            'en': '© 2026 @phnahes',
+            'pt': '© 2026 @phnahes',
+            'es': '© 2026 @phnahes',
+            'de': '© 2026 @phnahes',
+            'fr': '© 2026 @phnahes'
         },
         
         # Buttons
@@ -1730,6 +1807,78 @@ class I18n:
             'es': 'Por favor, seleccione una ruta para eliminar.',
             'de': 'Bitte wählen Sie eine Route zum Entfernen aus.',
             'fr': 'Veuillez sélectionner une route à supprimer.'
+        },
+        
+        # OBD-II Monitor
+        'obd2_monitor_title': {
+            'en': 'OBD-II Monitor',
+            'pt': 'Monitor OBD-II',
+            'es': 'Monitor OBD-II',
+            'de': 'OBD-II Monitor',
+            'fr': 'Moniteur OBD-II'
+        },
+        'obd2_select_all': {
+            'en': 'Select All',
+            'pt': 'Selecionar Todos',
+            'es': 'Seleccionar Todo',
+            'de': 'Alle auswählen',
+            'fr': 'Tout sélectionner'
+        },
+        'obd2_clear_all': {
+            'en': 'Clear All',
+            'pt': 'Limpar Todos',
+            'es': 'Limpiar Todo',
+            'de': 'Alle löschen',
+            'fr': 'Tout effacer'
+        },
+        'obd2_clear_values': {
+            'en': 'Clear Values',
+            'pt': 'Limpar Valores',
+            'es': 'Limpiar Valores',
+            'de': 'Werte löschen',
+            'fr': 'Effacer les valeurs'
+        },
+        'obd2_start_polling': {
+            'en': 'Start Polling',
+            'pt': 'Iniciar Polling',
+            'es': 'Iniciar Polling',
+            'de': 'Polling starten',
+            'fr': 'Démarrer le polling'
+        },
+        'obd2_stop_polling': {
+            'en': 'Stop Polling',
+            'pt': 'Parar Polling',
+            'es': 'Detener Polling',
+            'de': 'Polling stoppen',
+            'fr': 'Arrêter le polling'
+        },
+        'obd2_single_shot': {
+            'en': 'Single Shot',
+            'pt': 'Leitura Única',
+            'es': 'Lectura Única',
+            'de': 'Einzelmessung',
+            'fr': 'Lecture unique'
+        },
+        'obd2_read_dtcs': {
+            'en': 'Read DTCs',
+            'pt': 'Ler DTCs',
+            'es': 'Leer DTCs',
+            'de': 'DTCs lesen',
+            'fr': 'Lire les DTCs'
+        },
+        'obd2_save_results': {
+            'en': 'Save Results',
+            'pt': 'Salvar Resultados',
+            'es': 'Guardar Resultados',
+            'de': 'Ergebnisse speichern',
+            'fr': 'Enregistrer les résultats'
+        },
+        'obd2_check_available': {
+            'en': 'Check Available PIDs',
+            'pt': 'Verificar PIDs Disponíveis',
+            'es': 'Verificar PIDs Disponibles',
+            'de': 'Verfügbare PIDs prüfen',
+            'fr': 'Vérifier les PIDs disponibles'
         },
     }
     

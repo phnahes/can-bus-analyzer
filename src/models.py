@@ -40,7 +40,7 @@ class CANMessage:
     
     @classmethod
     def from_dict(cls, data: dict) -> 'CANMessage':
-        """Cria instância a partir de dicionário"""
+        """Create instance from dictionary"""
         return cls(
             timestamp=data['timestamp'],
             can_id=data['can_id'],
@@ -56,7 +56,7 @@ class CANMessage:
         )
     
     def to_ascii(self) -> str:
-        """Converte dados para ASCII (caracteres imprimíveis apenas)"""
+        """Convert data to ASCII (printable characters only)"""
         ascii_str = ""
         for byte in self.data:
             if 32 <= byte <= 126:
@@ -66,17 +66,17 @@ class CANMessage:
         return ascii_str
     
     def to_hex_string(self) -> str:
-        """Retorna dados em formato hexadecimal com espaços"""
+        """Return data in hexadecimal format with spaces"""
         return " ".join([f"{b:02X}" for b in self.data])
     
     def get_bit(self, byte_index: int, bit_index: int) -> int:
-        """Retorna o valor de um bit específico"""
+        """Return the value of a specific bit"""
         if byte_index >= len(self.data):
             return 0
         return (self.data[byte_index] >> bit_index) & 1
     
     def get_bits_string(self) -> str:
-        """Retorna representação em bits de todos os bytes"""
+        """Return bit representation of all bytes"""
         return " ".join([f"{b:08b}" for b in self.data])
 
 
@@ -98,7 +98,7 @@ class CANFilter:
 
 @dataclass
 class CANConfig:
-    """Configuração do adaptador CAN"""
+    """CAN adapter configuration"""
     channel: str = "can0"
     baudrate: int = 500000
     com_baudrate: str = "115200 bit/s"
@@ -117,7 +117,7 @@ class CANConfig:
 
 @dataclass
 class TransmitMessage:
-    """Mensagem configurada para transmissão"""
+    """Message configured for transmission"""
     can_id: int
     dlc: int
     data: bytes
@@ -140,17 +140,17 @@ class TraceRecord:
     duration: float = 0.0  # segundos
     
     def get_message_count(self) -> int:
-        """Retorna número de mensagens"""
+        """Return number of messages"""
         return len(self.messages)
     
     def get_unique_ids(self) -> List[int]:
-        """Retorna lista de IDs únicos"""
+        """Return list of unique IDs"""
         return list(set(msg.can_id for msg in self.messages))
 
 
 @dataclass
 class BomberConfig:
-    """Configuração do CAN Bomber"""
+    """CAN Bomber configuration"""
     mode: str = "id_counter"  # id_counter, id_list, data_counter, data_counter_shift
     id_from: int = 0x000
     id_to: int = 0x7FF
@@ -181,7 +181,7 @@ class GatewayBlockRule:
 
 @dataclass
 class GatewayDynamicBlock:
-    """Bloqueio dinâmico de IDs (com incremento)"""
+    """Dynamic ID blocking (with increment)"""
     id_from: int
     id_to: int
     channel: str
@@ -197,7 +197,7 @@ class GatewayDynamicBlock:
         return self.current_id
     
     def advance(self):
-        """Avança para o próximo ID"""
+        """Advance to next ID"""
         self.current_id += 1
         if self.current_id > self.id_to:
             self.current_id = self.id_from
@@ -209,13 +209,13 @@ class GatewayModifyRule:
     can_id: int
     channel: str
     enabled: bool = True
-    # Modificações possíveis
-    new_id: Optional[int] = None  # Novo ID (se None, mantém original)
+    # Possible modifications
+    new_id: Optional[int] = None  # New ID (if None, keep original)
     data_mask: List[bool] = field(default_factory=lambda: [False] * 8)  # Quais bytes modificar
     new_data: bytes = bytes([0x00] * 8)  # Novos valores para os bytes marcados
     
     def apply(self, msg: CANMessage) -> CANMessage:
-        """Aplica modificações na mensagem"""
+        """Apply modifications to message"""
         if not self.enabled:
             return msg
         
@@ -253,28 +253,28 @@ class GatewayRoute:
 
 @dataclass
 class GatewayConfig:
-    """Configuração completa do CAN Gateway"""
-    # Nova estrutura de rotas (suporta múltiplas rotas)
+    """Complete CAN Gateway configuration"""
+    # New route structure (supports multiple routes)
     routes: List[GatewayRoute] = field(default_factory=list)
     
-    # Mantido para compatibilidade com versões antigas
+    # Kept for backward compatibility
     transmit_1_to_2: bool = False  # CAN1 → CAN2
     transmit_2_to_1: bool = False  # CAN2 → CAN1
     
-    # Regras de bloqueio estático
+    # Static blocking rules
     block_rules: List[GatewayBlockRule] = field(default_factory=list)
     
-    # Bloqueio dinâmico
+    # Dynamic blocking
     dynamic_blocks: List[GatewayDynamicBlock] = field(default_factory=list)
     
-    # Regras de modificação
+    # Modification rules
     modify_rules: List[GatewayModifyRule] = field(default_factory=list)
     
     # Estado
     enabled: bool = False
     
     def get_destination_for_source(self, source: str) -> Optional[str]:
-        """Retorna o destino para uma origem específica, se habilitado"""
+        """Return destination for a specific source, if enabled"""
         for route in self.routes:
             if route.enabled and route.source == source:
                 return route.destination
@@ -300,7 +300,7 @@ class GatewayConfig:
         return False
     
     def get_modify_rule(self, msg: CANMessage) -> Optional[GatewayModifyRule]:
-        """Retorna regra de modificação para a mensagem, se existir"""
+        """Return modification rule for message, if exists"""
         for rule in self.modify_rules:
             if rule.enabled and rule.can_id == msg.can_id and rule.channel == msg.source:
                 return rule
@@ -345,7 +345,7 @@ class GatewayConfig:
     
     @classmethod
     def from_dict(cls, data: dict) -> 'GatewayConfig':
-        """Cria instância a partir de dicionário"""
+        """Create instance from dictionary"""
         config = cls(
             transmit_1_to_2=data.get('transmit_1_to_2', False),
             transmit_2_to_1=data.get('transmit_2_to_1', False),

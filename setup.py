@@ -6,7 +6,11 @@ Build: python setup.py py2app
 from setuptools import setup
 import os
 
-APP = ['can_analyzer_qt.py']
+# Single source of truth for version (used by About and .app bundle)
+import src
+_version = src.__version__
+
+APP = ['can_analyzer.py']
 DATA_FILES = []
 OPTIONS = {
     'argv_emulation': False,
@@ -15,8 +19,8 @@ OPTIONS = {
         'CFBundleName': 'CAN Analyzer',
         'CFBundleDisplayName': 'CAN Analyzer',
         'CFBundleIdentifier': 'com.cantools.can-analyzer',
-        'CFBundleVersion': '0.3.0',
-        'CFBundleShortVersionString': '0.3.0',
+        'CFBundleVersion': _version,
+        'CFBundleShortVersionString': _version,
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
     },

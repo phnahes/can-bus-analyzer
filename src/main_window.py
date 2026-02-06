@@ -24,13 +24,20 @@ from PyQt6.QtGui import QAction, QFont, QColor, QPalette
 
 # Internal imports
 from .models import CANMessage
-from .dialogs_new import SettingsDialog, BitFieldViewerDialog, FilterDialog, TriggerDialog, GatewayDialog
+from .dialogs import SettingsDialog, BitFieldViewerDialog, FilterDialog, TriggerDialog, GatewayDialog
+from .dialogs_ftcan import FTCANDialog
+from .dialogs_obd2 import OBD2Dialog
+from .decoder_manager_dialog import DecoderManagerDialog
+from .protocol_decoder import get_decoder_manager
+from .decoders.ftcan_protocol_decoder import FTCANProtocolDecoder
+from .decoders.obd2_protocol_decoder import OBD2ProtocolDecoder
 from .file_operations import FileOperations
 from .logger import get_logger
 from .i18n import get_i18n, t
 from .theme import detect_dark_mode, get_adaptive_colors, should_use_dark_mode
 from .utils import get_platform_display_name
 from .can_bus_manager import CANBusManager, CANBusConfig
+from . import __version__, __build__
 
 # CAN imports
 try:
@@ -59,10 +66,10 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Application state
         self.connected = False
-        self.recording = False  # Apenas para Tracer: controla se mensagens são salvas para reprodução
+        self.recording = False  # Tracer only: controls whether messages are saved for playback
         self.paused = False
         self.tracer_mode = False  # Tracer Mode
-        self.recorded_messages: List[CANMessage] = []  # Mensagens gravadas para reprodução (Tracer)
+        self.recorded_messages: List[CANMessage] = []  # Recorded messages for playback (Tracer)
         self.can_bus: Optional[can.BusABC] = None  # Legacy single bus (kept for compatibility)
         self.can_bus_manager: Optional[CANBusManager] = None  # Multi-CAN manager
         self.receive_thread: Optional[threading.Thread] = None
@@ -70,7 +77,11 @@ class CANAnalyzerWindow(QMainWindow):
         self.received_messages: List[CANMessage] = []
         self.transmit_messages: List[Dict] = []
         self.message_counters = defaultdict(int)  # Counter per ID
-        self.message_last_timestamp = {}  # Último timestamp por ID para calcular period
+        self.message_last_timestamp = {}  # Last timestamp per ID for period calculation
+        
+        # Protocol analyzer dialogs
+        self._ftcan_dialog = None
+        self._obd2_dialog = None
         
         # Playback control
         self.playback_active = False
@@ -81,8 +92,8 @@ class CANAnalyzerWindow(QMainWindow):
         
         # Message filters
         self.message_filters = {
-            'enabled': False,  # IMPORTANTE: Filtros desabilitados por padrão
-            'id_filters': [],  # Legacy: IDs sem canal específico
+            'enabled': False,  # IMPORTANT: Filters disabled by default
+            'id_filters': [],  # Legacy: IDs without specific channel
             'data_filters': [],
             'show_only': True,
             'channel_filters': {}  # Novo: {channel_name: {'ids': [list], 'show_only': bool}}
@@ -112,6 +123,14 @@ class CANAnalyzerWindow(QMainWindow):
         from .models import GatewayConfig
         self.gateway_config = GatewayConfig()
         
+        # Protocol Dialog references
+        self._ftcan_dialog: Optional['FTCANDialog'] = None
+        self._obd2_dialog: Optional['OBD2Dialog'] = None
+        
+        # Protocol Decoder Manager
+        self.decoder_manager = get_decoder_manager()
+        self._init_protocol_decoders()
+        
         # USB Device Monitor
         from .usb_device_monitor import get_usb_monitor
         self.usb_monitor = get_usb_monitor()
@@ -128,7 +147,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.start_ui_update()
     
     def init_ui(self):
-        """Inicializa a interface do usuário"""
+        """Initialize the user interface"""
         self.setWindowTitle(f"{t('app_title')} - {get_platform_display_name()}")
         self.setGeometry(100, 100, 1200, 800)
         
@@ -140,7 +159,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         
-        # Criar menu bar
+        # Create menu bar
         self.create_menu_bar()
         
         # Toolbar
@@ -161,89 +180,89 @@ class CANAnalyzerWindow(QMainWindow):
         
         toolbar_layout.addWidget(QLabel("|"))
         
-        # Pause button (desabilitado temporariamente - manter lógica)
+        # Pause button (temporarily disabled - logic kept)
         self.btn_pause = QPushButton()
         self.btn_pause.clicked.connect(self.toggle_pause)
         self.btn_pause.setEnabled(False)
-        self.btn_pause.setVisible(False)  # Ocultar por enquanto
+        self.btn_pause.setVisible(False)  # Hidden for now
         toolbar_layout.addWidget(self.btn_pause)
         
-        # Botão Tracer/Monitor Mode (alterna entre os dois)
+        # Tracer/Monitor Mode button (toggles between the two)
         self.btn_tracer = QPushButton()
         self.btn_tracer.setCheckable(True)
         self.btn_tracer.clicked.connect(self.toggle_tracer_mode)
         toolbar_layout.addWidget(self.btn_tracer)
         
-        # Separador
+        # Separator
         toolbar_layout.addWidget(QLabel("|"))
         
-        # Botão Gateway Enable/Disable
+        # Gateway Enable/Disable button
         self.btn_gateway = QPushButton("🌉 Gateway: OFF")
         self.btn_gateway.setCheckable(True)
         self.btn_gateway.setToolTip("Enable/Disable CAN Gateway")
         self.btn_gateway.clicked.connect(self.toggle_gateway_from_toolbar)
-        self.btn_gateway.setEnabled(False)  # Habilitado apenas quando conectado
+        self.btn_gateway.setEnabled(False)  # Enabled only when connected
         toolbar_layout.addWidget(self.btn_gateway)
         
-        # Espaço expansível para empurrar botão TX para direita
+        # Expandable space to push TX button to the right
         toolbar_layout.addStretch()
         
-        # Botão Toggle Transmit Panel (no canto direito)
+        # Toggle Transmit Panel button (right side)
         self.btn_toggle_transmit = QPushButton("📤 Hide TX")
         self.btn_toggle_transmit.setToolTip("Mostrar/Ocultar painel de Transmissão")
         self.btn_toggle_transmit.clicked.connect(self.toggle_transmit_panel)
         toolbar_layout.addWidget(self.btn_toggle_transmit)
-        self.transmit_panel_visible = True  # Estado do painel
+        self.transmit_panel_visible = True  # Panel state
         
         main_layout.addLayout(toolbar_layout)
         
         # Splitter principal
         splitter = QSplitter(Qt.Orientation.Vertical)
         
-        # Painel de Recepção
+        # Receive panel
         self.receive_group = QGroupBox("Receive (Monitor)")
         receive_layout = QVBoxLayout()
         
-        # Container para tabelas (single ou split)
+        # Container for tables (single or split)
         self.receive_container = QWidget()
         self.receive_container_layout = QVBoxLayout(self.receive_container)
         self.receive_container_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Tabela principal (modo normal)
+        # Main table (normal mode)
         self.receive_table = QTableWidget()
         self.setup_receive_table()
         
-        # Ocultar cabeçalho vertical (números de linha padrão)
+        # Hide vertical header (default row numbers)
         self.receive_table.verticalHeader().setVisible(False)
         
-        # Fonte monoespaçada maior para melhor legibilidade
+        # Larger monospace font for better readability
         font = QFont("Courier New", 14)
         self.receive_table.setFont(font)
         
-        # Habilitar seleção múltipla
+        # Enable multiple selection
         self.receive_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.receive_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         
-        # Menu de contexto (botão direito)
+        # Context menu (right-click)
         self.receive_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.receive_table.customContextMenuRequested.connect(self.show_receive_context_menu)
         
         self.receive_container_layout.addWidget(self.receive_table)
         receive_layout.addWidget(self.receive_container)
         
-        # Controles de reprodução do Tracer (inicialmente ocultos)
+        # Tracer playback controls (initially hidden)
         self.tracer_controls_widget = QWidget()
         tracer_controls_layout = QHBoxLayout(self.tracer_controls_widget)
         tracer_controls_layout.setContentsMargins(0, 5, 0, 5)
         
-        # Botão Record (exclusivo do Tracer)
+        # Record button (Tracer only)
         self.btn_record = QPushButton("⏺ Record")
         self.btn_record.setCheckable(True)
         self.btn_record.setToolTip("Gravar mensagens para reprodução posterior")
         self.btn_record.clicked.connect(self.toggle_recording)
         tracer_controls_layout.addWidget(self.btn_record)
         
-        # Botão Clear (limpar mensagens gravadas)
+        # Clear button (clear recorded messages)
         self.btn_clear_tracer = QPushButton("🗑 Clear")
         self.btn_clear_tracer.setToolTip("Limpar mensagens gravadas")
         self.btn_clear_tracer.clicked.connect(self.clear_tracer_messages)
@@ -254,13 +273,13 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_play_all = QPushButton("▶ Play All")
         self.btn_play_all.setToolTip("Reproduzir (enviar) todas as mensagens gravadas")
         self.btn_play_all.clicked.connect(self.play_all_messages)
-        self.btn_play_all.setEnabled(False)  # Desabilitado até gravar mensagens
+        self.btn_play_all.setEnabled(False)  # Disabled until messages are recorded
         tracer_controls_layout.addWidget(self.btn_play_all)
         
         self.btn_play_selected = QPushButton("▶ Play Selected")
         self.btn_play_selected.setToolTip("Reproduzir (enviar) apenas as mensagens selecionadas")
         self.btn_play_selected.clicked.connect(self.play_selected_message)
-        self.btn_play_selected.setEnabled(False)  # Desabilitado até gravar mensagens
+        self.btn_play_selected.setEnabled(False)  # Disabled until messages are recorded
         tracer_controls_layout.addWidget(self.btn_play_selected)
         
         self.btn_stop_play = QPushButton("⏹ Stop")
@@ -286,17 +305,17 @@ class CANAnalyzerWindow(QMainWindow):
         self.playback_label = QLabel("Ready")
         tracer_controls_layout.addWidget(self.playback_label)
         
-        self.tracer_controls_widget.setVisible(False)  # Oculto por padrão
+        self.tracer_controls_widget.setVisible(False)  # Hidden by default
         receive_layout.addWidget(self.tracer_controls_widget)
         
         self.receive_group.setLayout(receive_layout)
         splitter.addWidget(self.receive_group)
         
-        # Painel de Transmissão
+        # Transmit panel
         self.transmit_group = QGroupBox("Transmit")
         transmit_layout = QVBoxLayout()
         
-        # Tabela de mensagens para transmitir
+        # Table of messages to transmit
         self.transmit_table = QTableWidget()
         self.transmit_table.setColumnCount(18)
         self.transmit_table.setHorizontalHeaderLabels([
@@ -304,17 +323,17 @@ class CANAnalyzerWindow(QMainWindow):
             'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'Count', 'Comment', t('col_channel')
         ])
         
-        # Double-click para carregar mensagem nos campos de edição
+        # Double-click to load message into edit fields
         self.transmit_table.itemDoubleClicked.connect(self.load_tx_message_to_edit)
         
-        # Context menu para transmit table
+        # Context menu for transmit table
         self.transmit_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.transmit_table.customContextMenuRequested.connect(self.show_transmit_context_menu)
         
-        # Tornar tabela readonly
+        # Make table readonly
         self.transmit_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         
-        # Fonte maior para transmit
+        # Larger font for transmit table
         font_tx = QFont("Courier New", 12)
         self.transmit_table.setFont(font_tx)
         
@@ -330,7 +349,7 @@ class CANAnalyzerWindow(QMainWindow):
         header_tx.resizeSection(4, 80)   # TX Mode
         header_tx.resizeSection(5, 80)   # Trigger ID
         header_tx.resizeSection(6, 100)  # Trigger Data
-        # Bytes de dados (D0-D7)
+        # Data bytes (D0-D7)
         for i in range(7, 15):
             header_tx.resizeSection(i, 40)
         header_tx.resizeSection(15, 60)  # Count
@@ -339,11 +358,11 @@ class CANAnalyzerWindow(QMainWindow):
         
         transmit_layout.addWidget(self.transmit_table)
         
-        # Controles de transmissão
+        # Transmit controls
         tx_controls = QWidget()
         tx_controls_layout = QVBoxLayout(tx_controls)
         
-        # Linha 1: PID | DLC | Data | Period
+        # Row 1: PID | DLC | Data | Period
         row1 = QHBoxLayout()
         row1.addWidget(QLabel("PID:"))
         self.tx_id_input = QLineEdit("000")
@@ -351,7 +370,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.tx_id_input.setPlaceholderText("000")
         row1.addWidget(self.tx_id_input)
         
-        # Separador visual
+        # Visual separator
         sep1 = QLabel("│")
         sep1.setStyleSheet(self.colors['separator'])
         row1.addWidget(sep1)
@@ -364,25 +383,25 @@ class CANAnalyzerWindow(QMainWindow):
         self.tx_dlc_input.valueChanged.connect(self.on_dlc_changed)
         row1.addWidget(self.tx_dlc_input)
         
-        # Separador visual
+        # Visual separator
         sep2 = QLabel("│")
         sep2.setStyleSheet(self.colors['separator'])
         row1.addWidget(sep2)
         
         row1.addWidget(QLabel("Data:"))
         
-        # Criar 8 campos para cada byte (sem labels D0, D1, etc)
+        # Create 8 fields for each byte (no D0, D1 labels)
         self.tx_data_bytes = []
         for i in range(8):
             byte_input = QLineEdit("00")
             byte_input.setMaximumWidth(35)
             byte_input.setMaxLength(2)
-            byte_input.setInputMask("HH")  # Apenas hexadecimal
+            byte_input.setInputMask("HH")  # Hexadecimal only
             byte_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.tx_data_bytes.append(byte_input)
             row1.addWidget(byte_input)
         
-        # Separador visual
+        # Visual separator
         sep3 = QLabel("│")
         sep3.setStyleSheet(self.colors['separator'])
         row1.addWidget(sep3)
@@ -396,7 +415,7 @@ class CANAnalyzerWindow(QMainWindow):
         row1.addStretch()
         tx_controls_layout.addLayout(row1)
         
-        # Linha 2: Options: 29 Bit, RTR | Comment
+        # Row 2: Options: 29 Bit, RTR | Comment
         row2 = QHBoxLayout()
         
         row2.addWidget(QLabel("Options:"))
@@ -407,7 +426,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.tx_rtr_check = QCheckBox("RTR")
         row2.addWidget(self.tx_rtr_check)
         
-        # Separador visual
+        # Visual separator
         sep4 = QLabel("│")
         sep4.setStyleSheet(self.colors['separator'])
         row2.addWidget(sep4)
@@ -417,21 +436,21 @@ class CANAnalyzerWindow(QMainWindow):
         self.tx_comment_input.setPlaceholderText("Optional description")
         row2.addWidget(self.tx_comment_input)
         
-        # Separador visual
+        # Visual separator
         sep_source = QLabel("│")
         sep_source.setStyleSheet(self.colors['separator'])
         row2.addWidget(sep_source)
         
         row2.addWidget(QLabel(f"{t('col_channel')}:"))
         self.tx_source_combo = QComboBox()
-        self.tx_source_combo.addItem("CAN1")  # Default, será atualizado dinamicamente
+        self.tx_source_combo.addItem("CAN1")  # Default, updated dynamically
         self.tx_source_combo.setMaximumWidth(100)
         row2.addWidget(self.tx_source_combo)
         
         row2.addStretch()
         tx_controls_layout.addLayout(row2)
         
-        # Linha 3: TX Mode, Trigger ID, Trigger Data
+        # Row 3: TX Mode, Trigger ID, Trigger Data
         row3 = QHBoxLayout()
         
         row3.addWidget(QLabel("TX Mode:"))
@@ -440,7 +459,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.tx_mode_combo.setMaximumWidth(100)
         row3.addWidget(self.tx_mode_combo)
         
-        # Separador visual
+        # Visual separator
         sep5 = QLabel("│")
         sep5.setStyleSheet(self.colors['separator'])
         row3.addWidget(sep5)
@@ -460,7 +479,7 @@ class CANAnalyzerWindow(QMainWindow):
         row3.addStretch()
         tx_controls_layout.addLayout(row3)
         
-        # Linha 4: Botões - Add/Save, Delete, Clear | Send, Send All/Stop All [espaço] Save, Load
+        # Row 4: Buttons - Add/Save, Delete, Clear | Send, Send All/Stop All [space] Save, Load
         row4 = QHBoxLayout()
         
         self.btn_add = QPushButton("Add")
@@ -475,7 +494,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_clear.clicked.connect(self.clear_tx_fields)
         row4.addWidget(self.btn_clear)
         
-        # Separador visual
+        # Visual separator
         separator = QLabel("|")
         separator.setStyleSheet(f"{self.colors['separator']}; font-size: 16px; padding: 0 10px;")
         row4.addWidget(separator)
@@ -488,10 +507,10 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_send_all.clicked.connect(self.send_all)
         row4.addWidget(self.btn_send_all)
         
-        # Espaço expansível para empurrar Save/Load para direita
+        # Expandable space to push Save/Load to the right
         row4.addStretch()
         
-        # Botões de arquivo no canto direito
+        # File buttons on the right
         self.btn_save_transmit = QPushButton("💾 Save")
         self.btn_save_transmit.clicked.connect(self.save_transmit_list)
         self.btn_save_transmit.setToolTip("Save transmit list to file")
@@ -508,7 +527,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.transmit_group.setLayout(transmit_layout)
         splitter.addWidget(self.transmit_group)
         
-        # Definir proporções do splitter
+        # Set splitter proportions
         splitter.setSizes([500, 300])
         
         main_layout.addWidget(splitter)
@@ -516,7 +535,7 @@ class CANAnalyzerWindow(QMainWindow):
         # Status bar
         status_bar_layout = QHBoxLayout()
         
-        # Lado esquerdo: informações de conexão e status
+        # Left side: connection and status info
         self.connection_status = QLabel("Not Connected")
         status_bar_layout.addWidget(self.connection_status)
         
@@ -527,7 +546,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         status_bar_layout.addWidget(QLabel("|"))
         
-        # Label mostra o modo de operação do CAN (Listen Only / Normal)
+        # Label shows CAN operation mode (Listen Only / Normal)
         self.mode_label = QLabel()
         status_bar_layout.addWidget(self.mode_label)
         
@@ -543,10 +562,10 @@ class CANAnalyzerWindow(QMainWindow):
         
         status_bar_layout.addStretch()
         
-        # Lado direito: área para notificações
+        # Right side: notification area
         self.notification_label = QLabel("")
         self.notification_label.setStyleSheet(self.colors['notification'])
-        self.notification_label.setWordWrap(True)  # Quebra linha apenas se necessário
+        self.notification_label.setWordWrap(True)  # Wrap line only when needed
         self.notification_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.notification_label.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -556,25 +575,25 @@ class CANAnalyzerWindow(QMainWindow):
         
         main_layout.addLayout(status_bar_layout)
         
-        # Atualizar textos com traduções (APÓS criar todos os elementos)
+        # Update texts with translations (AFTER creating all elements)
         self.update_ui_translations()
     
     def setup_receive_table(self):
-        """Configura a tabela de recepção baseado no modo"""
+        """Configure the receive table based on mode"""
         if self.tracer_mode:
-            # Modo Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
+            # Tracer mode: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
             self.receive_table.setColumnCount(8)
             self.receive_table.setHorizontalHeaderLabels(['ID', 'Time', t('col_channel'), 'PID', 'DLC', 'Data', 'ASCII', 'Comment'])
             
-            # Modo Tracer: permitir edição (apenas Comment)
+            # Tracer mode: allow editing (Comment only)
             self.receive_table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked)
             
-            # Permitir redimensionamento manual de todas as colunas
+            # Allow manual resize of all columns
             header = self.receive_table.horizontalHeader()
             header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
             
-            # Definir larguras iniciais apropriadas
-            header.resizeSection(0, 60)   # ID (sequencial)
+            # Set appropriate initial widths
+            header.resizeSection(0, 60)   # ID (sequential)
             header.resizeSection(1, 100)  # Time
             header.resizeSection(2, 70)   # Channel
             header.resizeSection(3, 80)   # PID (CAN ID)
@@ -583,22 +602,22 @@ class CANAnalyzerWindow(QMainWindow):
             header.resizeSection(6, 100)  # ASCII
             header.resizeSection(7, 150)  # Comment
             
-            # Permitir que a última coluna se expanda se houver espaço
+            # Allow last column to expand when space is available
             header.setStretchLastSection(True)
         else:
-            # Modo Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
+            # Monitor mode: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
             self.receive_table.setColumnCount(9)
             self.receive_table.setHorizontalHeaderLabels(['ID', 'Count', t('col_channel'), 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment'])
             
-            # Modo Monitor: NÃO permitir edição (dados são atualizados automaticamente)
+            # Monitor mode: do not allow editing (data is updated automatically)
             self.receive_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             
-            # Permitir redimensionamento manual de todas as colunas
+            # Allow manual resize of all columns
             header = self.receive_table.horizontalHeader()
             header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
             
-            # Definir larguras iniciais apropriadas
-            header.resizeSection(0, 40)   # ID (sequencial)
+            # Set appropriate initial widths
+            header.resizeSection(0, 40)   # ID (sequential)
             header.resizeSection(1, 60)   # Count
             header.resizeSection(2, 70)   # Channel
             header.resizeSection(3, 80)   # PID (CAN ID)
@@ -608,42 +627,42 @@ class CANAnalyzerWindow(QMainWindow):
             header.resizeSection(7, 100)  # ASCII
             header.resizeSection(8, 150)  # Comment
             
-            # Permitir que a última coluna se expanda se houver espaço
+            # Allow last column to expand when space is available
             header.setStretchLastSection(True)
     
     def toggle_tracer_mode(self):
-        """Alterna entre modo Tracer (cronológico) e Monitor (agrupado)
+        """Toggle between Tracer (chronological) and Monitor (grouped) mode.
         
-        Monitor Mode: Agrupa por ID, mostra última mensagem, contador
-        Tracer Mode: Lista todas as mensagens em ordem cronológica
+        Monitor Mode: Groups by ID, shows last message, count
+        Tracer Mode: Lists all messages in chronological order
         """
-        # Inverter a lógica: quando clicado, ativa Tracer, mas visualmente "desclica" o botão
+        # Invert logic: when clicked, activates Tracer but visually "unchecks" the button
         self.tracer_mode = not self.tracer_mode
-        self.btn_tracer.setChecked(False)  # Sempre manter visualmente "desclicado"
+        self.btn_tracer.setChecked(False)  # Always keep visually "unchecked"
         
-        # Atualizar texto do botão (mostra o modo OPOSTO para onde vai alternar)
+        # Update button text (shows the OPPOSITE mode to switch to)
         if self.tracer_mode:
-            # Está em Tracer, botão mostra "Monitor" para voltar
+            # In Tracer, button shows "Monitor" to go back
             self.btn_tracer.setText(f"📊 {t('btn_monitor')}")
         else:
-            # Está em Monitor, botão mostra "Tracer" para ativar
+            # In Monitor, button shows "Tracer" to activate
             self.btn_tracer.setText(f"📊 {t('btn_tracer')}")
         
-        # NÃO limpar contadores nem mensagens - apenas reconfigurar tabela
-        # self.message_counters.clear()  # REMOVIDO - mantém dados
+        # Do not clear counters or messages - only reconfigure table
+        # self.message_counters.clear()  # REMOVED - keeps data
         
-        # OTIMIZAÇÃO: Desabilitar atualizações da UI durante repopulação
+        # OPTIMIZATION: Disable UI updates during repopulation
         self.receive_table.setUpdatesEnabled(False)
         
-        # Limpar tabela antes de reconfigurar
+        # Clear table before reconfiguring
         self.receive_table.setRowCount(0)
         
-        # Reconfigurar tabela (colunas e headers)
+        # Reconfigure table (columns and headers)
         self.setup_receive_table()
         
-        # Repopular tabela com dados existentes (SUPER OTIMIZADO)
+        # Repopulate table with existing data (optimized)
         if self.tracer_mode:
-            # Modo Tracer: Repopular APENAS com mensagens gravadas (se houver)
+            # Tracer mode: Repopulate ONLY with recorded messages (if any)
             if len(self.recorded_messages) > 0:
                 self.receive_table.setRowCount(len(self.recorded_messages))
                 
@@ -654,17 +673,17 @@ class CANAnalyzerWindow(QMainWindow):
                     data_str = " ".join([f"{b:02X}" for b in msg.data])
                     ascii_str = msg.to_ascii()
                     
-                    # Criar items com alinhamento
+                    # Create items with alignment
                     id_item = QTableWidgetItem(str(row_idx + 1))
                     id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
-                    # IMPORTANTE: Armazenar o índice real em recorded_messages
+                    # IMPORTANT: Store the real index in recorded_messages
                     id_item.setData(Qt.ItemDataRole.UserRole, row_idx)
                     
                     dlc_item = QTableWidgetItem(str(msg.dlc))
                     dlc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
-                    # Inserir items - Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
+                    # Insert items - Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
                     self.receive_table.setItem(row_idx, 0, id_item)
                     self.receive_table.setItem(row_idx, 1, QTableWidgetItem(time_str))
                     
@@ -679,52 +698,52 @@ class CANAnalyzerWindow(QMainWindow):
                     self.receive_table.setItem(row_idx, 6, QTableWidgetItem(ascii_str))
                     self.receive_table.setItem(row_idx, 7, QTableWidgetItem(msg.comment))
         else:
-            # Modo Monitor: reconstruir visualização agrupada
-            # Limpar contadores para reconstruir do zero
+            # Monitor mode: rebuild grouped view
+            # Clear counters to rebuild from scratch
             self.message_counters.clear()
             self.message_last_timestamp.clear()
             
-            # SUPER OTIMIZAÇÃO: Agrupar mensagens por ID primeiro (em memória)
-            # Depois inserir na tabela de uma vez
+            # OPTIMIZATION: Group messages by ID first (in memory)
+            # Then insert into table at once
             total_messages = len(self.received_messages)
             
             if total_messages > 0:
-                # 1. Agrupar mensagens por (ID, Channel) - MUITO MAIS RÁPIDO que inserir uma por uma
+                # 1. Group messages by (ID, Channel) - much faster than inserting one by one
                 id_data = {}  # {(can_id, source): {'last_msg': msg, 'count': N, 'period': X}}
                 
                 for msg in self.received_messages:
-                    # Verificar filtro
+                    # Check filter
                     if not self.message_passes_filter(msg):
                         continue
                     
-                    # Chave única: (ID, Channel)
+                    # Unique key: (ID, Channel)
                     counter_key = (msg.can_id, msg.source)
                     
-                    # Incrementar contador
+                    # Increment counter
                     self.message_counters[counter_key] += 1
                     count = self.message_counters[counter_key]
                     
-                    # Calcular period
+                    # Calculate period
                     period_str = ""
                     if counter_key in self.message_last_timestamp:
                         period_ms = int((msg.timestamp - self.message_last_timestamp[counter_key]) * 1000)
                         period_str = f"{period_ms}"
                     
-                    # Atualizar timestamp
+                    # Update timestamp
                     self.message_last_timestamp[counter_key] = msg.timestamp
                     
-                    # Armazenar dados (última mensagem de cada ID+Channel)
+                    # Store data (last message per ID+Channel)
                     id_data[counter_key] = {
                         'msg': msg,
                         'count': count,
                         'period': period_str
                     }
                 
-                # 2. Criar todas as linhas de uma vez
+                # 2. Create all rows at once
                 unique_ids = len(id_data)
                 self.receive_table.setRowCount(unique_ids)
                 
-                # 3. Popular tabela com dados agrupados (ORDENADO POR PID, depois por Channel)
+                # 3. Populate table with grouped data (sorted by PID, then Channel)
                 row_idx = 0
                 for (can_id, source), data in sorted(id_data.items(), key=lambda x: (x[0][0], x[0][1])):
                     msg = data['msg']
@@ -735,7 +754,7 @@ class CANAnalyzerWindow(QMainWindow):
                     data_str = " ".join([f"{b:02X}" for b in msg.data])
                     ascii_str = msg.to_ascii()
                     
-                    # Criar items com alinhamento
+                    # Create items with alignment
                     id_item = QTableWidgetItem(str(row_idx + 1))
                     id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
@@ -748,8 +767,8 @@ class CANAnalyzerWindow(QMainWindow):
                     period_item = QTableWidgetItem(period_str)
                     period_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     
-                    # Inserir items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
-                    self.receive_table.setItem(row_idx, 0, id_item)                              # ID sequencial
+                    # Insert items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
+                    self.receive_table.setItem(row_idx, 0, id_item)                              # Sequential ID
                     self.receive_table.setItem(row_idx, 1, count_item)                           # Count
                     
                     # Channel column
@@ -766,26 +785,26 @@ class CANAnalyzerWindow(QMainWindow):
                     
                     row_idx += 1
                     
-                    # Processar eventos a cada 100 IDs
+                    # Process events every 100 IDs
                     if row_idx % 100 == 0:
                         QApplication.processEvents()
         
-        # OTIMIZAÇÃO: Re-habilitar atualizações da UI
+        # OPTIMIZATION: Re-enable UI updates
         self.receive_table.setUpdatesEnabled(True)
         
-        # Reconfigurar menu de contexto após recriar tabela
+        # Reconfigure context menu after recreating table
         self.receive_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.receive_table.customContextMenuRequested.connect(self.show_receive_context_menu)
         
-        # Reconfigurar seleção múltipla
+        # Reconfigure multiple selection
         self.receive_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.receive_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         
-        # Mostrar/ocultar controles de reprodução (apenas em Tracer)
+        # Show/hide playback controls (Tracer only)
         self.tracer_controls_widget.setVisible(self.tracer_mode)
         
-        # Atualizar label do grupo
-        # Encontrar o QGroupBox pai
+        # Update group label
+        # Find parent QGroupBox
         parent = self.receive_table.parent()
         while parent and not isinstance(parent, QGroupBox):
             parent = parent.parent()
@@ -809,7 +828,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_clear_tracer.setText(f"🗑 {t('btn_clear')}")
         self.btn_tracer.setText(f"📊 {t('btn_tracer') if not self.tracer_mode else t('btn_monitor')}")
         
-        # Status label removido - notificações via statusBar()
+        # Status label removed - notifications via statusBar()
         
         # Mode label
         if hasattr(self, 'mode_label'):
@@ -835,7 +854,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_stop_play.setText(f"⏹ {t('btn_stop')}")
         
         # Transmit buttons
-        # Botões de transmissão - textos são atualizados dinamicamente
+        # Transmit buttons - texts are updated dynamically
         # btn_add muda entre "Add" e "Save"
         # btn_send_all muda entre "Send All" e "Stop All"
         pass
@@ -896,7 +915,7 @@ class CANAnalyzerWindow(QMainWindow):
     def create_menu_bar(self):
         """Cria a barra de menu"""
         menubar = self.menuBar()
-        menubar.clear()  # Limpar menus existentes antes de recriar
+        menubar.clear()  # Clear existing menus before recreating
         
         # File Menu
         file_menu = menubar.addMenu(t('menu_file'))
@@ -1007,7 +1026,32 @@ class CANAnalyzerWindow(QMainWindow):
         
         tools_menu.addSeparator()
         
-        gateway_action = QAction(f"🌉 {t('menu_gateway')}...", self)
+        # Protocol Decoders submenu
+        decoders_menu = tools_menu.addMenu("Protocol Decoders")
+        
+        # Decoder Manager
+        decoder_manager_action = QAction("Manage Decoders...", self)
+        decoder_manager_action.setShortcut("Ctrl+Shift+D")
+        decoder_manager_action.triggered.connect(self.show_decoder_manager)
+        decoders_menu.addAction(decoder_manager_action)
+        
+        decoders_menu.addSeparator()
+        
+        # FTCAN Protocol Analyzer
+        ftcan_action = QAction("FTCAN 2.0 Analyzer...", self)
+        ftcan_action.setShortcut("Ctrl+Shift+F")
+        ftcan_action.triggered.connect(self.show_ftcan_dialog)
+        decoders_menu.addAction(ftcan_action)
+        
+        # OBD-II Monitor
+        obd2_action = QAction("OBD-II Monitor...", self)
+        obd2_action.setShortcut("Ctrl+Shift+O")
+        obd2_action.triggered.connect(self.show_obd2_dialog)
+        decoders_menu.addAction(obd2_action)
+        
+        tools_menu.addSeparator()
+        
+        gateway_action = QAction(f"{t('menu_gateway')}...", self)
         gateway_action.setShortcut("Ctrl+W")
         gateway_action.triggered.connect(self.show_gateway_dialog)
         tools_menu.addAction(gateway_action)
@@ -1040,10 +1084,14 @@ class CANAnalyzerWindow(QMainWindow):
         # about_action.triggered.connect(self.show_about)
         # help_menu.addAction(about_action)
     
-    def _on_can_message_received(self, msg: CANMessage):
-        """Callback chamado quando uma mensagem CAN é recebida de qualquer barramento"""
+    def _on_can_message_received(self, bus_name: str, msg: CANMessage):
+        """Callback when a CAN message is received from any bus"""
         # Add message to queue for UI update
         self.message_queue.put(msg)
+        
+        # Forward to OBD2Dialog if open
+        if hasattr(self, '_obd2_dialog') and self._obd2_dialog:
+            self._obd2_dialog.on_can_message(bus_name, msg)
     
     def _send_can_message(self, can_msg: 'can.Message', target_bus: str = None):
         """Send CAN message to specified bus or all buses
@@ -1106,7 +1154,7 @@ class CANAnalyzerWindow(QMainWindow):
                 )
                 self.can_bus_manager.add_bus(config)
             
-            # Tentar conexão real se não estiver em modo simulação
+            # Try real connection if not in simulation mode
             if not simulation_mode and CAN_AVAILABLE:
                 self.logger.info("Tentando conectar todos os barramentos CAN")
                 
@@ -1164,7 +1212,7 @@ class CANAnalyzerWindow(QMainWindow):
                     self.logger.error(f"Erro ao conectar aos dispositivos reais: {str(e)}")
                     self.logger.warning("Tentando modo simulação como fallback")
                     
-                    # Perguntar ao usuário se quer usar simulação
+                    # Ask user if they want to use simulation
                     reply = QMessageBox.question(
                         self,
                         "Connection Error",
@@ -1176,10 +1224,10 @@ class CANAnalyzerWindow(QMainWindow):
                     if reply == QMessageBox.StandardButton.No:
                         return
                     
-                    # Ativar modo simulação temporariamente
+                    # Enable simulation mode temporarily
                     simulation_mode = True
             
-            # Modo simulação
+            # Simulation mode
             if simulation_mode or not CAN_AVAILABLE:
                 self.logger.warning("Conectando em modo simulação")
                 
@@ -1230,24 +1278,24 @@ class CANAnalyzerWindow(QMainWindow):
                 
                 self.show_notification(t('notif_simulation_mode', baudrate=baudrate//1000), 5000)
             
-            # Configurações comuns
+            # Common settings
             self.btn_connect.setEnabled(False)
             self.btn_disconnect.setEnabled(True)
             self.btn_pause.setEnabled(True)
             
-            # Habilitar botão Gateway se houver 2+ barramentos
+            # Enable Gateway button if 2+ buses
             if self.can_bus_manager and len(self.can_bus_manager.get_bus_names()) >= 2:
                 self.btn_gateway.setEnabled(True)
                 self.update_gateway_button_state()
             
-            # Atualizar label de modo
+            # Update mode label
             if self.config.get('listen_only', True):
                 self.mode_label.setText(t('status_listen_only'))
             else:
                 self.mode_label.setText(t('status_normal'))
             
-            # Iniciar thread de recepção (apenas para modo legacy single-CAN)
-            # Multi-CAN usa threads próprias em cada CANBusInstance
+            # Start receive thread (legacy single-CAN mode only)
+            # Multi-CAN uses its own threads in each CANBusInstance
             if not self.can_bus_manager and self.can_bus:
                 self.receive_thread = threading.Thread(target=self.receive_loop, daemon=True)
                 self.receive_thread.start()
@@ -1255,7 +1303,7 @@ class CANAnalyzerWindow(QMainWindow):
             elif self.can_bus_manager:
                 self.logger.info("Usando threads de recepção do CANBusManager")
             
-            # Gerar dados de exemplo apenas em modo simulação
+            # Generate sample data in simulation mode only
             if simulation_mode or not CAN_AVAILABLE:
                 self.generate_sample_data()
             
@@ -1266,16 +1314,16 @@ class CANAnalyzerWindow(QMainWindow):
             QMessageBox.critical(self, "Connection Error", f"Erro ao conectar: {str(e)}")
     
     def disconnect(self):
-        """Desconecta do barramento CAN"""
+        """Disconnect from CAN bus"""
         self.logger.info("Desconectando do barramento CAN")
         
         self.connected = False
         
-        # Parar envio periódico se estiver ativo
+        # Stop periodic send if active
         if self.periodic_send_active:
             self.stop_all()
         
-        # Parar gravação se estiver ativa
+        # Stop recording if active
         if self.recording:
             self.btn_record.setChecked(False)
             self.toggle_recording()
@@ -1305,40 +1353,40 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_connect.setEnabled(True)
         self.btn_disconnect.setEnabled(False)
         self.btn_pause.setEnabled(False)
-        self.btn_gateway.setEnabled(False)  # Desabilitar Gateway ao desconectar
+        self.btn_gateway.setEnabled(False)  # Disable Gateway on disconnect
         
-        # Resetar label de modo ao desconectar
+        # Reset mode label on disconnect
         if self.config.get('listen_only', True):
             self.mode_label.setText("Listen Only Mode")
         else:
             self.mode_label.setText("Normal Mode")
     
     def reset(self):
-        """Reseta a aplicação sem derrubar a conexão"""
-        # Limpar tabela(s)
+        """Reset the application without dropping the connection"""
+        # Clear table(s)
         self.receive_table.setRowCount(0)
         
-        # Limpar tabelas do split-screen se existirem
+        # Clear split-screen tables if they exist
         if self.split_screen_mode:
             if self.receive_table_left:
                 self.receive_table_left.setRowCount(0)
             if self.receive_table_right:
                 self.receive_table_right.setRowCount(0)
         
-        # Limpar dados
+        # Clear data
         self.received_messages.clear()
         self.message_counters.clear()
         self.message_last_timestamp.clear()
         
-        # Limpar mensagens gravadas (Tracer)
+        # Clear recorded messages (Tracer)
         self.recorded_messages.clear()
         
-        # Resetar botões de reprodução
+        # Reset playback buttons
         if hasattr(self, 'btn_play_all'):
             self.btn_play_all.setEnabled(False)
             self.btn_play_selected.setEnabled(False)
         
-        # Parar gravação se estiver ativa
+        # Stop recording if active
         if self.recording:
             self.btn_record.setChecked(False)
             self.btn_record.setText("⏺ Record")
@@ -1349,26 +1397,26 @@ class CANAnalyzerWindow(QMainWindow):
         self.show_notification(t('notif_reset'))
     
     def toggle_recording(self):
-        """Inicia/para a gravação de mensagens para reprodução (apenas Tracer)"""
+        """Start/stop recording messages for playback (Tracer only)"""
         self.recording = self.btn_record.isChecked()
         
         if self.recording:
-            # Iniciar gravação
-            self.recorded_messages.clear()  # Limpar gravações anteriores
-            self.receive_table.setRowCount(0)  # Limpar tabela
+            # Start recording
+            self.recorded_messages.clear()  # Clear previous recordings
+            self.receive_table.setRowCount(0)  # Clear table
             self.btn_record.setText("⏺ Recording")
             self.btn_record.setStyleSheet(self.colors['record_active'])
             self.btn_play_all.setEnabled(False)
             self.btn_play_selected.setEnabled(False)
             self.show_notification(t('notif_recording_started'), 3000)
         else:
-            # Parar gravação
+            # Stop recording
             self.btn_record.setText("⏺ Record")
             self.btn_record.setStyleSheet("")
             
-            # NÃO limpar tabela - manter mensagens gravadas visíveis para replay
+            # Do not clear table - keep recorded messages visible for replay
             
-            # Habilitar botões de reprodução se houver mensagens gravadas
+            # Enable playback buttons if there are recorded messages
             if len(self.recorded_messages) > 0:
                 self.btn_play_all.setEnabled(True)
                 self.btn_play_selected.setEnabled(True)
@@ -1377,29 +1425,29 @@ class CANAnalyzerWindow(QMainWindow):
                 self.show_notification(t('notif_recording_stopped_empty'), 3000)
     
     def toggle_transmit_panel(self):
-        """Mostra/oculta o painel de Transmissão"""
+        """Show/hide the Transmit panel"""
         self.transmit_panel_visible = not self.transmit_panel_visible
         
         if self.transmit_panel_visible:
-            # Mostrar painel
+            # Show panel
             self.transmit_group.setVisible(True)
             self.btn_toggle_transmit.setText("📤 Hide TX")
             self.show_notification(t('notif_tx_panel_visible'), 2000)
         else:
-            # Ocultar painel
+            # Hide panel
             self.transmit_group.setVisible(False)
             self.btn_toggle_transmit.setText("📤 Show TX")
             self.show_notification(t('notif_tx_panel_hidden'), 2000)
     
     def show_notification(self, message: str, duration: int = 3000):
-        """Mostra notificação temporária no canto inferior direito"""
+        """Show temporary notification in the bottom-right corner"""
         self.notification_label.setText(message)
         
-        # Criar timer para limpar notificação
+        # Create timer to clear notification
         QTimer.singleShot(duration, lambda: self.notification_label.setText(""))
     
     def clear_tracer_messages(self):
-        """Limpa mensagens gravadas no Tracer"""
+        """Clear recorded messages in Tracer"""
         self.recorded_messages.clear()
         self.receive_table.setRowCount(0)
         self.btn_play_all.setEnabled(False)
@@ -1407,7 +1455,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.show_notification(t('notif_recorded_cleared'))
     
     def toggle_pause(self):
-        """Pausa/retoma a exibição"""
+        """Pause/resume display"""
         self.paused = not self.paused
         if self.paused:
             self.btn_pause.setText("▶ Resume")
@@ -1417,10 +1465,10 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_pause.setStyleSheet("")
     
     def clear_receive(self):
-        """Limpa a tabela de recepção (e split-screen se ativo)"""
+        """Clear the receive table (and split-screen if active)"""
         self.receive_table.setRowCount(0)
         
-        # Limpar tabelas do split-screen se existirem
+        # Clear split-screen tables if they exist
         if self.split_screen_mode:
             if self.receive_table_left:
                 self.receive_table_left.setRowCount(0)
@@ -1430,7 +1478,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.update_message_count()
     
     def receive_loop(self):
-        """Loop de recepção de mensagens CAN"""
+        """CAN message receive loop"""
         while self.connected:
             try:
                 if self.can_bus:
@@ -1475,7 +1523,7 @@ class CANAnalyzerWindow(QMainWindow):
             time.sleep(0.08)
     
     def start_ui_update(self):
-        """Inicia timer para atualização da UI"""
+        """Start timer for UI updates"""
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_ui)
         self.timer.start(50)  # Atualiza a cada 50ms
@@ -1490,7 +1538,11 @@ class CANAnalyzerWindow(QMainWindow):
                 msg = self.message_queue.get_nowait()
                 self.received_messages.append(msg)
                 
-                # Verificar triggers (antes de adicionar à UI)
+                # Forward to FTCAN dialog if open
+                if self._ftcan_dialog is not None:
+                    self._ftcan_dialog.add_message(msg)
+                
+                # Check triggers (before adding to UI)
                 if self.triggers_enabled and self.connected:
                     self.check_and_fire_triggers(msg)
                 
@@ -1513,9 +1565,9 @@ class CANAnalyzerWindow(QMainWindow):
                 else:
                     # Normal single-screen mode
                     if self.tracer_mode:
-                        # Tracer: só exibir se estiver gravando (Record ativo)
+                        # Tracer: only show if recording (Record active)
                         if self.recording:
-                            self.recorded_messages.append(msg)  # Adicionar à lista ANTES de exibir
+                            self.recorded_messages.append(msg)  # Add to list BEFORE displaying
                             self.add_message_tracer_mode(msg)
                     else:
                         # Monitor: sempre exibir
@@ -1532,7 +1584,7 @@ class CANAnalyzerWindow(QMainWindow):
             msg: Mensagem CAN a ser adicionada
             highlight: Se True, destaca linha atualizada (para recepção em tempo real)
         """
-        # Verificar filtro
+        # Check filter
         if not self.message_passes_filter(msg):
             return
         
@@ -1545,13 +1597,13 @@ class CANAnalyzerWindow(QMainWindow):
         row = self.receive_table.rowCount()
         self.receive_table.insertRow(row)
         
-        # Criar items com alinhamento
+        # Create items with alignment
         id_item = QTableWidgetItem(str(row + 1))
         id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         
-        # IMPORTANTE: Armazenar o índice real em recorded_messages como UserRole
-        # Isso permite mapear corretamente a linha da tabela para a mensagem
-        msg_index = len(self.recorded_messages) - 1  # Índice da última mensagem adicionada
+        # IMPORTANT: Store the real index in recorded_messages as UserRole
+        # This allows correct mapping of table row to message
+        msg_index = len(self.recorded_messages) - 1  # Index of last message added
         id_item.setData(Qt.ItemDataRole.UserRole, msg_index)
         
         dlc_item = QTableWidgetItem(str(msg.dlc))
@@ -1573,7 +1625,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.receive_table.setItem(row, 7, QTableWidgetItem(msg.comment))   # Comment
         
         # NO TRACER MODE: Sem highlight (deixar fluir sem azul)
-        # Removido o código de highlight para que as mensagens fluam naturalmente
+        # Highlight code removed so messages flow naturally
         
         # Auto-scroll
         self.receive_table.scrollToBottom()
@@ -1587,7 +1639,7 @@ class CANAnalyzerWindow(QMainWindow):
                       Se False, não destaca (para carregamento de logs)
             target_table: Tabela alvo (para split-screen), None = usar self.receive_table
         """
-        # Verificar filtro
+        # Check filter
         if not self.message_passes_filter(msg):
             return
         
@@ -1603,44 +1655,44 @@ class CANAnalyzerWindow(QMainWindow):
         self.message_counters[counter_key] += 1
         count = self.message_counters[counter_key]
         
-        # Calcular period (tempo desde última mensagem deste ID+Channel)
+        # Calculate period (time since last message for this ID+Channel)
         period_str = ""
         if counter_key in self.message_last_timestamp:
             period_ms = int((msg.timestamp - self.message_last_timestamp[counter_key]) * 1000)
             period_str = f"{period_ms}"
         
-        # Atualizar timestamp da última mensagem deste ID+Channel
+        # Update timestamp of last message for this ID+Channel
         self.message_last_timestamp[counter_key] = msg.timestamp
         
-        # Procurar se já existe linha com esse PID E Channel
+        # Check if row already exists for this PID and Channel
         existing_row = -1
         for row in range(table.rowCount()):
-            pid_item = table.item(row, 3)  # Coluna 3 = PID
-            channel_item = table.item(row, 2)  # Coluna 2 = Channel
+            pid_item = table.item(row, 3)  # Column 3 = PID
+            channel_item = table.item(row, 2)  # Column 2 = Channel
             if pid_item and channel_item:
                 if pid_item.text() == pid_str and channel_item.text() == msg.source:
                     existing_row = row
                     break
         
         if existing_row >= 0:
-            # Atualizar linha existente
+            # Update existing row
             # Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
             count_item = QTableWidgetItem(str(count))
             count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)  # Centralizar Count
             table.setItem(existing_row, 1, count_item)                     # Count
-            # Channel não muda (mantém o original da primeira mensagem)
+            # Channel does not change (keeps original from first message)
             table.setItem(existing_row, 5, QTableWidgetItem(data_str))     # Data
             table.setItem(existing_row, 6, QTableWidgetItem(period_str))   # Period
             table.setItem(existing_row, 7, QTableWidgetItem(ascii_str))    # ASCII
             
-            # NO MONITOR MODE: Destacar APENAS a célula Count em azul claro quando count > 1
+            # In Monitor mode: highlight ONLY the Count cell in light blue when count > 1
             if highlight and count > 1:
                 count_item.setBackground(self.colors['highlight'])
             else:
                 # Manter cor normal se count == 1
                 count_item.setBackground(self.colors['normal_bg'])
                 
-            # Limpar background das outras células (caso tenham sido destacadas antes)
+            # Clear background of other cells (in case they were highlighted before)
             for col in range(table.columnCount()):
                 if col == 1:  # Pular a coluna Count
                     continue
@@ -1648,15 +1700,15 @@ class CANAnalyzerWindow(QMainWindow):
                 if item:
                     item.setBackground(self.colors['normal_bg'])
         else:
-            # Adicionar nova linha NA POSIÇÃO CORRETA (ordenado por PID)
+            # Add new row at the correct position (sorted by PID)
             # Monitor: ID, Count, PID, DLC, Data, Period, ASCII, Comment
             
-            # Encontrar posição correta para inserir (ordenado por PID, depois por Channel)
-            insert_row = table.rowCount()  # Por padrão, inserir no final
+            # Find correct position to insert (sorted by PID, then Channel)
+            insert_row = table.rowCount()  # By default, insert at end
             
             for row in range(table.rowCount()):
-                existing_pid_item = table.item(row, 3)  # Coluna 3 = PID
-                existing_channel_item = table.item(row, 2)  # Coluna 2 = Channel
+                existing_pid_item = table.item(row, 3)  # Column 3 = PID
+                existing_channel_item = table.item(row, 2)  # Column 2 = Channel
                 if existing_pid_item:
                     existing_pid_str = existing_pid_item.text()
                     # Comparar PIDs (remover "0x" e converter para int)
@@ -1689,7 +1741,7 @@ class CANAnalyzerWindow(QMainWindow):
             period_item = QTableWidgetItem(period_str)
             period_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            # Inserir items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
+            # Inserir items - Monitor: ID, Count, Channel, PID, DLC, Data, Period, Protocol, ASCII, Comment
             table.setItem(row, 0, id_item)                            # ID sequencial
             table.setItem(row, 1, count_item)                         # Count
             
@@ -1705,8 +1757,8 @@ class CANAnalyzerWindow(QMainWindow):
             table.setItem(row, 7, QTableWidgetItem(ascii_str))        # ASCII
             table.setItem(row, 8, QTableWidgetItem(msg.comment))      # Comment
             
-            # NÃO destacar na primeira mensagem (count == 1), manter cor normal
-            # Highlight só deve aparecer quando count > 1 (mensagem repetida)
+            # Do not highlight on first message (count == 1), keep normal color
+            # Highlight should only appear when count > 1 (repeated message)
             count_item.setBackground(self.colors['normal_bg'])
             
             # Recalcular IDs sequenciais de todas as linhas (pois a ordem mudou)
@@ -1737,7 +1789,7 @@ class CANAnalyzerWindow(QMainWindow):
                 self.tx_data_bytes[i].setText("00")
     
     def get_data_from_bytes(self):
-        """Obtém bytes de dados dos campos individuais"""
+        """Get data bytes from individual fields"""
         data_bytes = []
         dlc = self.tx_dlc_input.value()
         for i in range(dlc):
@@ -1749,7 +1801,7 @@ class CANAnalyzerWindow(QMainWindow):
     
     def set_data_to_bytes(self, data_str):
         """Define bytes de dados nos campos individuais"""
-        # Limpar espaços e converter
+        # Strip spaces and convert
         data_clean = data_str.replace(' ', '')
         
         # Preencher campos byte a byte
@@ -1763,8 +1815,8 @@ class CANAnalyzerWindow(QMainWindow):
                 self.tx_data_bytes[i].setText("00")
     
     def get_tx_message_data_from_table(self, row):
-        """Obtém dados de uma mensagem da tabela de transmissão"""
-        # Colunas: PID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16), Channel(17)
+        """Get data of a message from the transmit table"""
+        # Columns: PID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16), Channel(17)
         
         # ID
         can_id_str = self.transmit_table.item(row, 0).text().replace('0x', '').replace('0X', '')
@@ -1810,7 +1862,7 @@ class CANAnalyzerWindow(QMainWindow):
         }
     
     def send_single(self):
-        """Envia uma única mensagem"""
+        """Send a single message"""
         try:
             can_id = int(self.tx_id_input.text(), 16)
             dlc = self.tx_dlc_input.value()
@@ -1835,13 +1887,13 @@ class CANAnalyzerWindow(QMainWindow):
                         current_count = int(count_item.text()) if count_item.text().isdigit() else 0
                         count_item.setText(str(current_count + 1))
                     else:
-                        # Criar item se não existir
+                        # Create item if it does not exist
                         new_item = QTableWidgetItem("1")
                         new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                         self.transmit_table.setItem(self.editing_tx_row, 15, new_item)
                         self.transmit_table.setItem(self.editing_tx_row, 15, new_item)
                 
-                # Sem popup - apenas notificação discreta
+                # No popup - discrete notification only
                 self.show_notification(t('notif_message_sent', id=can_id), 1000)
             else:
                 self.show_notification(t('notif_simulation_sent', id=can_id), 2000)
@@ -1850,7 +1902,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.show_notification(t('notif_error', error=str(e)), 3000)
     
     def clear_tx_fields(self):
-        """Limpa todos os campos de edição de transmissão"""
+        """Clear all transmit edit fields"""
         self.tx_id_input.setText("000")
         self.tx_dlc_input.setValue(8)
         self.tx_29bit_check.setChecked(False)
@@ -1863,13 +1915,13 @@ class CANAnalyzerWindow(QMainWindow):
         self.trigger_data_input.setText("")
         self.tx_comment_input.setText("")
         self.editing_tx_row = -1
-        # Atualizar botão para "Add"
+        # Update button to "Add"
         self.btn_add.setText("Add")
     
     def add_tx_message(self):
-        """Adiciona ou atualiza mensagem na lista de transmissão"""
+        """Add or update message in the transmit list"""
         try:
-            # Verificar se estamos editando uma linha existente ou adicionando nova
+            # Check if we are editing an existing row or adding new
             if self.editing_tx_row >= 0 and self.editing_tx_row < self.transmit_table.rowCount():
                 # Editando linha existente
                 row = self.editing_tx_row
@@ -1934,7 +1986,7 @@ class CANAnalyzerWindow(QMainWindow):
             source_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.transmit_table.setItem(row, 17, source_item)
             
-            # Resetar estado de edição
+            # Reset edit state
             self.editing_tx_row = -1
             self.clear_tx_fields()
             
@@ -1942,7 +1994,7 @@ class CANAnalyzerWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Erro ao adicionar: {str(e)}")
     
     def load_tx_message_to_edit(self, item=None):
-        """Carrega mensagem da tabela para os campos de edição (double-click ou copy)"""
+        """Load message from table into edit fields (double-click or copy)"""
         current_row = self.transmit_table.currentRow()
         if current_row >= 0:
             try:
@@ -1998,7 +2050,7 @@ class CANAnalyzerWindow(QMainWindow):
                 # Definir que estamos editando esta linha
                 self.editing_tx_row = current_row
                 
-                # Mudar botão para "Save"
+                # Change button to "Save"
                 self.btn_add.setText("Save")
                 
             except Exception as e:
@@ -2011,7 +2063,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.transmit_table.removeRow(current_row)
     
     def send_all(self):
-        """Inicia envio periódico de todas as mensagens com TX Mode = 'on'"""
+        """Start periodic send of all messages with TX Mode = 'on'"""
         if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
@@ -2020,7 +2072,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.show_notification(t('notif_periodic_already_active'), 2000)
             return
         
-        # Verificar se há mensagens na tabela
+        # Check if there are messages in the table
         if self.transmit_table.rowCount() == 0:
             self.show_notification(t('notif_no_messages_in_table'), 2000)
             return
@@ -2038,11 +2090,11 @@ class CANAnalyzerWindow(QMainWindow):
                 if tx_mode != 'on':
                     continue
                 
-                # Verificar se tem período configurado
+                # Check if period is configured
                 if msg_data['period'] == "off" or msg_data['period'] == "0":
                     continue
                 
-                # Parse do período (em ms)
+                # Parse period (in ms)
                 try:
                     period_ms = int(msg_data['period'])
                     if period_ms <= 0:
@@ -2050,11 +2102,11 @@ class CANAnalyzerWindow(QMainWindow):
                 except ValueError:
                     continue
                 
-                # Criar evento de parada para esta thread
+                # Create stop event for this thread
                 stop_event = threading.Event()
                 self.periodic_send_stop_events[row] = stop_event
                 
-                # Criar e iniciar thread de envio periódico
+                # Create and start periodic send thread
                 thread = threading.Thread(
                     target=self._periodic_send_worker,
                     args=(row, msg_data['can_id'], msg_data['dlc'], msg_data['data'], period_ms, stop_event, msg_data['is_rtr']),
@@ -2071,7 +2123,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         if messages_started > 0:
             self.show_notification(t('notif_periodic_started', count=messages_started), 3000)
-            # Transformar botão Send All em Stop All
+            # Change Send All button to Stop All
             self.btn_send_all.setText("Stop All")
             self.btn_send_all.setStyleSheet(self.colors['send_active'])
             self.btn_send_all.clicked.disconnect()
@@ -2081,7 +2133,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.show_notification("⚠️ Nenhuma mensagem com TX Mode = 'on' e período válido", 2000)
     
     def stop_all(self):
-        """Para todas as transmissões periódicas"""
+        """Stop all periodic transmissions"""
         if not self.periodic_send_active:
             self.show_notification(t('notif_no_periodic_active'), 2000)
             return
@@ -2095,12 +2147,12 @@ class CANAnalyzerWindow(QMainWindow):
             if thread.is_alive():
                 thread.join(timeout=1.0)
         
-        # Limpar estruturas
+        # Clear structures
         self.periodic_send_threads.clear()
         self.periodic_send_stop_events.clear()
         self.periodic_send_active = False
         
-        # Reverter botão Stop All para Send All
+        # Revert Stop All button to Send All
         self.btn_send_all.setText("Send All")
         self.btn_send_all.setStyleSheet("")
         self.btn_send_all.clicked.disconnect()
@@ -2110,13 +2162,13 @@ class CANAnalyzerWindow(QMainWindow):
         self.logger.info("Periodic Send: Todas as transmissões periódicas foram paradas")
     
     def _periodic_send_worker(self, row: int, can_id: int, dlc: int, data: bytes, period_ms: int, stop_event: threading.Event, is_rtr: bool = False):
-        """Worker thread para envio periódico de uma mensagem"""
+        """Worker thread for periodic send of one message"""
         period_sec = period_ms / 1000.0
         
         try:
             while not stop_event.is_set():
                 try:
-                    # Enviar mensagem
+                    # Send message
                     if self.can_bus_manager or self.can_bus:
                         # Garantir que data tenha o tamanho correto (dlc bytes)
                         data_to_send = data[:dlc] if len(data) >= dlc else data + b'\x00' * (dlc - len(data))
@@ -2139,17 +2191,17 @@ class CANAnalyzerWindow(QMainWindow):
                 except Exception as e:
                     self.logger.error(f"Erro ao enviar mensagem periódica 0x{can_id:03X}: {e}")
                 
-                # Aguardar período ou até stop_event ser setado
+                # Wait for period or until stop_event is set
                 stop_event.wait(period_sec)
                 
         except Exception as e:
             self.logger.error(f"Erro no worker de envio periódico (row {row}): {e}")
     
     def _increment_tx_count(self, row: int):
-        """Incrementa o contador de transmissão na tabela (deve ser chamado na thread principal)"""
+        """Increment transmit counter in table (must be called from main thread)"""
         try:
             if row < self.transmit_table.rowCount():
-                # Coluna 15 é Count na nova estrutura
+                # Column 15 is Count in the new structure
                 count_item = self.transmit_table.item(row, 15)
                 if count_item:
                     # Incrementar contador existente
@@ -2159,7 +2211,7 @@ class CANAnalyzerWindow(QMainWindow):
                     except ValueError:
                         count_item.setText("1")
                 else:
-                    # Criar item se não existir
+                    # Create item if it doesn't exist
                     new_item = QTableWidgetItem("1")
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2168,15 +2220,15 @@ class CANAnalyzerWindow(QMainWindow):
             self.logger.error(f"Erro ao incrementar contador: {e}")
     
     def _update_tx_count(self, row: int, count: int):
-        """Atualiza o contador de transmissão na tabela (deve ser chamado na thread principal)"""
+        """Update transmit counter in table (must be called from main thread)"""
         try:
             if row < self.transmit_table.rowCount():
-                # Coluna 15 é Count na nova estrutura
+                # Column 15 is Count in the new structure
                 count_item = self.transmit_table.item(row, 15)
                 if count_item:
                     count_item.setText(str(count))
                 else:
-                    # Criar item se não existir
+                    # Create item if it doesn't exist
                     new_item = QTableWidgetItem(str(count))
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2185,7 +2237,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.logger.error(f"Erro ao atualizar contador: {e}")
     
     def show_settings(self):
-        """Mostra janela de configurações"""
+        """Show settings window"""
         try:
             self.logger.info("Abrindo dialog de configurações")
             dialog = SettingsDialog(self, self.config, self.usb_monitor)
@@ -2194,24 +2246,24 @@ class CANAnalyzerWindow(QMainWindow):
                 new_config = dialog.get_config()
                 self.logger.info(f"Configurações atualizadas: {new_config}")
                 
-                # Verificar se mudou o idioma
+                # Check if language changed
                 old_language = self.config.get('language', 'en')
                 new_language = new_config.get('language', 'en')
                 
-                # Verificar se mudou o tema
+                # Check if theme changed
                 old_theme = self.config.get('theme', 'system')
                 new_theme = new_config.get('theme', 'system')
                 
-                # Verificar se mudou listen_only
+                # Check if listen_only changed
                 old_listen_only = self.config.get('listen_only', True)
                 new_listen_only = new_config.get('listen_only', True)
                 
-                # Atualizar configuração local E salvar em arquivo
+                # Update local config and save to file
                 self.config.update(new_config)
                 self.config_manager.update(new_config)
                 self.logger.info("Configuração salva em config.json")
                 
-                # Aplicar mudança de idioma
+                # Apply language change
                 language_changed = False
                 if old_language != new_language:
                     from .i18n import get_i18n
@@ -2219,19 +2271,19 @@ class CANAnalyzerWindow(QMainWindow):
                     i18n.set_language(new_language)
                     self.logger.info(f"Idioma alterado para: {new_language}")
                     
-                    # Atualizar interface com novo idioma
+                    # Update interface with new language
                     self.update_ui_translations()
                     language_changed = True
                 
-                # Aplicar mudança de tema
+                # Apply theme change
                 theme_changed = False
                 if old_theme != new_theme:
                     self.logger.info(f"Tema alterado para: {new_theme}")
-                    # Aplicar tema imediatamente
+                    # Apply theme immediately
                     self.apply_theme(new_theme)
                     theme_changed = True
                 
-                # Atualizar label de modo se conectado ou sempre atualizar
+                # Update mode label if connected or always update
                 if self.config.get('listen_only', True):
                     self.mode_label.setText(t('status_listen_only'))
                 else:
@@ -2240,7 +2292,7 @@ class CANAnalyzerWindow(QMainWindow):
                 if old_listen_only != new_listen_only:
                     self.logger.info(f"Modo alterado para: {'Listen Only' if new_listen_only else 'Normal'}")
                 
-                # Mostrar notificação no canto inferior direito
+                # Show notification in bottom-right corner
                 if language_changed and theme_changed:
                     self.show_notification(
                         f"✅ {t('msg_language_and_theme_applied')}",
@@ -2267,27 +2319,27 @@ class CANAnalyzerWindow(QMainWindow):
             QMessageBox.critical(self, "Settings Error", f"Erro: {str(e)}")
     
     def change_language(self, language_code: str):
-        """Muda o idioma da aplicação"""
+        """Change application language"""
         try:
             old_language = self.config.get('language', 'en')
             
             if old_language == language_code:
-                return  # Já está no idioma selecionado
+                return  # Already in selected language
             
-            # Atualizar configuração
+            # Update configuration
             self.config['language'] = language_code
             self.config_manager.update(self.config)
             
-            # Aplicar mudança de idioma
+            # Apply language change
             from .i18n import get_i18n
             i18n = get_i18n()
             i18n.set_language(language_code)
             self.logger.info(f"Idioma alterado para: {language_code}")
             
-            # Atualizar interface com novo idioma
+            # Update interface with new language
             self.update_ui_translations()
             
-            # Mostrar notificação
+            # Show notification
             lang_name = {"en": "English", "pt": "Português", "es": "Español", "de": "Deutsch", "fr": "Français"}.get(language_code, language_code)
             self.show_notification(t('notif_language_changed', language=lang_name), 3000)
             
@@ -2296,11 +2348,11 @@ class CANAnalyzerWindow(QMainWindow):
             QMessageBox.critical(self, "Language Error", f"Erro ao mudar idioma: {str(e)}")
     
     def show_filters(self):
-        """Mostra configuração de filtros"""
+        """Show filter configuration"""
         QMessageBox.information(self, "Filters", "Filtros em desenvolvimento")
     
     def show_statistics(self):
-        """Mostra estatísticas"""
+        """Show statistics"""
         total_msgs = sum(self.message_counters.values())
         unique_ids = len(self.message_counters)
         
@@ -2315,56 +2367,36 @@ class CANAnalyzerWindow(QMainWindow):
             stats_text += "Top 5 IDs mais frequentes:\n"
             sorted_ids = sorted(self.message_counters.items(), key=lambda x: x[1], reverse=True)[:5]
             for can_id, count in sorted_ids:
-                stats_text += f"  0x{can_id:03X}: {count} mensagens\n"
+                stats_text += f"  0x{can_id:03X}: {count} messages\n"
         
         QMessageBox.information(self, "Statistics", stats_text)
     
     def show_about(self):
-        """Mostra informações sobre o aplicativo"""
-        import sys
-        import platform
-        from PyQt6.QtCore import QT_VERSION_STR, PYQT_VERSION_STR
-        
-        python_version = sys.version.split()[0]
-        qt_version = QT_VERSION_STR
-        pyqt_version = PYQT_VERSION_STR
-        os_info = platform.platform()
+        """Show application information"""
         platform_name = get_platform_display_name()
-        
         about_text = f"""
-        <h2>CAN Analyzer - {platform_name}</h2>
-        <p><b>Version:</b> 1.0.0</p>
-        <p><b>Build:</b> 2026.01</p>
+        <h2>{t('about_heading', platform=platform_name)}</h2>
+        <p><b>{t('about_version')}:</b> {__version__}</p>
+        <p><b>{t('about_build')}:</b> {__build__}</p>
         
-        <h3>Description:</h3>
-        <p>Professional CAN bus analyzer for {platform_name} with advanced monitoring,<br>
-        recording, and transmission capabilities.</p>
+        <h3>{t('about_desc_heading')}:</h3>
+        <p>{t('about_desc_text')}</p>
         
-        <h3>Key Features:</h3>
+        <h3>{t('about_platforms_heading')}:</h3>
         <ul>
-            <li><b>Monitor Mode</b> - Real-time CAN message monitoring</li>
-            <li><b>Tracer Mode</b> - Record and playback CAN sessions</li>
-            <li><b>Transmit</b> - Send CAN messages with periodic transmission</li>
-            <li><b>Bit Field Viewer</b> - Detailed binary analysis</li>
-            <li><b>Software Filters</b> - ID-based message filtering</li>
-            <li><b>Trigger System</b> - Event-based message transmission</li>
-            <li><b>Multiple Formats</b> - Save/Load in JSON, CSV, TRC</li>
-            <li><b>Listen Only Mode</b> - Non-intrusive monitoring</li>
+            <li>{t('about_platform_macos')}</li>
+            <li>{t('about_platform_linux')}</li>
         </ul>
         
-        <h3>System Information:</h3>
-        <p><b>Python:</b> {python_version}<br>
-        <b>Qt:</b> {qt_version}<br>
-        <b>PyQt:</b> {pyqt_version}<br>
-        <b>Platform:</b> {os_info}</p>
+        <h3>{t('about_dependencies_heading')}:</h3>
+        <p>{t('about_dependencies_text')}</p>
         
-        <h3>Technology Stack:</h3>
-        <p>Built with Python, PyQt6, and python-can library</p>
+        <h3>{t('about_license_heading')}:</h3>
+        <p>{t('about_license_text')}</p>
         
-        <p><b>Copyright © 2026</b><br>
-        All rights reserved.</p>
+        <p>{t('about_copyright')}</p>
         """
-        QMessageBox.about(self, "About CAN Analyzer", about_text)
+        QMessageBox.about(self, t('dialog_about_title'), about_text)
     
     def save_log(self):
         """Salva log de mensagens recebidas"""
@@ -2378,11 +2410,11 @@ class CANAnalyzerWindow(QMainWindow):
             try:
                 self.logger.info(f"Salvando log: {filename}")
                 
-                # No modo Tracer, salvar apenas mensagens gravadas (recorded_messages)
-                # No modo Monitor, salvar todas as mensagens recebidas
+                # In Tracer mode, save only recorded messages (recorded_messages)
+                # In Monitor mode, save all received messages
                 messages_to_save = self.recorded_messages if self.tracer_mode else self.received_messages
                 
-                # Determinar formato pelo extensão
+                # Determine format by extension
                 if filename.endswith('.csv'):
                     self._save_log_csv(filename, messages_to_save)
                     format_type = "CSV"
@@ -2395,7 +2427,7 @@ class CANAnalyzerWindow(QMainWindow):
                 
                 self.logger.info(f"Log salvo com sucesso: {len(messages_to_save)} mensagens em formato {format_type}")
                 
-                # Mostrar notificação
+                # Show notification
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
@@ -2410,7 +2442,7 @@ class CANAnalyzerWindow(QMainWindow):
         """Salva log em formato JSON com tipo de arquivo"""
         data = {
             'version': '1.0',
-            'file_type': 'tracer' if self.tracer_mode else 'monitor',  # Tipo do arquivo
+            'file_type': 'tracer' if self.tracer_mode else 'monitor',  # File type
             'mode': 'tracer' if self.tracer_mode else 'monitor',
             'config': self.config,
             'messages': [msg.to_dict() for msg in messages]
@@ -2435,7 +2467,7 @@ class CANAnalyzerWindow(QMainWindow):
                 ])
     
     def _save_log_trace(self, filename: str, messages: List[CANMessage]):
-        """Salva log em formato Trace (compatível com SLCAN/trace)"""
+        """Save log in Trace format (SLCAN/trace compatible)"""
         with open(filename, 'w') as f:
             f.write(f"; CAN Trace File\n")
             f.write(f"; Generated by CAN Analyzer - {get_platform_display_name()}\n")
@@ -2460,7 +2492,7 @@ class CANAnalyzerWindow(QMainWindow):
             try:
                 self.logger.info(f"Load Log: Iniciando - tracer_mode={self.tracer_mode}")
                 
-                # Se não estiver em modo Tracer, mudar automaticamente
+                # If not in Tracer mode, switch automatically
                 if not self.tracer_mode:
                     self.logger.info("Load Log: Mudando para modo Tracer")
                     self.toggle_tracer_mode()
@@ -2469,7 +2501,7 @@ class CANAnalyzerWindow(QMainWindow):
                 self.clear_receive()
                 self.message_counters.clear()
                 
-                # Determinar formato pelo extensão
+                # Determine format by extension
                 if filename.endswith('.csv'):
                     messages = self._load_log_csv(filename)
                 elif filename.endswith('.trc'):
@@ -2479,18 +2511,18 @@ class CANAnalyzerWindow(QMainWindow):
                 
                 self.logger.info(f"Load Log: {len(messages)} mensagens carregadas")
                 
-                # SEMPRE adicionar ao Tracer, independente de estar conectado ou não
-                # Load Trace deve sempre carregar no modo Tracer
+                # Always add to Tracer, regardless of connection state
+                # Load Trace should always load in Tracer mode
                 self.logger.info(f"Load Log: Adicionando ao Tracer - tracer_mode={self.tracer_mode}")
                 
                 for msg in messages:
-                    # Adicionar às mensagens gravadas ANTES de exibir
+                    # Add to recorded messages BEFORE displaying
                     self.recorded_messages.append(msg)
                     self.add_message_tracer_mode(msg)
                 
                 self.logger.info(f"Load Log: recorded_messages={len(self.recorded_messages)}")
                 
-                # Habilitar botões de reprodução se houver mensagens
+                # Enable playback buttons if there are messages
                 if len(self.recorded_messages) > 0:
                     self.btn_play_all.setEnabled(True)
                     self.btn_play_selected.setEnabled(True)
@@ -2498,7 +2530,7 @@ class CANAnalyzerWindow(QMainWindow):
                 
                 self.update_message_count()
                 
-                # Mostrar notificação
+                # Show notification
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
@@ -2527,7 +2559,7 @@ class CANAnalyzerWindow(QMainWindow):
         file_type = data.get('file_type', data.get('mode', None))
         
         if file_type is None:
-            # Arquivo sem tipo, permitir (compatibilidade)
+            # File without type, allow (compatibility)
             return True
         
         if file_type != expected_type:
@@ -2556,7 +2588,7 @@ class CANAnalyzerWindow(QMainWindow):
         return True
     
     def _load_log_json(self, filename: str) -> List[CANMessage]:
-        """Carrega log de formato JSON com validação de tipo"""
+        """Load log from JSON format with type validation"""
         with open(filename, 'r') as f:
             data = json.load(f)
         
@@ -2565,7 +2597,7 @@ class CANAnalyzerWindow(QMainWindow):
         if not self._validate_file_type(data, expected_type, filename):
             return []
         
-        # Suportar formato antigo (lista) e novo (dict com metadata)
+        # Support old format (list) and new (dict with metadata)
         if isinstance(data, list):
             messages_data = data
         else:
@@ -2599,7 +2631,7 @@ class CANAnalyzerWindow(QMainWindow):
                 can_id_str = row['ID'].replace('0x', '')
                 can_id = int(can_id_str, 16)
                 
-                # Parse data (remover espaços)
+                # Parse data (strip spaces)
                 data_str = row['Data'].replace(' ', '')
                 data = bytes.fromhex(data_str)
                 
@@ -2622,7 +2654,7 @@ class CANAnalyzerWindow(QMainWindow):
             for line in f:
                 line = line.strip()
                 
-                # Ignorar comentários
+                # Ignore comments
                 if line.startswith(';') or not line:
                     continue
                 
@@ -2633,7 +2665,7 @@ class CANAnalyzerWindow(QMainWindow):
                     try:
                         timestamp = float(parts[0])
                         
-                        # Tentar detectar se tem channel (segundo campo não é hex válido de 3 dígitos)
+                        # Try to detect if channel (second field is not valid 3-digit hex)
                         if len(parts) >= 5 and not parts[1].isdigit() and len(parts[1]) <= 10:
                             # Novo formato: timestamp channel id dlc data
                             source = parts[1]
@@ -2673,10 +2705,10 @@ class CANAnalyzerWindow(QMainWindow):
             try:
                 self.logger.info(f"Salvando Monitor log: {filename}")
                 
-                # Salvar mensagens recebidas (Monitor)
+                # Save received messages (Monitor)
                 messages_to_save = self.received_messages
                 
-                # Determinar formato pelo extensão
+                # Determine format by extension
                 if filename.endswith('.csv'):
                     self._save_log_csv(filename, messages_to_save)
                     format_type = "CSV"
@@ -2689,7 +2721,7 @@ class CANAnalyzerWindow(QMainWindow):
                 
                 self.logger.info(f"Monitor log salvo: {len(messages_to_save)} mensagens em formato {format_type}")
                 
-                # Mostrar notificação
+                # Show notification
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
@@ -2720,7 +2752,7 @@ class CANAnalyzerWindow(QMainWindow):
                 self.clear_receive()
                 self.message_counters.clear()
                 
-                # Determinar formato pelo extensão
+                # Determine format by extension
                 if filename.endswith('.csv'):
                     messages = self._load_log_csv(filename)
                 elif filename.endswith('.trc'):
@@ -2730,14 +2762,14 @@ class CANAnalyzerWindow(QMainWindow):
                 
                 self.logger.info(f"Monitor log carregado: {len(messages)} mensagens")
                 
-                # Adicionar ao Monitor (received_messages)
+                # Add to Monitor (received_messages)
                 for msg in messages:
                     self.received_messages.append(msg)
                     self.add_message_monitor_mode(msg)
                 
                 self.update_message_count()
                 
-                # Mostrar notificação
+                # Show notification
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
@@ -2749,7 +2781,7 @@ class CANAnalyzerWindow(QMainWindow):
                 QMessageBox.critical(self, "Load Error", f"Erro ao carregar: {str(e)}")
     
     def save_transmit_list(self):
-        """Salva lista de mensagens de transmissão"""
+        """Save transmit message list"""
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Save Transmit List",
@@ -2760,12 +2792,12 @@ class CANAnalyzerWindow(QMainWindow):
             try:
                 transmit_data = []
                 
-                # Percorrer todas as linhas da tabela de transmissão
+                # Iterate over all rows of the transmit table
                 for row in range(self.transmit_table.rowCount()):
-                    # Obter dados usando função auxiliar
+                    # Get data using helper function
                     msg_data = self.get_tx_message_data_from_table(row)
                     
-                    # Obter outros campos
+                    # Get other fields
                     tx_mode_item = self.transmit_table.item(row, 4)
                     trigger_id_item = self.transmit_table.item(row, 5)
                     trigger_data_item = self.transmit_table.item(row, 6)
@@ -2788,17 +2820,17 @@ class CANAnalyzerWindow(QMainWindow):
                     }
                     transmit_data.append(item_data)
                 
-                # Salvar com metadata e tipo
+                # Save with metadata and type
                 data = {
                     'version': '1.0',
-                    'file_type': 'transmit',  # Tipo do arquivo
+                    'file_type': 'transmit',  # File type
                     'transmit_messages': transmit_data
                 }
                 
                 with open(filename, 'w') as f:
                     json.dump(data, f, indent=2)
                 
-                # Mostrar notificação
+                # Show notification
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
@@ -2809,24 +2841,24 @@ class CANAnalyzerWindow(QMainWindow):
                 QMessageBox.critical(self, "Save Error", f"Erro ao salvar: {str(e)}")
     
     def show_receive_context_menu(self, position):
-        """Mostra menu de contexto na tabela de recepção principal"""
+        """Show context menu on main receive table"""
         self._show_context_menu_for_table(self.receive_table, position)
     
     def _show_context_menu_for_table(self, table: QTableWidget, position):
-        """Mostra menu de contexto para qualquer tabela de recepção"""
-        # Verificar se há linhas selecionadas
+        """Show context menu for any receive table"""
+        # Check if there are selected rows
         selected_rows = table.selectionModel().selectedRows()
         if not selected_rows:
             return
         
-        # Criar menu
+        # Create menu
         from PyQt6.QtWidgets import QMenu
         menu = QMenu(self)
         
-        # Configurar menu para fechar ao clicar fora
+        # Configure menu to close when clicking outside
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         
-        # Ações do menu
+        # Menu actions
         add_to_tx_action = QAction("➕ Add to Transmit", self)
         add_to_tx_action.triggered.connect(lambda: self.add_selected_to_transmit(table))
         menu.addAction(add_to_tx_action)
@@ -2841,7 +2873,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         menu.addSeparator()
         
-        # Bit Field Viewer (apenas para uma mensagem selecionada)
+        # Bit Field Viewer (for a single selected message only)
         if len(selected_rows) == 1:
             bit_viewer_action = QAction("🔬 Bit Field Viewer", self)
             bit_viewer_action.triggered.connect(lambda: self.show_bit_field_viewer(table))
@@ -2852,24 +2884,24 @@ class CANAnalyzerWindow(QMainWindow):
         clear_selection_action.triggered.connect(table.clearSelection)
         menu.addAction(clear_selection_action)
         
-        # Mostrar menu na posição do cursor (exec é bloqueante e fecha automaticamente)
+        # Show menu at cursor position (exec is blocking and closes automatically)
         menu.exec(table.viewport().mapToGlobal(position))
     
     def show_transmit_context_menu(self, position):
-        """Mostra menu de contexto na tabela de transmissão"""
-        # Verificar se há linhas selecionadas
+        """Show context menu on transmit table"""
+        # Check if there are selected rows
         selected_rows = self.transmit_table.selectionModel().selectedRows()
         if not selected_rows:
             return
         
-        # Criar menu
+        # Create menu
         from PyQt6.QtWidgets import QMenu
         menu = QMenu(self)
         
-        # Configurar menu para fechar ao clicar fora
+        # Configure menu to close when clicking outside
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         
-        # Ações do menu
+        # Menu actions
         send_once_action = QAction("📤 Send Once", self)
         send_once_action.triggered.connect(self.send_selected_tx_once)
         menu.addAction(send_once_action)
@@ -2894,11 +2926,11 @@ class CANAnalyzerWindow(QMainWindow):
         delete_action.triggered.connect(self.delete_selected_tx_messages)
         menu.addAction(delete_action)
         
-        # Mostrar menu na posição do cursor (exec é bloqueante e fecha automaticamente)
+        # Show menu at cursor position (exec is blocking and closes automatically)
         menu.exec(self.transmit_table.viewport().mapToGlobal(position))
     
     def send_selected_tx_once(self):
-        """Envia mensagens selecionadas da tabela de transmissão uma única vez"""
+        """Send selected messages from transmit table once"""
         if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
@@ -2911,7 +2943,7 @@ class CANAnalyzerWindow(QMainWindow):
         for index in selected_rows:
             row = index.row()
             try:
-                # Obter dados da linha usando função auxiliar
+                # Get row data using helper function
                 msg_data = self.get_tx_message_data_from_table(row)
                 
                 # Garantir que data tenha o tamanho correto
@@ -2937,7 +2969,7 @@ class CANAnalyzerWindow(QMainWindow):
                     current_count = int(count_item.text()) if count_item.text().isdigit() else 0
                     count_item.setText(str(current_count + 1))
                 else:
-                    # Criar item se não existir
+                    # Create item if it doesn't exist
                     new_item = QTableWidgetItem("1")
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     new_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2950,7 +2982,7 @@ class CANAnalyzerWindow(QMainWindow):
             self.show_notification(t('notif_messages_sent', count=sent_count), 2000)
     
     def start_selected_periodic(self):
-        """Inicia envio periódico das mensagens selecionadas"""
+        """Start periodic send of selected messages"""
         if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
@@ -2965,15 +2997,15 @@ class CANAnalyzerWindow(QMainWindow):
         for index in selected_rows:
             row = index.row()
             
-            # Verificar se já está rodando
+            # Check if already running
             if row in self.periodic_send_threads:
                 continue
             
             try:
-                # Obter dados da linha usando função auxiliar
+                # Get row data using helper function
                 msg_data = self.get_tx_message_data_from_table(row)
                 
-                # Verificar período
+                # Check period
                 if msg_data['period'] == "off" or msg_data['period'] == "0":
                     continue
                 
@@ -2984,11 +3016,11 @@ class CANAnalyzerWindow(QMainWindow):
                 except ValueError:
                     continue
                 
-                # Criar evento de parada
+                # Create stop event
                 stop_event = threading.Event()
                 self.periodic_send_stop_events[row] = stop_event
                 
-                # Criar e iniciar thread
+                # Create and start thread
                 thread = threading.Thread(
                     target=self._periodic_send_worker,
                     args=(row, msg_data['can_id'], msg_data['dlc'], msg_data['data'], period_ms, stop_event, msg_data['is_rtr']),
@@ -3005,14 +3037,14 @@ class CANAnalyzerWindow(QMainWindow):
         
         if started_count > 0:
             self.show_notification(t('notif_periodic_started', count=started_count), 2000)
-            # Transformar botão Send All em Stop All
+            # Change Send All button to Stop All
             self.btn_send_all.setText("Stop All")
             self.btn_send_all.setStyleSheet(self.colors['send_active'])
             self.btn_send_all.clicked.disconnect()
             self.btn_send_all.clicked.connect(self.stop_all)
     
     def stop_selected_periodic(self):
-        """Para envio periódico das mensagens selecionadas"""
+        """Stop periodic send of selected messages"""
         selected_rows = self.transmit_table.selectionModel().selectedRows()
         if not selected_rows:
             return
@@ -3021,9 +3053,9 @@ class CANAnalyzerWindow(QMainWindow):
         for index in selected_rows:
             row = index.row()
             
-            # Verificar se está rodando
+            # Check if running
             if row in self.periodic_send_stop_events:
-                # Sinalizar para parar
+                # Signal to stop
                 self.periodic_send_stop_events[row].set()
                 
                 # Aguardar thread finalizar
@@ -3036,15 +3068,15 @@ class CANAnalyzerWindow(QMainWindow):
                 del self.periodic_send_stop_events[row]
                 stopped_count += 1
                 
-                # Resetar contador (coluna 15)
+                # Reset counter (column 15)
                 count_item = self.transmit_table.item(row, 15)
                 if count_item:
                     count_item.setText("0")
         
-        # Se não há mais threads rodando, desativar flag e reverter botão
+        # If no more threads running, clear flag and revert button
         if len(self.periodic_send_threads) == 0:
             self.periodic_send_active = False
-            # Reverter botão Stop All para Send All
+            # Revert Stop All button to Send All
             self.btn_send_all.setText("Send All")
             self.btn_send_all.setStyleSheet("")
             self.btn_send_all.clicked.disconnect()
@@ -3054,16 +3086,16 @@ class CANAnalyzerWindow(QMainWindow):
             self.show_notification(t('notif_periodic_stopped_count', count=stopped_count), 2000)
     
     def delete_selected_tx_messages(self):
-        """Deleta mensagens selecionadas da tabela de transmissão"""
+        """Delete selected messages from transmit table"""
         selected_rows = self.transmit_table.selectionModel().selectedRows()
         if not selected_rows:
             return
         
-        # Ordenar em ordem decrescente para não afetar índices ao deletar
+        # Sort in descending order to avoid affecting indices when deleting
         rows_to_delete = sorted([index.row() for index in selected_rows], reverse=True)
         
         for row in rows_to_delete:
-            # Se tiver envio periódico ativo, parar primeiro
+            # If periodic send is active, stop it first
             if row in self.periodic_send_stop_events:
                 self.periodic_send_stop_events[row].set()
                 if row in self.periodic_send_threads:
@@ -3079,7 +3111,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.show_notification(t('notif_messages_deleted', count=len(rows_to_delete)), 2000)
     
     def add_selected_to_transmit(self, table: QTableWidget = None):
-        """Adiciona mensagens selecionadas à lista de transmissão"""
+        """Add selected messages to transmit list"""
         if table is None:
             table = self.receive_table
         
@@ -3095,29 +3127,29 @@ class CANAnalyzerWindow(QMainWindow):
             try:
                 # Extrair dados da linha selecionada
                 if self.tracer_mode:
-                    # Modo Tracer: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
+                    # Tracer mode: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
                     id_str = table.item(row, 3).text()  # PID (coluna 3)
                     dlc_str = table.item(row, 4).text()  # DLC (coluna 4)
                     data_str = table.item(row, 5).text()  # Data (coluna 5)
                     comment_str = table.item(row, 7).text() if table.item(row, 7) else ""  # Comment
                     source_str = table.item(row, 2).text() if table.item(row, 2) else "CAN1"  # Channel (coluna 2)
                 else:
-                    # Modo Monitor: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
+                    # Monitor mode: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
                     id_str = table.item(row, 3).text()  # PID (coluna 3)
                     dlc_str = table.item(row, 4).text()  # DLC (coluna 4)
                     data_str = table.item(row, 5).text()  # Data (coluna 5)
                     comment_str = table.item(row, 8).text() if table.item(row, 8) else ""  # Comment
                     source_str = table.item(row, 2).text() if table.item(row, 2) else "CAN1"  # Channel (coluna 2)
                 
-                # Remover "0x" do ID se presente
+                # Remove "0x" from ID if present
                 id_clean = id_str.replace("0x", "").replace("0X", "")
                 dlc = int(dlc_str)
                 
-                # Adicionar à tabela de transmissão
+                # Add to transmit table
                 tx_row = self.transmit_table.rowCount()
                 self.transmit_table.insertRow(tx_row)
                 
-                # Colunas: ID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16)
+                # Columns: ID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16)
                 
                 # 0: ID
                 self.transmit_table.setItem(tx_row, 0, QTableWidgetItem(id_clean))
@@ -3171,7 +3203,7 @@ class CANAnalyzerWindow(QMainWindow):
                 continue
         
         if added_count > 0:
-            # Mostrar mensagem na status bar ao invés de popup
+            # Show message in status bar instead of popup
             self.statusBar().showMessage(
                 f"✅ {added_count} mensagem(ns) adicionada(s) à lista de transmissão!",
                 3000  # 3 segundos
@@ -3193,7 +3225,7 @@ class CANAnalyzerWindow(QMainWindow):
         else:
             id_str = table.item(row, 3).text()  # PID (coluna 3) no Monitor
         
-        # Copiar para clipboard
+        # Copy to clipboard
         clipboard = QApplication.clipboard()
         clipboard.setText(id_str)
         
@@ -3215,14 +3247,14 @@ class CANAnalyzerWindow(QMainWindow):
         else:
             data_str = table.item(row, 5).text()  # Data (coluna 5) no Monitor
         
-        # Copiar para clipboard
+        # Copy to clipboard
         clipboard = QApplication.clipboard()
         clipboard.setText(data_str)
         
         self.show_notification(t('notif_data_copied', data=data_str), 2000)
     
     def load_transmit_list(self):
-        """Carrega lista de mensagens de transmissão com validação de tipo"""
+        """Load transmit message list with type validation"""
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Load Transmit List",
@@ -3238,13 +3270,13 @@ class CANAnalyzerWindow(QMainWindow):
                 if not self._validate_file_type(data, 'transmit', filename):
                     return
                 
-                # Suportar formato antigo (lista) e novo (dict com metadata)
+                # Support old format (list) and new (dict with metadata)
                 if isinstance(data, list):
                     transmit_data = data
                 else:
                     transmit_data = data.get('transmit_messages', [])
                 
-                # Limpar tabela atual (perguntar apenas se não estiver vazia)
+                # Clear current table (ask only if not empty)
                 if self.transmit_table.rowCount() > 0:
                     reply = QMessageBox.question(
                         self,
@@ -3256,15 +3288,15 @@ class CANAnalyzerWindow(QMainWindow):
                     if reply == QMessageBox.StandardButton.Yes:
                         self.transmit_table.setRowCount(0)
                 else:
-                    # Lista vazia, não precisa perguntar
+                    # Empty list, no need to ask
                     self.transmit_table.setRowCount(0)
                 
-                # Adicionar mensagens à tabela
+                # Add messages to table
                 for item in transmit_data:
                     row = self.transmit_table.rowCount()
                     self.transmit_table.insertRow(row)
                     
-                    # Colunas: ID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16)
+                    # Columns: ID(0), DLC(1), RTR(2), Period(3), TX Mode(4), Trigger ID(5), Trigger Data(6), D0-D7(7-14), Count(15), Comment(16)
                     
                     # 0: ID
                     self.transmit_table.setItem(row, 0, QTableWidgetItem(item.get('id', '000')))
@@ -3314,7 +3346,7 @@ class CANAnalyzerWindow(QMainWindow):
                     source_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.transmit_table.setItem(row, 17, source_item)
                 
-                # Mostrar notificação
+                # Show notification
                 import os
                 filename_short = os.path.basename(filename)
                 self.show_notification(
@@ -3325,7 +3357,7 @@ class CANAnalyzerWindow(QMainWindow):
                 QMessageBox.critical(self, "Load Error", f"Erro ao carregar: {str(e)}")
     
     def toggle_playback_pause(self):
-        """Pausa ou continua a reprodução"""
+        """Pause or resume playback"""
         self.playback_paused = not self.playback_paused
         
         if self.playback_paused:
@@ -3338,16 +3370,16 @@ class CANAnalyzerWindow(QMainWindow):
             self.show_notification(t('notif_playback_resumed'), 2000)
     
     def highlight_playback_row(self, row: int):
-        """Destaca a linha atual durante reprodução"""
+        """Highlight current row during playback"""
         try:
-            # Limpar highlight anterior
+            # Clear previous highlight
             if self.current_playback_row >= 0 and self.current_playback_row < self.receive_table.rowCount():
                 for col in range(self.receive_table.columnCount()):
                     item = self.receive_table.item(self.current_playback_row, col)
                     if item:
                         item.setBackground(self.colors['normal_bg'])
             
-            # Aplicar novo highlight
+            # Apply new highlight
             self.current_playback_row = row
             if row >= 0 and row < self.receive_table.rowCount():
                 for col in range(self.receive_table.columnCount()):
@@ -3355,7 +3387,7 @@ class CANAnalyzerWindow(QMainWindow):
                     if item:
                         item.setBackground(self.colors['highlight'])
                 
-                # Scroll para a linha atual
+                # Scroll to current row
                 first_item = self.receive_table.item(row, 0)
                 if first_item:
                     self.receive_table.scrollToItem(first_item)
@@ -3363,7 +3395,7 @@ class CANAnalyzerWindow(QMainWindow):
             print(f"Erro ao destacar linha {row}: {e}")
     
     def clear_playback_highlight(self):
-        """Limpa o highlight de reprodução"""
+        """Clear playback highlight"""
         if self.current_playback_row >= 0 and self.current_playback_row < self.receive_table.rowCount():
             for col in range(self.receive_table.columnCount()):
                 item = self.receive_table.item(self.current_playback_row, col)
@@ -3373,7 +3405,7 @@ class CANAnalyzerWindow(QMainWindow):
     
     def play_all_messages(self):
         """Reproduz (envia) todas as mensagens gravadas ou pausa/continua"""
-        # Se já está reproduzindo, pausar/continuar
+        # If already playing, pause/resume
         if self.playback_active:
             self.toggle_playback_pause()
             return
@@ -3388,17 +3420,17 @@ class CANAnalyzerWindow(QMainWindow):
         
         self.logger.log_playback("iniciado (Play All)", len(self.recorded_messages))
         
-        # Parar reprodução anterior se existir
+        # Stop previous playback if any
         self.stop_playback()
         
-        # Iniciar reprodução em thread separada
+        # Start playback in separate thread
         self.playback_active = True
         self.playback_stop_event.clear()
         self.playback_thread = threading.Thread(target=self._playback_worker, args=(self.recorded_messages,))
         self.playback_thread.daemon = True
         self.playback_thread.start()
         
-        # Atualizar UI
+        # Update UI
         self.btn_play_all.setText("⏸ Pause")
         self.btn_play_selected.setEnabled(False)
         self.btn_stop_play.setEnabled(True)
@@ -3410,22 +3442,22 @@ class CANAnalyzerWindow(QMainWindow):
         selected_rows = self.receive_table.selectionModel().selectedRows()
         
         if not selected_rows:
-            return  # Sem popup, apenas retorna
+            return  # No popup, just return
         
         if not self.connected or not self.can_bus_manager:
             self.show_notification(t('notif_connect_first'), 3000)
             return
         
-        # Obter mensagens selecionadas
-        # No Tracer: usar índice armazenado no UserRole
-        # Se não tiver UserRole, usar o PID da linha diretamente
+        # Get selected messages
+        # In Tracer: use index stored in UserRole
+        # If no UserRole, use row PID directly
         selected_messages = []
         
         for index in selected_rows:
             row = index.row()
             msg_added = False
             
-            # Tentar obter pelo UserRole primeiro (Tracer com Record)
+            # Try to get by UserRole first (Tracer with Record)
             id_item = self.receive_table.item(row, 0)
             if id_item:
                 msg_index = id_item.data(Qt.ItemDataRole.UserRole)
@@ -3437,11 +3469,11 @@ class CANAnalyzerWindow(QMainWindow):
                     msg_added = True
                     self.logger.info(f"Play Selected: Usando UserRole - 0x{msg.can_id:03X}")
             
-            # Fallback: criar mensagem a partir dos dados da linha (se não conseguiu pelo UserRole)
+            # Fallback: create message from row data (if UserRole failed)
             if not msg_added:
-                pid_item = self.receive_table.item(row, 2)  # Coluna PID
-                dlc_item = self.receive_table.item(row, 3)  # Coluna DLC
-                data_item = self.receive_table.item(row, 4)  # Coluna Data
+                pid_item = self.receive_table.item(row, 2)  # PID column
+                dlc_item = self.receive_table.item(row, 3)  # DLC column
+                data_item = self.receive_table.item(row, 4)  # Data column
                 
                 if pid_item and dlc_item and data_item:
                     try:
@@ -3452,13 +3484,13 @@ class CANAnalyzerWindow(QMainWindow):
                         # Parse DLC
                         dlc = int(dlc_item.text())
                         
-                        # Parse Data (remover espaços e converter)
+                        # Parse data (strip spaces and convert)
                         data_str = data_item.text().replace(' ', '')
                         data = bytes.fromhex(data_str) if data_str else b''
                         
                         self.logger.info(f"Play Selected Fallback: PID={pid_str}, DLC={dlc}, Data='{data_str}' -> bytes={data.hex()}")
                         
-                        # Criar mensagem temporária
+                        # Create temporary message
                         msg = CANMessage(
                             timestamp=time.time(),
                             can_id=can_id,
@@ -3473,7 +3505,7 @@ class CANAnalyzerWindow(QMainWindow):
         if not selected_messages:
             return
         
-        # Enviar mensagens imediatamente, sem validações extras
+        # Send messages immediately, no extra validation
         try:
             for msg in selected_messages:
                 can_msg = can.Message(
@@ -3485,14 +3517,14 @@ class CANAnalyzerWindow(QMainWindow):
                 self._send_can_message(can_msg, msg.source)
                 self.logger.info(f"Play Selected: Enviado 0x{msg.can_id:03X} para {msg.source} - {msg.data.hex()}")
             
-            # Sem popup, apenas notificação discreta
-            # self.show_notification(f"✅ {len(selected_messages)} msg enviada(s)", 1000)
+            # No popup, just discrete notification
+            # self.show_notification(f"✅ {len(selected_messages)} msg sent", 1000)
         except Exception as e:
             self.logger.error(f"Erro ao enviar mensagens: {e}")
             self.show_notification(t('notif_error', error=str(e)), 3000)
     
     def stop_playback(self):
-        """Para a reprodução de mensagens"""
+        """Stop message playback"""
         if self.playback_active:
             self.playback_stop_event.set()
             if self.playback_thread and self.playback_thread.is_alive():
@@ -3503,7 +3535,7 @@ class CANAnalyzerWindow(QMainWindow):
         # Limpar highlight
         self.clear_playback_highlight()
         
-        # Atualizar UI - só habilitar se houver mensagens gravadas
+        # Update UI - only enable if there are recorded messages
         has_recorded = len(self.recorded_messages) > 0
         self.btn_play_all.setText("▶ Play All")
         self.btn_play_all.setEnabled(has_recorded)
@@ -3520,17 +3552,17 @@ class CANAnalyzerWindow(QMainWindow):
             
             self.logger.info(f"Playback Worker: Iniciando com {len(messages)} mensagens")
             
-            # Primeira mensagem como referência de tempo
+            # First message as time reference
             first_timestamp = messages[0].timestamp
             start_time = time.time()
             
             for i, msg in enumerate(messages):
-                # Verificar se deve parar
+                # Check if should stop
                 if self.playback_stop_event.is_set():
                     self.logger.info(f"Playback Worker: Parado pelo usuário na mensagem {i+1}/{len(messages)}")
                     break
                 
-                # Verificar se está pausado
+                # Check if paused
                 while self.playback_paused and not self.playback_stop_event.is_set():
                     time.sleep(0.1)
                 
@@ -3548,7 +3580,7 @@ class CANAnalyzerWindow(QMainWindow):
                     delay = target_time - current_time
                     
                     if delay > 0:
-                        # Aguardar até o momento correto, verificando stop_event
+                        # Wait until the right time, checking stop_event
                         if self.playback_stop_event.wait(delay):
                             self.logger.info(f"Playback Worker: Parado durante delay na mensagem {i+1}/{len(messages)}")
                             break
@@ -3564,7 +3596,7 @@ class CANAnalyzerWindow(QMainWindow):
                     self._send_can_message(can_msg, msg.source)
                     self.logger.info(f"Playback: [{i+1}/{len(messages)}] Enviado 0x{msg.can_id:03X} para {msg.source} - {msg.data.hex()}")
                     
-                    # Atualizar progresso na UI thread
+                    # Update progress in UI thread
                     progress = f"Playing {i+1}/{len(messages)}"
                     QTimer.singleShot(0, lambda p=progress: self.playback_label.setText(p))
                     
@@ -3573,7 +3605,7 @@ class CANAnalyzerWindow(QMainWindow):
             
             self.logger.info(f"Playback Worker: Finalizado - {i+1}/{len(messages)} mensagens processadas")
             
-            # Limpar highlight e finalizar reprodução
+            # Clear highlight and finish playback
             QTimer.singleShot(0, self.clear_playback_highlight)
             QTimer.singleShot(0, self.stop_playback)
             
@@ -3630,24 +3662,24 @@ class CANAnalyzerWindow(QMainWindow):
         # Show bit field viewer
         if message:
             
-            # Criar e mostrar dialog
+            # Create and show dialog
             dialog = BitFieldViewerDialog(self, message)
             dialog.show()
         else:
             QMessageBox.warning(self, "Bit Field Viewer", "Mensagem não encontrada!")
     
     def show_filter_dialog(self):
-        """Mostra dialog de configuração de filtros"""
+        """Show filter configuration dialog"""
         dialog = FilterDialog(self, self.message_filters)
         
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            # Atualizar filtros
+            # Update filters
             self.message_filters = dialog.get_filters()
             
-            # Aplicar filtros imediatamente
+            # Apply filters immediately
             self.apply_message_filters()
             
-            # Mostrar notificação sobre filtros
+            # Show notification sobre filtros
             if self.message_filters['enabled']:
                 filter_count = len(self.message_filters['id_filters'])
                 self.show_notification(
@@ -3658,7 +3690,7 @@ class CANAnalyzerWindow(QMainWindow):
                 self.show_notification(t('notif_filters_disabled'), 2000)
     
     def show_trigger_dialog(self):
-        """Mostra dialog de configuração de triggers"""
+        """Show trigger configuration dialog"""
         from PyQt6.QtWidgets import QDialog
         
         self.logger.info("Abrindo dialog de triggers")
@@ -3666,7 +3698,7 @@ class CANAnalyzerWindow(QMainWindow):
         dialog = TriggerDialog(self, self.triggers)
         
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            # Atualizar triggers
+            # Update triggers
             trigger_config = dialog.get_triggers()
             self.triggers_enabled = trigger_config['enabled']
             self.triggers = trigger_config['triggers']
@@ -3683,9 +3715,9 @@ class CANAnalyzerWindow(QMainWindow):
                 self.show_notification(t('notif_triggers_disabled'), 2000)
     
     def apply_message_filters(self):
-        """Aplica filtros às mensagens exibidas"""
+        """Apply filters to displayed messages"""
         if not self.message_filters['enabled']:
-            # Se filtros desabilitados, mostrar todas as linhas
+            # If filters disabled, show all rows
             for row in range(self.receive_table.rowCount()):
                 self.receive_table.setRowHidden(row, False)
             return
@@ -3693,14 +3725,14 @@ class CANAnalyzerWindow(QMainWindow):
         id_filters = self.message_filters['id_filters']
         show_only = self.message_filters['show_only']
         
-        # Aplicar filtro de ID
+        # Apply ID filter
         for row in range(self.receive_table.rowCount()):
             try:
-                # Obter PID e Channel da linha
+                # Get PID and Channel from row
                 # Tracer: ID(0), Time(1), Channel(2), PID(3), DLC(4), Data(5), ASCII(6), Comment(7)
                 # Monitor: ID(0), Count(1), Channel(2), PID(3), DLC(4), Data(5), Period(6), ASCII(7), Comment(8)
-                id_item = self.receive_table.item(row, 3)  # Coluna PID (coluna 3)
-                channel_item = self.receive_table.item(row, 2)  # Coluna Channel (coluna 2)
+                id_item = self.receive_table.item(row, 3)  # PID column (column 3)
+                channel_item = self.receive_table.item(row, 2)  # Channel column (column 2)
                 
                 if not id_item:
                     continue
@@ -3709,14 +3741,14 @@ class CANAnalyzerWindow(QMainWindow):
                 msg_id = int(id_str, 16)
                 channel = channel_item.text() if channel_item else "CAN1"
                 
-                # Aplicar lógica de filtro (verificar channel_filters primeiro)
+                # Apply filter logic (check channel_filters first)
                 channel_filters = self.message_filters.get('channel_filters', {})
                 should_hide = False
                 
                 if channel_filters and len(channel_filters) > 0:
                     # Usar filtros por canal
                     if channel in channel_filters:
-                        # Filtro específico para este canal
+                        # Filter specific to this channel
                         channel_filter = channel_filters[channel]
                         channel_ids = channel_filter.get('ids', [])
                         channel_show_only = channel_filter.get('show_only', True)
@@ -3727,7 +3759,7 @@ class CANAnalyzerWindow(QMainWindow):
                             else:
                                 should_hide = msg_id in channel_ids
                     elif 'ALL' in channel_filters:
-                        # Filtro "ALL" (aplica a todos os canais)
+                        # "ALL" filter (applies to all channels)
                         channel_filter = channel_filters['ALL']
                         channel_ids = channel_filter.get('ids', [])
                         channel_show_only = channel_filter.get('show_only', True)
@@ -3738,12 +3770,12 @@ class CANAnalyzerWindow(QMainWindow):
                             else:
                                 should_hide = msg_id in channel_ids
                 else:
-                    # Usar filtros globais (legacy)
+                    # Use global filters (legacy)
                     if show_only:
-                        # Whitelist: mostrar apenas IDs na lista
+                        # Whitelist: show only IDs in list
                         should_hide = msg_id not in id_filters if id_filters else False
                     else:
-                        # Blacklist: ocultar IDs na lista
+                        # Blacklist: hide IDs in list
                         should_hide = msg_id in id_filters
                 
                 self.receive_table.setRowHidden(row, should_hide)
@@ -3766,28 +3798,28 @@ class CANAnalyzerWindow(QMainWindow):
                 trigger_id_str = trigger.get('trigger_id', '0x000').replace('0x', '').replace('0X', '')
                 trigger_id = int(trigger_id_str, 16)
                 
-                # Verificar se ID corresponde
+                # Check if ID matches
                 if msg.can_id != trigger_id:
                     continue
                 
-                # Verificar dados (se especificado)
+                # Check data (if specified)
                 trigger_data = trigger.get('trigger_data', '')
                 if trigger_data and trigger_data != 'Any':
                     # Parse trigger data
                     trigger_bytes = bytes.fromhex(trigger_data.replace(' ', ''))
-                    # Comparar apenas os bytes especificados
+                    # Compare only the specified bytes
                     if len(trigger_bytes) > 0:
                         if msg.data[:len(trigger_bytes)] != trigger_bytes:
                             continue
                 
-                # Trigger matched! Enviar mensagem TX
+                # Trigger matched! Send TX message
                 tx_id_str = trigger.get('tx_id', '0x000').replace('0x', '').replace('0X', '')
                 tx_id = int(tx_id_str, 16)
                 
                 tx_data_str = trigger.get('tx_data', '00 00 00 00 00 00 00 00').replace(' ', '')
                 tx_data = bytes.fromhex(tx_data_str)
                 
-                # Log do trigger
+                # Trigger log
                 comment = trigger.get('comment', '')
                 self.logger.log_trigger(trigger_id, tx_id, comment)
                 
@@ -3823,9 +3855,9 @@ class CANAnalyzerWindow(QMainWindow):
         channel_filters = self.message_filters.get('channel_filters', {})
         
         # Filtro por Canal (prioridade sobre filtro global)
-        # Só aplica se houver filtros definidos (não vazio)
+        # Only apply if filters are defined (non-empty)
         if channel_filters and len(channel_filters) > 0:
-            # Verificar se há filtro específico para este canal
+            # Check if there is a filter specific to this channel
             if msg.source in channel_filters:
                 channel_filter = channel_filters[msg.source]
                 channel_ids = channel_filter.get('ids', [])
@@ -3834,14 +3866,14 @@ class CANAnalyzerWindow(QMainWindow):
                 if channel_ids:
                     id_match = msg.can_id in channel_ids
                     if channel_show_only:
-                        # Whitelist: deve estar na lista
+                        # Whitelist: must be in list
                         if not id_match:
                             return False
                     else:
-                        # Blacklist: não deve estar na lista
+                        # Blacklist: must not be in list
                         if id_match:
                             return False
-            # Se não há filtro para este canal, verificar se há filtro "ALL"
+            # If no filter for this channel, check for "ALL" filter
             elif 'ALL' in channel_filters:
                 channel_filter = channel_filters['ALL']
                 channel_ids = channel_filter.get('ids', [])
@@ -3855,22 +3887,22 @@ class CANAnalyzerWindow(QMainWindow):
                     else:
                         if id_match:
                             return False
-            # Se channel_filters existe mas não tem filtro para este canal nem "ALL",
-            # deixa passar (não bloqueia canais sem filtro)
+            # If channel_filters exists but no filter for this channel nor "ALL",
+            # let it pass (do not block channels without filter)
         
-        # Filtro de ID global (legacy, aplicado se não houver filtro por canal)
+        # Global ID filter (legacy, applied when no per-channel filter)
         if id_filters and not channel_filters:
             id_match = msg.can_id in id_filters
             if show_only:
-                # Whitelist: deve estar na lista
+                # Whitelist: must be in list
                 if not id_match:
                     return False
             else:
-                # Blacklist: não deve estar na lista
+                # Blacklist: must not be in list
                 if id_match:
                     return False
         
-        # Filtro de dados (aplicado sempre)
+        # Data filter (always applied)
         for data_filter in data_filters:
             try:
                 byte_index = data_filter['byte_index']
@@ -3887,39 +3919,39 @@ class CANAnalyzerWindow(QMainWindow):
         return True
     
     def on_usb_device_connected(self, device):
-        """Callback chamado quando um dispositivo USB é conectado (thread segura)"""
+        """Callback when a USB device is connected (thread-safe)"""
         self.logger.info(f"Dispositivo USB conectado: {device}")
         
-        # Mostrar notificação (thread segura)
+        # Show notification (thread-safe)
         QTimer.singleShot(0, lambda: self.show_notification(
             f"🔌 {t('msg_device_connected').format(device=device.name)}",
             5000
         ))
     
     def on_usb_device_disconnected(self, device):
-        """Callback chamado quando um dispositivo USB é desconectado (thread segura)"""
+        """Callback when a USB device is disconnected (thread-safe)"""
         self.logger.info(f"Dispositivo USB desconectado: {device}")
         
-        # Verificar se o dispositivo desconectado é o que está em uso
+        # Check if the disconnected device is the one in use
         current_device = self.config.get('channel', '')
         if device.path == current_device:
             self.logger.warning(f"Dispositivo em uso foi desconectado: {device.path}")
             
-            # Se estiver conectado, desconectar automaticamente
+            # If connected, disconnect automatically
             if self.connected:
                 self.logger.info("Desconectando automaticamente devido à remoção do dispositivo")
                 
                 # Executar na thread principal usando QTimer
                 QTimer.singleShot(0, self._handle_device_disconnection)
         
-        # Mostrar notificação (thread segura)
+        # Show notification (thread-safe)
         QTimer.singleShot(0, lambda: self.show_notification(
             f"🔌 {t('msg_device_disconnected').format(device=device.name)}",
             5000
         ))
     
     def _handle_device_disconnection(self):
-        """Manipula desconexão de dispositivo na thread principal"""
+        """Handle device disconnection in main thread"""
         try:
             self.disconnect()
             
@@ -3932,8 +3964,131 @@ class CANAnalyzerWindow(QMainWindow):
         except Exception as e:
             self.logger.error(f"Error in device disconnected callback: {e}")
     
+    def _init_protocol_decoders(self):
+        """Inicializa protocol decoders"""
+        try:
+            # Register available decoders (DISABLED by default)
+            ftcan_decoder = FTCANProtocolDecoder()
+            obd2_decoder = OBD2ProtocolDecoder()
+            
+            self.decoder_manager.register_decoder(ftcan_decoder)
+            self.decoder_manager.register_decoder(obd2_decoder)
+            
+            # Load saved configuration (if exists)
+            decoder_config = self.config.get('protocol_decoders', {})
+            if decoder_config:
+                # If saved config exists, use it
+                self.decoder_manager.load_config(decoder_config)
+            else:
+                # If no config, DISABLE all by default
+                self.decoder_manager.set_decoder_enabled('FTCAN 2.0', False)
+                self.decoder_manager.set_decoder_enabled('OBD-II', False)
+                self.logger.info("Protocol decoders initialized as DISABLED by default")
+            
+            self.logger.info(f"Protocol decoders initialized: {len(self.decoder_manager.get_all_decoders())} decoders")
+        except Exception as e:
+            self.logger.error(f"Error initializing protocol decoders: {e}")
+    
+    def show_decoder_manager(self):
+        """Mostra o dialog do Decoder Manager"""
+        dialog = DecoderManagerDialog(self)
+        dialog.exec()
+        
+        # Save configuration on close
+        decoder_config = self.decoder_manager.save_config()
+        self.config['protocol_decoders'] = decoder_config
+        self.config_manager.save(self.config)
+    
+    def show_ftcan_dialog(self):
+        """Mostra o dialog do FTCAN Protocol Analyzer"""
+        # Check if connected
+        if not self.connected:
+            QMessageBox.warning(
+                self,
+                "Not Connected",
+                "You must be connected to a CAN bus before opening the FTCAN Analyzer.\n\n"
+                "Please connect to a CAN adapter first."
+            )
+            return
+        
+        # Check if there is at least one bus at 1 Mbps
+        buses_1mbps = []
+        if self.can_bus_manager:
+            for name, bus in self.can_bus_manager.buses.items():
+                if bus.connected and bus.config.baudrate == 1000000:
+                    buses_1mbps.append((name, bus))
+        
+        if not buses_1mbps:
+            QMessageBox.warning(
+                self,
+                "Invalid Baudrate",
+                "FTCAN protocol requires 1 Mbps (1000000 bps) baudrate.\n\n"
+                "Please connect to a CAN bus at 1 Mbps before opening the FTCAN Analyzer.\n\n"
+                "Current connected buses are not at 1 Mbps."
+            )
+            return
+        
+        # If dialog already open, just bring to front
+        if hasattr(self, '_ftcan_dialog') and self._ftcan_dialog:
+            self._ftcan_dialog.raise_()
+            self._ftcan_dialog.activateWindow()
+            return
+        
+        # Create dialog with list of available buses
+        dialog = FTCANDialog(self, buses_1mbps=buses_1mbps)
+        
+        # If there are already received messages, add them to dialog
+        for msg in self.received_messages:
+            dialog.add_message(msg)
+        
+        # Conecta para receber novas mensagens
+        self._ftcan_dialog = dialog
+        
+        # Connect close signal to clear reference
+        dialog.finished.connect(self._on_ftcan_dialog_closed)
+        
+        # Show non-modally (allows interaction with main window)
+        dialog.show()
+    
+    def _on_ftcan_dialog_closed(self):
+        """Callback when FTCAN Analyzer is closed"""
+        self._ftcan_dialog = None
+    
+    def show_obd2_dialog(self):
+        """Mostra o dialog do OBD-II Monitor"""
+        # Check if connected
+        if not self.connected:
+            QMessageBox.warning(
+                self,
+                "Not Connected",
+                "You must be connected to a CAN bus before opening the OBD-II Monitor.\n\n"
+                "Please connect to a CAN adapter first."
+            )
+            return
+        
+        # If dialog already open, just bring to front
+        if hasattr(self, '_obd2_dialog') and self._obd2_dialog:
+            self._obd2_dialog.raise_()
+            self._obd2_dialog.activateWindow()
+            return
+        
+        dialog = OBD2Dialog(self, can_bus_manager=self.can_bus_manager)
+        
+        # Conecta para receber novas mensagens
+        self._obd2_dialog = dialog
+        
+        # Connect close signal to clear reference
+        dialog.finished.connect(self._on_obd2_dialog_closed)
+        
+        # Show non-modally (allows interaction with main window)
+        dialog.show()
+    
+    def _on_obd2_dialog_closed(self):
+        """Callback when OBD-II Monitor is closed"""
+        self._obd2_dialog = None
+    
     def show_gateway_dialog(self):
-        """Mostra o dialog de configuração do Gateway"""
+        """Show the Gateway configuration dialog"""
         if not self.can_bus_manager or len(self.can_bus_manager.get_bus_names()) < 2:
             QMessageBox.warning(
                 self,
@@ -4289,15 +4444,15 @@ class CANAnalyzerWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Evento chamado ao fechar a janela"""
-        # Parar o monitor USB
+        # Stop USB monitor
         if hasattr(self, 'usb_monitor'):
             self.usb_monitor.stop_monitoring()
         
-        # Desconectar se estiver conectado
+        # Disconnect if connected
         if self.connected:
             self.disconnect()
         
-        # Aceitar o evento de fechamento
+        # Accept close event
         event.accept()
 
 
