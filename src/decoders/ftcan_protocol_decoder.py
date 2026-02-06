@@ -1,9 +1,6 @@
 """
 FTCAN Protocol Decoder - Plugin adapter for FTCAN 2.0 in the app's decoder manager.
 
-Difference from ftcan_decoder.py:
-- ftcan_decoder.py: Core protocol logic (29-bit ID parsing, segment reassembly,
-  MEASURE_IDS, ProductType, FTCANDecoder.decode_message). No dependency on the app.
 - ftcan_protocol_decoder.py: Implements ProtocolDecoder interface; wraps FTCANDecoder
   and returns DecodedData for the UI/decoder manager. Use this when registering
   the decoder in the application.
