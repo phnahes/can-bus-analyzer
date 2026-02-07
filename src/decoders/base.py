@@ -1,6 +1,6 @@
 """
-Protocol Decoder System - Sistema modular para decodificação de protocolos CAN
-Permite ativar/desativar decoders específicos (FTCAN, OBD-II, J1939, etc.)
+Protocol Decoder System - Modular system for CAN protocol decoding
+Allows enabling/disabling specific decoders (FTCAN, OBD-II, J1939, etc.)
 """
 
 from abc import ABC, abstractmethod
@@ -41,7 +41,7 @@ class ProtocolDecoder(ABC):
     
     @abstractmethod
     def get_name(self) -> str:
-        """Retorna nome do decoder"""
+        """Return decoder name"""
         pass
     
     @abstractmethod
@@ -52,21 +52,21 @@ class ProtocolDecoder(ABC):
     @abstractmethod
     def can_decode(self, can_id: int, data: bytes, is_extended: bool) -> bool:
         """
-        Verifica se este decoder pode decodificar a mensagem
-        Deve ser rápido (usado para filtragem)
+        Check if this decoder can decode the message
+        Must be fast (used for filtering)
         """
         pass
     
     @abstractmethod
     def decode(self, can_id: int, data: bytes, is_extended: bool, timestamp: float) -> Optional[DecodedData]:
         """
-        Decodifica a mensagem CAN
-        Retorna None se não conseguir decodificar
+        Decode CAN message
+        Returns None if unable to decode
         """
         pass
     
     def get_priority(self) -> DecoderPriority:
-        """Retorna prioridade do decoder"""
+        """Return decoder priority"""
         return self.priority
     
     def is_enabled(self) -> bool:
@@ -74,7 +74,7 @@ class ProtocolDecoder(ABC):
         return self.enabled
     
     def set_enabled(self, enabled: bool):
-        """Habilita/desabilita o decoder"""
+        """Enable/disable the decoder"""
         self.enabled = enabled
     
     def get_settings(self) -> Dict[str, Any]:
@@ -96,14 +96,14 @@ class ProtocolDecoder(ABC):
 
 
 class DecoderManager:
-    """Gerenciador de protocol decoders"""
+    """Protocol decoder manager"""
     
     def __init__(self):
         self.decoders: List[ProtocolDecoder] = []
         self._decoder_stats: Dict[str, Dict] = {}
     
     def register_decoder(self, decoder: ProtocolDecoder):
-        """Registra um novo decoder"""
+        """Register a new decoder"""
         self.decoders.append(decoder)
         self._decoder_stats[decoder.get_name()] = {
             'messages_decoded': 0,
@@ -111,31 +111,31 @@ class DecoderManager:
             'total_confidence': 0.0
         }
         
-        # Ordena por prioridade
+        # Sort by priority
         self.decoders.sort(key=lambda d: d.get_priority().value)
     
     def unregister_decoder(self, decoder_name: str):
-        """Remove um decoder"""
+        """Remove a decoder"""
         self.decoders = [d for d in self.decoders if d.get_name() != decoder_name]
         if decoder_name in self._decoder_stats:
             del self._decoder_stats[decoder_name]
     
     def get_decoder(self, name: str) -> Optional[ProtocolDecoder]:
-        """Retorna decoder pelo nome"""
+        """Return decoder by name"""
         for decoder in self.decoders:
             if decoder.get_name() == name:
                 return decoder
         return None
     
     def get_all_decoders(self) -> List[ProtocolDecoder]:
-        """Retorna todos os decoders registrados"""
+        """Return all registered decoders"""
         return self.decoders.copy()
     
     def decode_message(self, can_id: int, data: bytes, is_extended: bool, 
                       timestamp: float = 0.0) -> List[DecodedData]:
         """
-        Tenta decodificar mensagem com todos os decoders habilitados
-        Retorna lista de decodificações (pode haver múltiplas)
+        Try to decode message with all enabled decoders
+        Returns list of decodings (may have multiple)
         """
         results = []
         
@@ -148,7 +148,7 @@ class DecoderManager:
                 if not decoder.can_decode(can_id, data, is_extended):
                     continue
                 
-                # Tenta decodificar
+                # Try to decode
                 decoded = decoder.decode(can_id, data, is_extended, timestamp)
                 
                 if decoded and decoded.success:
@@ -161,7 +161,7 @@ class DecoderManager:
                 else:
                     self._decoder_stats[decoder.get_name()]['messages_failed'] += 1
                     
-            except Exception as e:
+            except Exception:
                 # Decoder failed but should not stop others
                 self._decoder_stats[decoder.get_name()]['messages_failed'] += 1
                 continue

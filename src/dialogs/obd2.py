@@ -15,9 +15,9 @@ import can
 import time
 import csv
 from datetime import datetime
-from .models import CANMessage
-from .decoders.obd2_decoder import OBD2_PIDS
-from .i18n import t
+from ..models import CANMessage
+from ..decoders.decoder_obd2 import OBD2_PIDS
+from ..i18n import t
 
 
 class OBD2Dialog(QDialog):
@@ -158,49 +158,65 @@ class OBD2Dialog(QDialog):
         # Top row: info on left, status/bus on right
         top_layout = QHBoxLayout()
         
-        # Protocol information (left)
+        # Left side: Protocol title
+        title_label = QLabel("<b style='font-size: 14px;'>On-Board Diagnostics II</b>")
+        top_layout.addWidget(title_label)
+        
+        top_layout.addStretch()
+        
+        # Right side: Channel selector with status
+        right_layout = QHBoxLayout()
+        
+        # Channel selection with integrated status
+        if self.can_bus_manager and len(self.can_bus_manager.buses) > 1:
+            # Multiple buses - show dropdown
+            right_layout.addWidget(QLabel("<b>Channel:</b>"))
+            self.bus_combo = QComboBox()
+            self.bus_combo.setMinimumWidth(180)
+            for bus_name, bus in self.can_bus_manager.buses.items():
+                if bus.connected:
+                    self.bus_combo.addItem(f"{bus_name} - Connected")
+                else:
+                    self.bus_combo.addItem(f"{bus_name} - Simulation")
+            self.bus_combo.currentIndexChanged.connect(self._change_active_bus)
+            right_layout.addWidget(self.bus_combo)
+            # Store reference for status updates
+            self.channel_label = None
+        elif self.can_bus_manager and len(self.can_bus_manager.buses) == 1:
+            # Single bus - show as label with colored status
+            bus_name = list(self.can_bus_manager.buses.keys())[0]
+            bus = list(self.can_bus_manager.buses.values())[0]
+            self.channel_label = QLabel()
+            self._update_channel_status(bus_name, bus.connected)
+            right_layout.addWidget(self.channel_label)
+        else:
+            # No bus available
+            self.channel_label = QLabel("<b>Channel:</b> <span style='color: red; font-weight: bold;'>Disconnected</span>")
+            right_layout.addWidget(self.channel_label)
+        
+        top_layout.addLayout(right_layout)
+        main_layout.addLayout(top_layout)
+        
+        # Add separator line
+        line = QLabel()
+        line.setFrameStyle(QLabel.Shape.HLine | QLabel.Shadow.Sunken)
+        main_layout.addWidget(line)
+        
+        # Protocol information
         info_text = QLabel(
-            "<b>On-Board Diagnostics II</b><br>"
             "• Protocol: ISO 15765-4 (CAN)<br>"
             "• Type: Request/Response (polling)<br>"
             "• Request ID: 0x7DF (broadcast)<br>"
             "• Response IDs: 0x7E8-0x7EF"
         )
         info_text.setWordWrap(True)
-        top_layout.addWidget(info_text)
-        
-        top_layout.addStretch()
-        
-        # Right side: Status and bus selection
-        right_layout = QVBoxLayout()
-        
-        # Connection status
-        self.connection_label = QLabel("❌ Not connected")
-        self.connection_label.setStyleSheet("color: red; font-weight: bold;")
-        self.connection_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        right_layout.addWidget(self.connection_label)
-        
-        # Bus selection (if multiple)
-        if self.can_bus_manager and len(self.can_bus_manager.buses) > 1:
-            bus_layout = QHBoxLayout()
-            bus_layout.addStretch()
-            bus_layout.addWidget(QLabel("<b>CAN Bus:</b>"))
-            self.bus_combo = QComboBox()
-            for bus_name in self.can_bus_manager.buses.keys():
-                self.bus_combo.addItem(bus_name)
-            self.bus_combo.currentTextChanged.connect(self._change_active_bus)
-            bus_layout.addWidget(self.bus_combo)
-            right_layout.addLayout(bus_layout)
+        info_text.setStyleSheet("color: #555; font-size: 11px;")
+        main_layout.addWidget(info_text)
         
         # Statistics
         self.stats_label = QLabel("Requests: 0 | Responses: 0 | Success Rate: 0.0%")
         self.stats_label.setStyleSheet("color: gray; font-size: 10px;")
-        self.stats_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        right_layout.addWidget(self.stats_label)
-        
-        top_layout.addLayout(right_layout)
-        
-        main_layout.addLayout(top_layout)
+        main_layout.addWidget(self.stats_label)
         
         group.setLayout(main_layout)
         return group
@@ -1051,14 +1067,10 @@ class OBD2Dialog(QDialog):
             f"Success Rate: {success_rate:.1f}%"
         )
         
-        # Atualiza status da conexão
-        if self.active_bus and self.active_bus.connected:
+        # Atualiza status da conexão (apenas se tiver label de canal único)
+        if hasattr(self, 'channel_label') and self.channel_label and self.active_bus:
             bus_name = self.active_bus.config.name if hasattr(self.active_bus, 'config') else "CAN"
-            self.connection_label.setText(f"✅ Connected to {bus_name}")
-            self.connection_label.setStyleSheet("color: green; font-weight: bold;")
-        else:
-            self.connection_label.setText("❌ Not connected to CAN bus")
-            self.connection_label.setStyleSheet("color: red; font-weight: bold;")
+            self._update_channel_status(bus_name, self.active_bus.connected)
     
     def _add_raw_message(self, msg: CANMessage, decoded: str):
         """Add raw message to table"""
@@ -1131,11 +1143,22 @@ class OBD2Dialog(QDialog):
         cursor.movePosition(cursor.MoveOperation.End)
         self.stats_text.setTextCursor(cursor)
     
-    def _change_active_bus(self, bus_name: str):
-        """Muda o bus ativo"""
-        if self.can_bus_manager and bus_name in self.can_bus_manager.buses:
-            self.active_bus = self.can_bus_manager.buses[bus_name]
-            self._log_message(f"🔄 Switched to {bus_name}")
+    def _update_channel_status(self, bus_name: str, connected: bool):
+        """Update channel status label with colored status"""
+        if connected:
+            status_html = "<span style='color: green; font-weight: bold;'>Connected</span>"
+        else:
+            status_html = "<span style='color: #0066cc; font-weight: bold;'>Simulation</span>"
+        self.channel_label.setText(f"<b>Channel:</b> {bus_name} - {status_html}")
+    
+    def _change_active_bus(self, index: int):
+        """Change active bus"""
+        if self.can_bus_manager and index >= 0:
+            bus_names = list(self.can_bus_manager.buses.keys())
+            if index < len(bus_names):
+                bus_name = bus_names[index]
+                self.active_bus = self.can_bus_manager.buses[bus_name]
+                self._log_message(f"🔄 Switched to {bus_name}")
     
     def set_can_bus_manager(self, can_bus_manager):
         """Define CAN bus manager"""

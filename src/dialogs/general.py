@@ -12,11 +12,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 
-from .models import CANMessage, CANConfig, GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule, GatewayRoute
-from .utils import calculate_baudrate_divisor
-from .i18n import get_i18n, t
-from .theme import get_adaptive_colors, get_bit_style, should_use_dark_mode
-from .baudrate_detect_dialog import BaudrateDetectDialog
+from ..models import CANMessage, CANConfig, GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule, GatewayRoute
+from ..utils import calculate_baudrate_divisor
+from ..i18n import get_i18n, t
+from ..theme import get_adaptive_colors, get_bit_style, should_use_dark_mode
+from ..baudrate_detect_dialog import BaudrateDetectDialog
 
 
 class SettingsDialog(QDialog):

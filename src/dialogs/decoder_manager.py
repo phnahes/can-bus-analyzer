@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
-from .protocol_decoder import get_decoder_manager
+from ..decoders.base import get_decoder_manager
 
 
 class DecoderManagerDialog(QDialog):

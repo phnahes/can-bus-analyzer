@@ -1,14 +1,14 @@
 """
-FTCAN Protocol Decoder - Plugin adapter for FTCAN 2.0 in the app's decoder manager.
+FTCAN Protocol Adapter - Plugin adapter for FTCAN 2.0 in the app's decoder manager.
 
-- ftcan_protocol_decoder.py: Implements ProtocolDecoder interface; wraps FTCANDecoder
+- adapter_ftcan.py: Implements ProtocolDecoder interface; wraps FTCANDecoder
   and returns DecodedData for the UI/decoder manager. Use this when registering
   the decoder in the application.
 """
 
 from typing import Optional
-from ..protocol_decoder import ProtocolDecoder, DecodedData, DecoderPriority
-from .ftcan_decoder import FTCANDecoder
+from .base import ProtocolDecoder, DecodedData, DecoderPriority
+from .decoder_ftcan import FTCANDecoder
 
 
 class FTCANProtocolDecoder(ProtocolDecoder):
@@ -27,7 +27,7 @@ class FTCANProtocolDecoder(ProtocolDecoder):
     
     def can_decode(self, can_id: int, data: bytes, is_extended: bool) -> bool:
         """Check if message is FTCAN"""
-        # FTCAN usa IDs de 29 bits
+        # FTCAN uses 29-bit IDs
         if not is_extended:
             return False
         
@@ -47,7 +47,7 @@ class FTCANProtocolDecoder(ProtocolDecoder):
                     raw_description=f"Error: {result['error']}"
                 )
             
-            # Monta descrição
+            # Build description
             description_parts = []
             
             if result['identification']:
@@ -62,7 +62,7 @@ class FTCANProtocolDecoder(ProtocolDecoder):
             
             raw_description = " ".join(description_parts) if description_parts else "FTCAN Message"
             
-            # Calcula confiança
+            # Calculate confidence
             confidence = 1.0 if result.get('is_complete') else 0.5
             
             return DecodedData(

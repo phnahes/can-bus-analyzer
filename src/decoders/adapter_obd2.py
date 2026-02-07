@@ -1,11 +1,11 @@
 """
-OBD-II Protocol Decoder - Adapter for OBD-II protocol (plugin for modular system)
+OBD-II Protocol Adapter - Adapter for OBD-II protocol (plugin for modular system)
 Wraps OBD2Decoder core implementation
 """
 
 from typing import Optional
-from ..protocol_decoder import ProtocolDecoder, DecodedData, DecoderPriority
-from .obd2_decoder import OBD2Decoder, OBD2_PIDS
+from .base import ProtocolDecoder, DecodedData, DecoderPriority
+from .decoder_obd2 import OBD2Decoder, OBD2_PIDS
 
 
 class OBD2ProtocolDecoder(ProtocolDecoder):

@@ -24,13 +24,13 @@ from PyQt6.QtGui import QAction, QFont, QColor, QPalette
 
 # Internal imports
 from .models import CANMessage
-from .dialogs import SettingsDialog, BitFieldViewerDialog, FilterDialog, TriggerDialog, GatewayDialog
-from .dialogs_ftcan import FTCANDialog
-from .dialogs_obd2 import OBD2Dialog
-from .decoder_manager_dialog import DecoderManagerDialog
-from .protocol_decoder import get_decoder_manager
-from .decoders.ftcan_protocol_decoder import FTCANProtocolDecoder
-from .decoders.obd2_protocol_decoder import OBD2ProtocolDecoder
+from .dialogs import (
+    SettingsDialog, BitFieldViewerDialog, FilterDialog, TriggerDialog, 
+    GatewayDialog, DecoderManagerDialog, FTCANDialog, OBD2Dialog
+)
+from .decoders.base import get_decoder_manager
+from .decoders.adapter_ftcan import FTCANProtocolDecoder
+from .decoders.adapter_obd2 import OBD2ProtocolDecoder
 from .file_operations import FileOperations
 from .logger import get_logger
 from .i18n import get_i18n, t
@@ -1224,8 +1224,11 @@ class CANAnalyzerWindow(QMainWindow):
                     if reply == QMessageBox.StandardButton.No:
                         return
                     
-                    # Enable simulation mode temporarily
+                    # Enable simulation mode and save to config
                     simulation_mode = True
+                    self.config['simulation_mode'] = True
+                    self.config_manager.save(self.config)
+                    self.logger.info("Simulation mode enabled via connection error dialog")
             
             # Simulation mode
             if simulation_mode or not CAN_AVAILABLE:
@@ -4000,31 +4003,122 @@ class CANAnalyzerWindow(QMainWindow):
         self.config_manager.save(self.config)
     
     def show_ftcan_dialog(self):
-        """Mostra o dialog do FTCAN Protocol Analyzer"""
-        # Check if connected
-        if not self.connected:
+        """Show FTCAN Protocol Analyzer dialog"""
+        # Check simulation mode
+        simulation_mode = self.config.get('simulation_mode', False)
+        self.logger.info(f"=== FTCAN Dialog Opening ===")
+        self.logger.info(f"Simulation mode: {simulation_mode}")
+        self.logger.info(f"Connected: {self.connected}")
+        self.logger.info(f"CAN_AVAILABLE: {CAN_AVAILABLE}")
+        
+        # Check if there is at least one bus at 1 Mbps
+        buses_1mbps_connected = []  # Actually connected buses at 1Mbps
+        buses_1mbps_config = []     # Configured for 1Mbps (for simulation mode)
+        has_any_bus = False
+        
+        if self.can_bus_manager:
+            for name, bus in self.can_bus_manager.buses.items():
+                has_any_bus = True
+                self.logger.info(f"Bus {name}: connected={bus.connected}, baudrate={bus.config.baudrate}")
+                
+                # Check if configured for 1Mbps
+                if bus.config.baudrate == 1000000:
+                    buses_1mbps_config.append((name, bus))
+                    self.logger.info(f"  → Configured for 1Mbps")
+                    # If connected, add to connected list
+                    if bus.connected:
+                        buses_1mbps_connected.append((name, bus))
+                        self.logger.info(f"  → Connected and ready!")
+        
+        self.logger.info(f"Results: connected={len(buses_1mbps_connected)}, configured={len(buses_1mbps_config)}")
+        
+        # If no buses at all, show connection error
+        if not has_any_bus:
+            self.logger.warning("No buses found at all")
             QMessageBox.warning(
                 self,
-                "Not Connected",
-                "You must be connected to a CAN bus before opening the FTCAN Analyzer.\n\n"
-                "Please connect to a CAN adapter first."
+                t('decoder_not_connected_title'),
+                t('decoder_not_connected_msg')
             )
             return
         
-        # Check if there is at least one bus at 1 Mbps
-        buses_1mbps = []
-        if self.can_bus_manager:
-            for name, bus in self.can_bus_manager.buses.items():
-                if bus.connected and bus.config.baudrate == 1000000:
-                    buses_1mbps.append((name, bus))
+        # Determine which buses to use
+        buses_to_use = []
         
-        if not buses_1mbps:
+        # Priority 1: Use connected 1Mbps buses (real connection)
+        if buses_1mbps_connected:
+            buses_to_use = buses_1mbps_connected
+            self.logger.info(f"✓ Using {len(buses_to_use)} connected 1Mbps bus(es)")
+        
+        # Priority 2: In simulation mode, use configured 1Mbps buses
+        elif (simulation_mode or not CAN_AVAILABLE) and buses_1mbps_config:
+            self.logger.info(f"✓ Simulation mode: using {len(buses_1mbps_config)} configured 1Mbps bus(es)")
+            buses_to_use = buses_1mbps_config
+            # Auto-connect if not already connected
+            if not self.connected:
+                self.logger.info("Auto-connecting buses in simulation mode")
+                self.can_bus_manager.connect_all(simulation=True)
+                self.connected = True
+        
+        # Priority 3: Connected but buses show disconnected (connection failed) - try simulation
+        elif self.connected and not buses_1mbps_connected and buses_1mbps_config:
+            self.logger.warning("Connected flag is True but no buses actually connected - switching to simulation")
+            buses_to_use = buses_1mbps_config
+            self.can_bus_manager.connect_all(simulation=True)
+        
+        # If no buses at 1Mbps, show baudrate error
+        if not buses_to_use:
+            # Build detailed message with current bus status
+            bus_status = []
+            all_disconnected = True
+            has_1mbps_config = False
+            if self.can_bus_manager:
+                for name, bus in self.can_bus_manager.buses.items():
+                    status = "✓ connected" if bus.connected else "✗ disconnected"
+                    if bus.connected:
+                        all_disconnected = False
+                    baudrate_kbps = bus.config.baudrate // 1000
+                    # Check if this bus is configured for 1Mbps
+                    if bus.config.baudrate == 1000000:
+                        has_1mbps_config = True
+                        bus_status.append(f"  • {name}: {status}, {baudrate_kbps} Kbps ✓ (correct baudrate)")
+                    else:
+                        bus_status.append(f"  • {name}: {status}, {baudrate_kbps} Kbps")
+            
+            status_text = "\n".join(bus_status) if bus_status else "  No buses configured"
+            
+            # Different message based on situation
+            if all_disconnected and has_1mbps_config:
+                # Has correct config but not connected - clearer message
+                bus_with_1mbps = [name for name, kbps in [(n, b.config.baudrate // 1000) for n, b in self.can_bus_manager.buses.items()] if kbps == 1000]
+                bus_name = bus_with_1mbps[0] if bus_with_1mbps else "CAN"
+                
+                message = (
+                    f"✓ {bus_name} is correctly configured for FTCAN (1 Mbps)\n\n"
+                    f"⚠️ Click the \"Connect\" button to start the CAN interface.\n\n"
+                    f"{t('decoder_configured_buses')}\n{status_text}"
+                )
+            elif all_disconnected and not has_1mbps_config:
+                # Not connected AND no 1Mbps config
+                message = (
+                    f"{t('ftcan_requires_1mbps')}\n\n"
+                    f"{t('ftcan_all_disconnected')}\n\n"
+                    f"{t('decoder_configured_buses')}\n{status_text}\n\n"
+                    f"{t('ftcan_tip_configure')}"
+                )
+            else:
+                # Connected but wrong baudrate
+                message = (
+                    f"{t('ftcan_requires_1mbps')}\n\n"
+                    f"{t('ftcan_no_1mbps_bus')}\n\n"
+                    f"{t('decoder_current_bus_status')}\n{status_text}\n\n"
+                    f"{t('ftcan_tip_configure')}"
+                )
+            
             QMessageBox.warning(
                 self,
-                "Invalid Baudrate",
-                "FTCAN protocol requires 1 Mbps (1000000 bps) baudrate.\n\n"
-                "Please connect to a CAN bus at 1 Mbps before opening the FTCAN Analyzer.\n\n"
-                "Current connected buses are not at 1 Mbps."
+                t('ftcan_invalid_baudrate_title'),
+                message
             )
             return
         
@@ -4034,8 +4128,12 @@ class CANAnalyzerWindow(QMainWindow):
             self._ftcan_dialog.activateWindow()
             return
         
+        # Log which buses will be used
+        bus_names = [name for name, _ in buses_to_use]
+        self.logger.info(f"Opening FTCAN Dialog with buses: {', '.join(bus_names)}")
+        
         # Create dialog with list of available buses
-        dialog = FTCANDialog(self, buses_1mbps=buses_1mbps)
+        dialog = FTCANDialog(self, buses_1mbps=buses_to_use)
         
         # If there are already received messages, add them to dialog
         for msg in self.received_messages:
@@ -4055,14 +4153,39 @@ class CANAnalyzerWindow(QMainWindow):
         self._ftcan_dialog = None
     
     def show_obd2_dialog(self):
-        """Mostra o dialog do OBD-II Monitor"""
-        # Check if connected
-        if not self.connected:
+        """Show OBD-II Monitor dialog"""
+        # Check simulation mode
+        simulation_mode = self.config.get('simulation_mode', False)
+        
+        # Check if there is at least one connected bus (or any bus in simulation mode)
+        has_any_bus = False
+        has_connected_bus = False
+        
+        if self.can_bus_manager:
+            for name, bus in self.can_bus_manager.buses.items():
+                has_any_bus = True
+                if bus.connected:
+                    has_connected_bus = True
+                    break
+        
+        # In simulation mode OR if CAN not available, allow opening if we have any bus configured
+        if (simulation_mode or not CAN_AVAILABLE) and has_any_bus:
+            self.logger.info("Simulation/No-CAN mode: allowing OBD-II Monitor")
+            # Auto-connect if not already connected
+            if not has_connected_bus:
+                self.logger.info("Auto-connecting buses in simulation mode for OBD-II")
+                self.can_bus_manager.connect_all(simulation=True)
+                self.connected = True
+        # If connected but buses show as disconnected (connection failed), try simulation
+        elif self.connected and not has_connected_bus and has_any_bus:
+            self.logger.warning("Connected flag is True but no buses are actually connected - switching to simulation")
+            self.can_bus_manager.connect_all(simulation=True)
+        elif not has_connected_bus:
+            # Not in simulation or no buses connected
             QMessageBox.warning(
                 self,
-                "Not Connected",
-                "You must be connected to a CAN bus before opening the OBD-II Monitor.\n\n"
-                "Please connect to a CAN adapter first."
+                t('decoder_not_connected_title'),
+                t('decoder_not_connected_msg')
             )
             return
         
