@@ -1,5 +1,5 @@
 """
-Dialogs - Janelas de diálogo da aplicação (versão refatorada)
+Dialogs - Application dialog windows (refactored version)
 """
 
 import json
@@ -12,14 +12,15 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 
-from .models import CANMessage, CANConfig, GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule, GatewayRoute
-from .utils import calculate_baudrate_divisor
-from .i18n import get_i18n, t
-from .theme import get_adaptive_colors, get_bit_style, should_use_dark_mode
+from ..models import CANMessage, CANConfig, GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule, GatewayRoute
+from ..utils import calculate_baudrate_divisor
+from ..i18n import get_i18n, t
+from ..theme import get_adaptive_colors, get_bit_style, should_use_dark_mode
+from ..baudrate_detect_dialog import BaudrateDetectDialog
 
 
 class SettingsDialog(QDialog):
-    """Dialog de configurações de conexão"""
+    """Connection settings dialog"""
     def __init__(self, parent=None, config=None, usb_monitor=None):
         super().__init__(parent)
         self.config = config or {}
@@ -217,6 +218,13 @@ class SettingsDialog(QDialog):
         baudrate_combo.setMaximumWidth(150)
         row3.addWidget(baudrate_combo)
         
+        # Auto-Detect button
+        btn_auto_detect = QPushButton("🔍 Auto")
+        btn_auto_detect.setToolTip("Auto-detect baudrate")
+        btn_auto_detect.setMaximumWidth(70)
+        btn_auto_detect.clicked.connect(lambda: self._auto_detect_baudrate(channel_input, baudrate_combo))
+        row3.addWidget(btn_auto_detect)
+        
         row3.addStretch()
         
         # Listen Only checkbox
@@ -302,8 +310,43 @@ class SettingsDialog(QDialog):
             if device:
                 channel_input.setCurrentText(device.path)
     
+    def _auto_detect_baudrate(self, channel_input, baudrate_combo):
+        """Auto-detect baudrate for a specific CAN bus"""
+        channel = channel_input.currentText()
+        
+        # Detecta interface baseado no canal
+        interface = 'socketcan'
+        if channel.startswith('/dev/tty') or channel.startswith('COM'):
+            interface = 'slcan'
+        
+        # Open detection dialog
+        dialog = BaudrateDetectDialog(self, channel=channel, interface=interface)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            detected_baudrate = dialog.get_detected_baudrate()
+            
+            if detected_baudrate:
+                # Atualiza o combo com o baudrate detectado
+                baudrate_text = f"{detected_baudrate // 1000} Kbit/s"
+                
+                # Check if baudrate is in the list
+                index = baudrate_combo.findText(baudrate_text)
+                if index >= 0:
+                    baudrate_combo.setCurrentIndex(index)
+                else:
+                    # If not in list, add it
+                    baudrate_combo.addItem(baudrate_text)
+                    baudrate_combo.setCurrentText(baudrate_text)
+                
+                QMessageBox.information(
+                    self,
+                    "Baudrate Detected",
+                    f"Baudrate detected: {detected_baudrate:,} bps\n\n"
+                    f"The baudrate has been updated in the configuration."
+                )
+    
     def get_config(self):
-        """Retorna configuração atualizada"""
+        """Return updated configuration"""
         selected_language = self.language_combo.currentData()
         selected_theme = self.theme_combo.currentData()
         
@@ -381,7 +424,7 @@ class BitFieldViewerDialog(QDialog):
         
         layout = QVBoxLayout(self)
         
-        # Header com informações da mensagem
+        # Header with message information
         header_group = QGroupBox("Message Information")
         header_layout = QGridLayout()
         
@@ -409,7 +452,7 @@ class BitFieldViewerDialog(QDialog):
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
         
-        # Criar visualização de bits para cada byte
+        # Create bit visualization for each byte
         if self.message:
             for byte_idx, byte_val in enumerate(self.message.data):
                 byte_group = self.create_byte_viewer(byte_idx, byte_val)
@@ -419,7 +462,7 @@ class BitFieldViewerDialog(QDialog):
         scroll.setWidget(scroll_widget)
         layout.addWidget(scroll)
         
-        # Botões
+        # Buttons
         button_layout = QHBoxLayout()
         
         self.btn_save_labels = QPushButton("💾 Save Labels")
@@ -439,7 +482,7 @@ class BitFieldViewerDialog(QDialog):
         layout.addLayout(button_layout)
     
     def create_byte_viewer(self, byte_idx: int, byte_val: int):
-        """Cria visualização de um byte com seus 8 bits"""
+        """Create visualization of one byte with its 8 bits"""
         group = QGroupBox(f"Byte {byte_idx} (0x{byte_val:02X} = {byte_val:3d})")
         layout = QGridLayout()
         
@@ -457,7 +500,7 @@ class BitFieldViewerDialog(QDialog):
             bit_widget.setStyleSheet(get_bit_style(bit_value, self.colors))
             layout.addWidget(bit_widget, 1, 7 - bit)
         
-        # Labels editáveis para cada bit
+        # Editable labels for each bit
         for bit in range(7, -1, -1):
             bit_key = f"{byte_idx}_{bit}"
             label_input = QLineEdit()
@@ -741,7 +784,7 @@ class FilterDialog(QDialog):
         pass
     
     def get_filters(self):
-        """Retorna configuração de filtros"""
+        """Return filter configuration"""
         # Parse ID filters
         id_filters = []
         id_text = self.id_filter_input.text().strip()
@@ -821,7 +864,7 @@ class FilterDialog(QDialog):
 
 
 class TriggerDialog(QDialog):
-    """Dialog para configurar triggers de transmissão automática"""
+    """Dialog to configure automatic transmission triggers"""
     def __init__(self, parent=None, triggers=None):
         super().__init__(parent)
         self.triggers = triggers or []
@@ -976,7 +1019,7 @@ class TriggerDialog(QDialog):
         
         comment, ok4 = QInputDialog.getText(self, "Add Trigger", "Comment (optional):")
         
-        # Adicionar à lista
+        # Add to list
         new_trigger = {
             'enabled': True,
             'trigger_id': trigger_id,
@@ -996,7 +1039,7 @@ class TriggerDialog(QDialog):
             QMessageBox.warning(self, "Edit Trigger", "Select a trigger to edit!")
             return
         
-        # Implementar edição (similar ao add)
+        # Implement edit (similar to add)
         QMessageBox.information(self, "Edit", "Edit functionality - to be implemented")
     
     def remove_trigger(self):
@@ -1044,7 +1087,7 @@ class TriggerDialog(QDialog):
 
 
 class USBDeviceSelectionDialog(QDialog):
-    """Diálogo para seleção de dispositivos USB/Serial"""
+    """Dialog for USB/Serial device selection"""
     
     def __init__(self, parent=None, usb_monitor=None):
         super().__init__(parent)
@@ -1061,7 +1104,7 @@ class USBDeviceSelectionDialog(QDialog):
         
         layout = QVBoxLayout(self)
         
-        # Informação
+        # Information
         info_label = QLabel(t('dialog_usb_device_info'))
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
@@ -1086,7 +1129,7 @@ class USBDeviceSelectionDialog(QDialog):
         self.status_label = QLabel("")
         layout.addWidget(self.status_label)
         
-        # Botões
+        # Buttons
         button_layout = QHBoxLayout()
         
         self.refresh_btn = QPushButton(t('btn_refresh'))
@@ -1106,7 +1149,7 @@ class USBDeviceSelectionDialog(QDialog):
         
         layout.addLayout(button_layout)
         
-        # Conectar sinal de seleção
+        # Connect selection signal
         self.devices_table.itemSelectionChanged.connect(self.on_selection_changed)
     
     def refresh_devices(self):
@@ -1117,7 +1160,7 @@ class USBDeviceSelectionDialog(QDialog):
             self.status_label.setText(t('msg_usb_monitor_not_available'))
             return
         
-        # Obter dispositivos disponíveis
+        # Get available devices
         devices = self.usb_monitor.get_available_devices()
         
         if not devices:
@@ -1135,14 +1178,14 @@ class USBDeviceSelectionDialog(QDialog):
             path_item = QTableWidgetItem(device.path)
             self.devices_table.setItem(row, 1, path_item)
             
-            # Descrição
+            # Description
             desc_item = QTableWidgetItem(device.description)
             self.devices_table.setItem(row, 2, desc_item)
         
         self.status_label.setText(t('msg_usb_devices_found').format(count=len(devices)))
     
     def on_selection_changed(self):
-        """Callback quando a seleção muda"""
+        """Callback when selection changes"""
         has_selection = len(self.devices_table.selectedItems()) > 0
         self.select_btn.setEnabled(has_selection)
     
@@ -1161,7 +1204,7 @@ class USBDeviceSelectionDialog(QDialog):
         return USBDeviceInfo(path, name)
     
     def accept(self):
-        """Aceita a seleção"""
+        """Accept the selection"""
         self.selected_device = self.get_selected_device()
         if self.selected_device:
             super().accept()
@@ -1170,7 +1213,7 @@ class USBDeviceSelectionDialog(QDialog):
 
 
 class ModifyRuleDialog(QDialog):
-    """Dialog para configurar regra de modificação de mensagem com máscara de bits"""
+    """Dialog to configure message modification rule with bit mask"""
     def __init__(self, parent=None, channel=None, can_id=None, existing_rule=None):
         super().__init__(parent)
         self.channel = channel or "CAN1"
@@ -1459,7 +1502,7 @@ class ModifyRuleDialog(QDialog):
 
 
 class GatewayDialog(QDialog):
-    """Dialog de configuração do CAN Gateway"""
+    """CAN Gateway configuration dialog"""
     def __init__(self, parent=None, config=None, bus_names=None):
         super().__init__(parent)
         self.config = config or GatewayConfig()

@@ -11,7 +11,7 @@ from .models import CANMessage
 
 
 class FileOperations:
-    """Classe para operações de arquivo (save/load)"""
+    """Class for file operations (save/load)"""
     
     @staticmethod
     def save_log_json(filename: str, messages: List[CANMessage], mode: str = "tracer"):
@@ -185,7 +185,7 @@ class FileOperations:
     
     @staticmethod
     def save_transmit_list(filename: str, transmit_data: List[Dict]):
-        """Salva lista de transmissão em JSON"""
+        """Save transmit list to JSON"""
         data = {
             'version': '1.0',
             'timestamp': datetime.now().isoformat(),
@@ -197,7 +197,7 @@ class FileOperations:
     
     @staticmethod
     def load_transmit_list(filename: str) -> List[Dict]:
-        """Carrega lista de transmissão de JSON"""
+        """Load transmit list from JSON"""
         with open(filename, 'r') as f:
             data = json.load(f)
         

@@ -44,7 +44,7 @@ fi
 
 # Run the application
 echo -e "${GREEN}Starting CAN Analyzer...${NC}"
-python can_analyzer_qt.py
+python can_analyzer.py
 
 # Deactivate virtual environment on exit
 deactivate

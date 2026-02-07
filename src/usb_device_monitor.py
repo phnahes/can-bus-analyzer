@@ -261,7 +261,7 @@ _usb_monitor: Optional[USBDeviceMonitor] = None
 
 
 def get_usb_monitor() -> USBDeviceMonitor:
-    """Obtém a instância global do monitor USB"""
+    """Get the global USB monitor instance"""
     global _usb_monitor
     if _usb_monitor is None:
         _usb_monitor = USBDeviceMonitor()

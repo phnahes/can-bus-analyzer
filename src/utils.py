@@ -186,7 +186,7 @@ def filter_messages_by_id_range(
 
 
 def get_unique_ids(messages: List[CANMessage]) -> List[int]:
-    """Retorna lista de IDs únicos ordenados"""
+    """Return sorted list of unique IDs"""
     return sorted(set(msg.can_id for msg in messages))
 
 
