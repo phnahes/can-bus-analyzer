@@ -1,181 +1,21 @@
 """
-Models - Classes de dados para CAN Analyzer
+Gateway Models - CAN Gateway configuration and rules
 """
 
 from dataclasses import dataclass, field
 from typing import Optional, List
-from datetime import datetime
-
-
-@dataclass
-class CANMessage:
-    """Representa uma mensagem CAN"""
-    timestamp: float
-    can_id: int
-    dlc: int
-    data: bytes
-    comment: str = ""
-    period: int = 0
-    count: int = 0
-    channel: int = 1  # Canal CAN (1 ou 2)
-    is_extended: bool = False  # ID de 29 bits
-    is_rtr: bool = False  # Remote Transmission Request
-    source: str = "CAN1"  # Source bus name (for multi-CAN support)
-    
-    def to_dict(self) -> dict:
-        """Converte para dicionário"""
-        return {
-            'timestamp': self.timestamp,
-            'can_id': self.can_id,
-            'dlc': self.dlc,
-            'data': self.data.hex(),
-            'comment': self.comment,
-            'period': self.period,
-            'count': self.count,
-            'channel': self.channel,
-            'is_extended': self.is_extended,
-            'is_rtr': self.is_rtr,
-            'source': self.source
-        }
-    
-    @classmethod
-    def from_dict(cls, data: dict) -> 'CANMessage':
-        """Create instance from dictionary"""
-        return cls(
-            timestamp=data['timestamp'],
-            can_id=data['can_id'],
-            dlc=data['dlc'],
-            data=bytes.fromhex(data['data']),
-            comment=data.get('comment', ''),
-            period=data.get('period', 0),
-            count=data.get('count', 0),
-            channel=data.get('channel', 1),
-            is_extended=data.get('is_extended', False),
-            is_rtr=data.get('is_rtr', False),
-            source=data.get('source', 'CAN1')
-        )
-    
-    def to_ascii(self) -> str:
-        """Convert data to ASCII (printable characters only)"""
-        ascii_str = ""
-        for byte in self.data:
-            if 32 <= byte <= 126:
-                ascii_str += chr(byte)
-            else:
-                ascii_str += "."
-        return ascii_str
-    
-    def to_hex_string(self) -> str:
-        """Return data in hexadecimal format with spaces"""
-        return " ".join([f"{b:02X}" for b in self.data])
-    
-    def get_bit(self, byte_index: int, bit_index: int) -> int:
-        """Return the value of a specific bit"""
-        if byte_index >= len(self.data):
-            return 0
-        return (self.data[byte_index] >> bit_index) & 1
-    
-    def get_bits_string(self) -> str:
-        """Return bit representation of all bytes"""
-        return " ".join([f"{b:08b}" for b in self.data])
-
-
-@dataclass
-class CANFilter:
-    """Representa um filtro CAN (hardware ou software)"""
-    filter_id: int
-    mask: int
-    channel: int = 1
-    is_29bit: bool = False
-    enabled: bool = False
-    
-    def matches(self, can_id: int) -> bool:
-        """Verifica se um ID passa pelo filtro"""
-        if not self.enabled:
-            return True
-        return (can_id & self.mask) == (self.filter_id & self.mask)
-
-
-@dataclass
-class CANConfig:
-    """CAN adapter configuration"""
-    channel: str = "can0"
-    baudrate: int = 500000
-    com_baudrate: str = "115200 bit/s"
-    interface: str = "socketcan"
-    listen_only: bool = True
-    timestamp: bool = True
-    rts_hs: bool = False
-    baudrate_reg: str = "FFFFFF"
-    custom_baudrate: Optional[int] = None
-    low_accuracy: bool = False
-    
-    def get_baudrate_kbps(self) -> int:
-        """Retorna baudrate em Kbps"""
-        return self.baudrate // 1000
-
-
-@dataclass
-class TransmitMessage:
-    """Message configured for transmission"""
-    can_id: int
-    dlc: int
-    data: bytes
-    period: int = 0  # ms, 0 = single shot
-    comment: str = ""
-    is_29bit: bool = False
-    is_rtr: bool = False
-    tx_mode: str = "off"  # off, on, trigger
-    trigger_id: Optional[int] = None
-    trigger_data: Optional[bytes] = None
-    count: int = 0  # Contador de mensagens enviadas
-    enabled: bool = False
-
-
-@dataclass
-class TraceRecord:
-    """Registro de trace para playback"""
-    messages: List[CANMessage] = field(default_factory=list)
-    filename: str = ""
-    duration: float = 0.0  # segundos
-    
-    def get_message_count(self) -> int:
-        """Return number of messages"""
-        return len(self.messages)
-    
-    def get_unique_ids(self) -> List[int]:
-        """Return list of unique IDs"""
-        return list(set(msg.can_id for msg in self.messages))
-
-
-@dataclass
-class BomberConfig:
-    """CAN Bomber configuration"""
-    mode: str = "id_counter"  # id_counter, id_list, data_counter, data_counter_shift
-    id_from: int = 0x000
-    id_to: int = 0x7FF
-    id_list: List[int] = field(default_factory=list)
-    data: bytes = bytes([0x00] * 8)
-    data_mask: List[bool] = field(default_factory=lambda: [True] * 8)  # Quais bytes incrementar
-    increment: List[int] = field(default_factory=lambda: [1] * 8)  # Incremento por byte
-    period: int = 100  # ms
-    msg_per_step: int = 1
-    channel: int = 1
-    is_29bit: bool = False
-    crc_mode: str = "none"  # none, toyota, iso_j1850
-    crc_byte: int = 7  # Byte onde inserir CRC
-    running: bool = False
+from .can_message import CANMessage
 
 
 @dataclass
 class GatewayBlockRule:
-    """Regra de bloqueio de mensagens no Gateway"""
+    """Message blocking rule in Gateway"""
     can_id: int
-    channel: str  # Nome do canal (CAN1, CAN2, etc.)
+    channel: str  # Channel name (CAN1, CAN2, etc.)
     enabled: bool = True
     
     def matches(self, msg_id: int, msg_channel: str) -> bool:
-        """Verifica se a mensagem deve ser bloqueada"""
+        """Check if message should be blocked"""
         return self.enabled and self.can_id == msg_id and self.channel == msg_channel
 
 
@@ -185,7 +25,7 @@ class GatewayDynamicBlock:
     id_from: int
     id_to: int
     channel: str
-    period: int = 1000  # ms - tempo de bloqueio por ID
+    period: int = 1000  # ms - blocking time per ID
     enabled: bool = False
     current_id: int = 0
     
@@ -193,7 +33,7 @@ class GatewayDynamicBlock:
         self.current_id = self.id_from
     
     def get_current_blocked_id(self) -> int:
-        """Retorna o ID atualmente bloqueado"""
+        """Return currently blocked ID"""
         return self.current_id
     
     def advance(self):
@@ -205,29 +45,29 @@ class GatewayDynamicBlock:
 
 @dataclass
 class GatewayModifyRule:
-    """Regra para modificar mensagens no Gateway"""
+    """Rule to modify messages in Gateway"""
     can_id: int
     channel: str
     enabled: bool = True
     # Possible modifications
     new_id: Optional[int] = None  # New ID (if None, keep original)
-    data_mask: List[bool] = field(default_factory=lambda: [False] * 8)  # Quais bytes modificar
-    new_data: bytes = bytes([0x00] * 8)  # Novos valores para os bytes marcados
+    data_mask: List[bool] = field(default_factory=lambda: [False] * 8)  # Which bytes to modify
+    new_data: bytes = bytes([0x00] * 8)  # New values for marked bytes
     
     def apply(self, msg: CANMessage) -> CANMessage:
         """Apply modifications to message"""
         if not self.enabled:
             return msg
         
-        # Cria cópia da mensagem
+        # Create message copy
         modified_data = bytearray(msg.data)
         
-        # Aplica modificações de dados
+        # Apply data modifications
         for i, should_modify in enumerate(self.data_mask):
             if should_modify and i < len(modified_data):
                 modified_data[i] = self.new_data[i]
         
-        # Cria nova mensagem com modificações
+        # Create new message with modifications
         return CANMessage(
             timestamp=msg.timestamp,
             can_id=self.new_id if self.new_id is not None else msg.can_id,
@@ -245,9 +85,9 @@ class GatewayModifyRule:
 
 @dataclass
 class GatewayRoute:
-    """Rota de encaminhamento do Gateway"""
-    source: str  # Canal de origem (ex: "CAN1")
-    destination: str  # Canal de destino (ex: "CAN2")
+    """Gateway forwarding route"""
+    source: str  # Source channel (e.g., "CAN1")
+    destination: str  # Destination channel (e.g., "CAN2")
     enabled: bool = True
 
 
@@ -270,7 +110,7 @@ class GatewayConfig:
     # Modification rules
     modify_rules: List[GatewayModifyRule] = field(default_factory=list)
     
-    # Estado
+    # State
     enabled: bool = False
     
     def get_destination_for_source(self, source: str) -> Optional[str]:
@@ -281,17 +121,17 @@ class GatewayConfig:
         return None
     
     def has_route_from(self, source: str) -> bool:
-        """Verifica se existe rota ativa para a origem"""
+        """Check if there's an active route for the source"""
         return any(r.enabled and r.source == source for r in self.routes)
     
     def should_block(self, msg: CANMessage) -> bool:
-        """Verifica se a mensagem deve ser bloqueada"""
-        # Verifica bloqueios estáticos
+        """Check if message should be blocked"""
+        # Check static blocks
         for rule in self.block_rules:
             if rule.matches(msg.can_id, msg.source):
                 return True
         
-        # Verifica bloqueios dinâmicos
+        # Check dynamic blocks
         for dyn_block in self.dynamic_blocks:
             if dyn_block.enabled and dyn_block.channel == msg.source:
                 if msg.can_id == dyn_block.get_current_blocked_id():
@@ -307,7 +147,7 @@ class GatewayConfig:
         return None
     
     def to_dict(self) -> dict:
-        """Converte para dicionário"""
+        """Convert to dictionary"""
         return {
             'routes': [
                 {'source': r.source, 'destination': r.destination, 'enabled': r.enabled}
@@ -352,7 +192,7 @@ class GatewayConfig:
             enabled=data.get('enabled', False)
         )
         
-        # Carrega rotas (novo formato)
+        # Load routes (new format)
         for route_data in data.get('routes', []):
             config.routes.append(GatewayRoute(
                 source=route_data['source'],
@@ -360,7 +200,7 @@ class GatewayConfig:
                 enabled=route_data.get('enabled', True)
             ))
         
-        # Carrega regras de bloqueio
+        # Load blocking rules
         for rule_data in data.get('block_rules', []):
             config.block_rules.append(GatewayBlockRule(
                 can_id=rule_data['can_id'],
@@ -368,7 +208,7 @@ class GatewayConfig:
                 enabled=rule_data.get('enabled', True)
             ))
         
-        # Carrega bloqueios dinâmicos
+        # Load dynamic blocks
         for dyn_data in data.get('dynamic_blocks', []):
             config.dynamic_blocks.append(GatewayDynamicBlock(
                 id_from=dyn_data['id_from'],
@@ -378,7 +218,7 @@ class GatewayConfig:
                 enabled=dyn_data.get('enabled', False)
             ))
         
-        # Carrega regras de modificação
+        # Load modification rules
         for mod_data in data.get('modify_rules', []):
             config.modify_rules.append(GatewayModifyRule(
                 can_id=mod_data['can_id'],

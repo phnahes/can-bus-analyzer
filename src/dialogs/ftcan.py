@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QColor
 from typing import List, Dict, Optional
-from .models import CANMessage
-from .decoders.ftcan_decoder import FTCANDecoder, MEASURE_IDS
+from ..models import CANMessage
+from ..decoders.decoder_ftcan import FTCANDecoder, MEASURE_IDS
 
 
 class FTCANDialog(QDialog):
@@ -35,7 +35,7 @@ class FTCANDialog(QDialog):
         # Timer for automatic updates
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self._update_display)
-        self.update_timer.start(500)  # Atualiza a cada 500ms
+        self.update_timer.start(500)  # Update every 500ms
     
     def _setup_ui(self):
         """Configura interface"""
@@ -71,33 +71,72 @@ class FTCANDialog(QDialog):
     def _create_header(self) -> QWidget:
         """Create header with information"""
         group = QGroupBox("FTCAN 2.0 Protocol Information")
-        layout = QVBoxLayout()
+        main_layout = QVBoxLayout()
         
-        # Bus selection (if multiple)
+        # Top row: Title on left, Bus selector on right
+        top_layout = QHBoxLayout()
+        
+        # Left side: Protocol title
+        title_label = QLabel("<b style='font-size: 14px;'>FuelTech CAN Protocol</b>")
+        top_layout.addWidget(title_label)
+        
+        top_layout.addStretch()
+        
+        # Right side: Channel selector with status
+        right_layout = QHBoxLayout()
+        
+        # Debug log
+        print(f"[FTCAN Dialog] Number of 1Mbps buses: {len(self.buses_1mbps)}")
+        for i, (name, bus) in enumerate(self.buses_1mbps):
+            print(f"  [{i}] {name}: connected={bus.connected}, baudrate={bus.config.baudrate}")
+        
         if len(self.buses_1mbps) > 1:
-            bus_layout = QHBoxLayout()
-            bus_layout.addWidget(QLabel("<b>CAN Bus:</b>"))
-            
+            # Multiple buses - show dropdown
+            right_layout.addWidget(QLabel("<b>Channel:</b>"))
             self.bus_combo = QComboBox()
+            self.bus_combo.setMinimumWidth(180)
             for bus_name, bus in self.buses_1mbps:
-                self.bus_combo.addItem(f"{bus_name} ({bus.config.channel})")
+                if bus.connected:
+                    self.bus_combo.addItem(f"{bus_name} - Connected")
+                else:
+                    self.bus_combo.addItem(f"{bus_name} - Simulation")
             self.bus_combo.currentIndexChanged.connect(self._on_bus_changed)
-            bus_layout.addWidget(self.bus_combo)
-            bus_layout.addStretch()
-            
-            layout.addLayout(bus_layout)
+            right_layout.addWidget(self.bus_combo)
+        elif len(self.buses_1mbps) == 1:
+            # Single bus - show as label with colored status
+            bus_name, bus = self.buses_1mbps[0]
+            if bus.connected:
+                status_html = "<span style='color: green; font-weight: bold;'>Connected</span>"
+            else:
+                status_html = "<span style='color: #0066cc; font-weight: bold;'>Simulation</span>"
+            bus_label = QLabel(f"<b>Channel:</b> {bus_name} - {status_html}")
+            right_layout.addWidget(bus_label)
+        else:
+            # No bus available
+            status_html = "<span style='color: red; font-weight: bold;'>Disconnected</span>"
+            bus_label = QLabel(f"<b>Channel:</b> {status_html}")
+            right_layout.addWidget(bus_label)
         
+        top_layout.addLayout(right_layout)
+        main_layout.addLayout(top_layout)
+        
+        # Add separator line
+        line = QLabel()
+        line.setFrameStyle(QLabel.Shape.HLine | QLabel.Shadow.Sunken)
+        main_layout.addWidget(line)
+        
+        # Protocol information
         info_text = QLabel(
-            "<b>FuelTech CAN Protocol</b><br>"
             "• Physical Layer: CAN 2.0B Extended (29-bit ID)<br>"
             "• Baudrate: <b>1 Mbps</b> (1000000 bit/s)<br>"
             "• Data Format: Big-endian, signed 16-bit values<br>"
             "• Supported Devices: WB-O2 Nano, ECUs, Sensors"
         )
         info_text.setWordWrap(True)
-        layout.addWidget(info_text)
+        info_text.setStyleSheet("color: #555; font-size: 11px;")
+        main_layout.addWidget(info_text)
         
-        group.setLayout(layout)
+        group.setLayout(main_layout)
         return group
     
     def _on_bus_changed(self, index: int):
@@ -180,7 +219,7 @@ class FTCANDialog(QDialog):
         widget = QWidget()
         layout = QVBoxLayout()
         
-        # Estatísticas
+        # Statistics
         stats_group = QGroupBox("Statistics")
         stats_layout = QVBoxLayout()
         
@@ -440,7 +479,7 @@ class FTCANDialog(QDialog):
         """
         self.stats_label.setText(stats_text)
         
-        # Atualiza tabela de dispositivos
+        # Update devices table
         self.devices_table.setRowCount(len(devices))
         
         row = 0
@@ -563,6 +602,6 @@ class FTCANDialog(QDialog):
     
     def _export_data(self):
         """Exporta dados decodificados"""
-        # TODO: Implementar exportação
+        # TODO: Implement export
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(self, "Export", "Export feature coming soon!")

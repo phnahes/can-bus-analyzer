@@ -12,7 +12,7 @@ import time
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from src.decoders.ftcan_decoder import FTCANDecoder, ProductType, DataFieldID
+from src.decoders.decoder_ftcan import FTCANDecoder, ProductType, DataFieldID
 
 
 def create_ftcan_id(product_type_id: int, unique_id: int, data_field_id: int, message_id: int) -> int:

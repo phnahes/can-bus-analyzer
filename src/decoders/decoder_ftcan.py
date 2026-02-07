@@ -20,7 +20,7 @@ import struct
 
 
 class DataFieldID(IntEnum):
-    """Tipos de layout de dados"""
+    """Data layout types"""
     STANDARD_CAN = 0x00
     STANDARD_CAN_BRIDGE = 0x01
     FTCAN_2_0 = 0x02
@@ -28,7 +28,7 @@ class DataFieldID(IntEnum):
 
 
 class ProductType(IntEnum):
-    """Tipos de produtos FuelTech"""
+    """FuelTech product types"""
     DEVICE_SEARCHING = 0x0FFF
     GEAR_CONTROLLER = 0x0140
     KNOCK_METER = 0x0141
@@ -87,23 +87,23 @@ class FTCANIdentification:
     data_field_id: int  # 3 bits (13-11)
     message_id: int  # 11 bits (10-0)
     
-    # Campos derivados
-    product_type_id: int  # 10 bits (bits 14-5 do ProductID)
-    unique_id: int  # 5 bits (bits 4-0 do ProductID)
-    is_response: bool  # bit 10 do MessageID
+    # Derived fields
+    product_type_id: int  # 10 bits (bits 14-5 of ProductID)
+    unique_id: int  # 5 bits (bits 4-0 of ProductID)
+    is_response: bool  # bit 10 of MessageID
     
     @classmethod
     def from_can_id(cls, can_id: int) -> 'FTCANIdentification':
-        """Decodifica ID CAN de 29 bits"""
+        """Decode 29-bit CAN ID"""
         product_id = (can_id >> 14) & 0x7FFF  # bits 28-14
         data_field_id = (can_id >> 11) & 0x07  # bits 13-11
         message_id = can_id & 0x7FF  # bits 10-0
         
-        # Decodifica ProductID
+        # Decode ProductID
         product_type_id = (product_id >> 5) & 0x3FF  # bits 14-5
         unique_id = product_id & 0x1F  # bits 4-0
         
-        # Decodifica MessageID
+        # Decode MessageID
         is_response = bool((message_id >> 10) & 0x01)
         
         return cls(
@@ -116,7 +116,7 @@ class FTCANIdentification:
         )
     
     def get_product_name(self) -> str:
-        """Retorna nome do produto"""
+        """Return product name"""
         try:
             return ProductType(self.product_type_id).name
         except ValueError:
@@ -129,21 +129,21 @@ class FTCANIdentification:
 
 @dataclass
 class FTCANMeasure:
-    """Medida FTCAN (4 bytes)"""
+    """FTCAN measure (4 bytes)"""
     measure_id: int  # 16 bits
     value: int  # 16 bits signed
     
-    # Campos derivados
-    data_id: int  # 15 bits (bits 15-1 do MeasureID)
-    is_status: bool  # bit 0 do MeasureID
+    # Derived fields
+    data_id: int  # 15 bits (bits 15-1 of MeasureID)
+    is_status: bool  # bit 0 of MeasureID
     
     @classmethod
     def from_bytes(cls, data: bytes, offset: int = 0) -> 'FTCANMeasure':
-        """Decodifica medida de 4 bytes (big-endian)"""
+        """Decode 4-byte measure (big-endian)"""
         if len(data) < offset + 4:
-            raise ValueError("Dados insuficientes para decodificar medida")
+            raise ValueError("Insufficient data to decode measure")
         
-        # Big-endian: bytes mais significativos primeiro
+        # Big-endian: most significant bytes first
         measure_id = struct.unpack('>H', data[offset:offset+2])[0]
         value = struct.unpack('>h', data[offset+2:offset+4])[0]  # signed
         
@@ -158,17 +158,17 @@ class FTCANMeasure:
         )
     
     def get_real_value(self) -> float:
-        """Retorna valor real com multiplicador aplicado"""
+        """Return real value with multiplier applied"""
         info = MEASURE_IDS.get(self.data_id, {"multiplier": 1.0})
         return self.value * info["multiplier"]
     
     def get_name(self) -> str:
-        """Retorna nome da medida"""
+        """Return measure name"""
         info = MEASURE_IDS.get(self.data_id, {"name": f"Unknown_0x{self.data_id:04X}"})
         return info["name"]
     
     def get_unit(self) -> str:
-        """Retorna unidade da medida"""
+        """Return measure unit"""
         info = MEASURE_IDS.get(self.data_id, {"unit": ""})
         return info["unit"]
     
@@ -182,30 +182,30 @@ class FTCANMeasure:
 
 @dataclass
 class FTCANSegmentedPacket:
-    """Pacote segmentado FTCAN"""
-    segment_number: int  # 0x00 a 0xFE
-    total_length: Optional[int] = None  # Apenas no primeiro segmento
+    """FTCAN segmented packet"""
+    segment_number: int  # 0x00 to 0xFE
+    total_length: Optional[int] = None  # Only in first segment
     payload: bytes = b''
     
     @classmethod
     def from_data_field(cls, data: bytes) -> 'FTCANSegmentedPacket':
-        """Decodifica campo de dados FTCAN"""
+        """Decode FTCAN data field"""
         if len(data) == 0:
-            raise ValueError("Dados vazios")
+            raise ValueError("Empty data")
         
         segment_number = data[0]
         
         if segment_number == 0xFF:
-            # Pacote único (single packet)
+            # Single packet
             return cls(
                 segment_number=0xFF,
                 total_length=None,
                 payload=data[1:]
             )
         elif segment_number == 0x00:
-            # Primeiro segmento
+            # First segment
             if len(data) < 3:
-                raise ValueError("Primeiro segmento incompleto")
+                raise ValueError("Incomplete first segment")
             
             # Segmentation data (2 bytes, big-endian)
             total_length = struct.unpack('>H', data[1:3])[0] & 0x07FF  # bits 10-0
@@ -217,7 +217,7 @@ class FTCANSegmentedPacket:
                 payload=payload
             )
         else:
-            # Segmentos subsequentes (0x01 a 0xFE)
+            # Subsequent segments (0x01 to 0xFE)
             return cls(
                 segment_number=segment_number,
                 total_length=None,
@@ -226,17 +226,17 @@ class FTCANSegmentedPacket:
 
 
 class FTCANDecoder:
-    """Decodificador de protocolo FTCAN 2.0"""
+    """FTCAN 2.0 protocol decoder"""
     
     def __init__(self):
         self.segmented_packets: Dict[int, List[FTCANSegmentedPacket]] = {}
     
     def decode_message(self, can_id: int, data: bytes) -> Dict:
         """
-        Decodifica uma mensagem FTCAN completa
+        Decode a complete FTCAN message
         
         Returns:
-            Dict com informações decodificadas
+            Dict with decoded information
         """
         result = {
             'raw_id': can_id,
@@ -248,7 +248,7 @@ class FTCANDecoder:
         }
         
         try:
-            # Decodifica identificação
+            # Decode identification
             ident = FTCANIdentification.from_can_id(can_id)
             result['identification'] = {
                 'product_id': f"0x{ident.product_id:04X}",
@@ -261,52 +261,52 @@ class FTCANDecoder:
                 'is_response': ident.is_response
             }
             
-            # Decodifica dados baseado no DataFieldID
+            # Decode data based on DataFieldID
             if ident.data_field_id in [DataFieldID.STANDARD_CAN, DataFieldID.STANDARD_CAN_BRIDGE]:
-                # Standard CAN: payload direto
+                # Standard CAN: direct payload
                 result['payload'] = data.hex()
                 result['is_complete'] = True
                 
-                # Tenta decodificar medidas se for broadcast de leitura
+                # Try to decode measures if it's a reading broadcast
                 if ident.message_id in [0x0FF, 0x1FF, 0x2FF, 0x3FF]:
                     result['measures'] = self._decode_measures(data)
                 
             elif ident.data_field_id in [DataFieldID.FTCAN_2_0, DataFieldID.FTCAN_2_0_BRIDGE]:
-                # FTCAN 2.0: pode ser segmentado
+                # FTCAN 2.0: may be segmented
                 packet = FTCANSegmentedPacket.from_data_field(data)
                 
                 if packet.segment_number == 0xFF:
-                    # Pacote único
+                    # Single packet
                     result['payload'] = packet.payload.hex()
                     result['is_complete'] = True
                     
-                    # Tenta decodificar medidas
+                    # Try to decode measures
                     if ident.message_id in [0x0FF, 0x1FF, 0x2FF, 0x3FF]:
                         result['measures'] = self._decode_measures(packet.payload)
                 else:
-                    # Pacote segmentado
+                    # Segmented packet
                     result['segment_number'] = packet.segment_number
                     result['total_length'] = packet.total_length
                     result['payload'] = packet.payload.hex()
                     
-                    # Armazena segmento para reassembly
+                    # Store segment for reassembly
                     if can_id not in self.segmented_packets:
                         self.segmented_packets[can_id] = []
                     
                     self.segmented_packets[can_id].append(packet)
                     
-                    # Verifica se está completo
+                    # Check if complete
                     if packet.segment_number == 0 and packet.total_length is not None:
-                        # Primeiro segmento
+                        # First segment
                         result['is_complete'] = False
                     else:
-                        # Tenta reassembly
+                        # Try reassembly
                         complete_payload = self._try_reassembly(can_id)
                         if complete_payload:
                             result['payload'] = complete_payload.hex()
                             result['is_complete'] = True
                             result['measures'] = self._decode_measures(complete_payload)
-                            # Limpa buffer
+                            # Clear buffer
                             del self.segmented_packets[can_id]
         
         except Exception as e:
@@ -315,7 +315,7 @@ class FTCANDecoder:
         return result
     
     def _decode_measures(self, data: bytes) -> List[Dict]:
-        """Decodifica medidas de um payload"""
+        """Decode measures from a payload"""
         measures = []
         offset = 0
         
@@ -339,57 +339,57 @@ class FTCANDecoder:
         return measures
     
     def _try_reassembly(self, can_id: int) -> Optional[bytes]:
-        """Tenta reassemblar pacotes segmentados"""
+        """Try to reassemble segmented packets"""
         if can_id not in self.segmented_packets:
             return None
         
         packets = self.segmented_packets[can_id]
         
-        # Verifica se tem o primeiro segmento
+        # Check if has first segment
         first_packet = next((p for p in packets if p.segment_number == 0), None)
         if not first_packet or first_packet.total_length is None:
             return None
         
-        # Ordena pacotes por número de segmento
+        # Sort packets by segment number
         sorted_packets = sorted(packets, key=lambda p: p.segment_number)
         
-        # Verifica se está completo
+        # Check if complete
         expected_segments = set(range(len(sorted_packets)))
         actual_segments = set(p.segment_number for p in sorted_packets)
         
         if expected_segments != actual_segments:
-            return None  # Faltam segmentos
+            return None  # Missing segments
         
-        # Reassembla payload
+        # Reassemble payload
         payload = b''.join(p.payload for p in sorted_packets)
         
-        # Verifica tamanho
+        # Verify size
         if len(payload) == first_packet.total_length:
             return payload
         
         return None
     
     def clear_segmented_buffers(self):
-        """Limpa buffers de pacotes segmentados"""
+        """Clear segmented packet buffers"""
         self.segmented_packets.clear()
     
     @staticmethod
     def is_ftcan_message(can_id: int) -> bool:
         """Check if it is a valid FTCAN message"""
-        # FTCAN usa IDs de 29 bits
+        # FTCAN uses 29-bit IDs
         if can_id > 0x1FFFFFFF:
             return False
         
-        # Extrai ProductID
+        # Extract ProductID
         product_id = (can_id >> 14) & 0x7FFF
         product_type_id = (product_id >> 5) & 0x3FF
         
-        # Verifica se é um ProductTypeID conhecido
+        # Check if it's a known ProductTypeID
         try:
             ProductType(product_type_id)
             return True
         except ValueError:
-            # Verifica se está em ranges reservados
+            # Check if in reserved ranges
             if 0x0282 <= product_type_id <= 0x02E4:  # ECU range
                 return True
             if product_type_id == 0x0FFF:  # Device searching
@@ -398,5 +398,5 @@ class FTCANDecoder:
     
     @staticmethod
     def get_expected_baudrate() -> int:
-        """Retorna baudrate esperado do FTCAN"""
+        """Return expected FTCAN baudrate"""
         return 1000000  # 1 Mbps
