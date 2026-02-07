@@ -1,9 +1,9 @@
 # CAN Analyzer
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
-A CANbus analyzer with SLCAN-based, real-time analysis. Built with Python and PyQt6. **Runs on macOS and Linux.**
+A comprehensive CAN bus analyzer with SLCAN support, protocol decoders, and real-time analysis. Built with Python and PyQt6. **Runs on macOS and Linux.**
 
 ---
 
@@ -14,11 +14,13 @@ A CANbus analyzer with SLCAN-based, real-time analysis. Built with Python and Py
 - [Supported Operating Systems](#supported-operating-systems)
 - [Requirements](#requirements)
 - [Features](#features)
+- [Protocol Decoders](#protocol-decoders)
 - [Project Structure](#project-structure)
 - [Hardware Support](#hardware-support)
 - [Advanced Features](#advanced-features)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
+- [Tools & Utilities](#tools--utilities)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [Changelog](#changelog)
@@ -40,7 +42,7 @@ Or run manually:
 python -m venv venv
 source venv/bin/activate  # macOS/Linux
 pip install -r requirements.txt
-python can_analyzer_qt.py
+python can_analyzer.py
 ```
 
 ---
@@ -104,7 +106,7 @@ python can_analyzer_qt.py
 - **macOS**: 10.14+ (for running from source) or any recent version (for .app bundle)
 - **Linux**: Modern distribution with Python 3.9+ and Qt/GUI support
 
-
+---
 
 ## Features
 
@@ -114,11 +116,13 @@ python can_analyzer_qt.py
 - **Monitor Mode**: Groups messages by (ID, Channel) with counter
 - **Tracer Mode**: Chronological list of all messages
 - **Multi-CAN Support**: Work with multiple CAN buses simultaneously
+- **Split-Screen Mode**: View messages from different channels side-by-side
 
 #### **Message Reception**
 - Reception panel with: ID, DLC, Data, Period, Count, ASCII, Comment
 - **Monitor Mode**: Groups by ID, shows Count (first column), Period (ms between messages)
 - **Tracer Mode**: Chronological list with timestamps
+- **Protocol Decoders**: Automatic decoding of FTCAN 2.0 and OBD-II messages
 
 #### **Message Transmission**
 - Complete CAN message configuration
@@ -133,14 +137,101 @@ python can_analyzer_qt.py
 - **Software Filters**: Message filtering by ID and data
 - **Trigger-based TX**: Automatic transmission on received messages
 - **Playback**: Reproduce recorded traces
+- **CAN Gateway**: Bridge and filter messages between buses
+- **Protocol Decoders**: FTCAN 2.0 and OBD-II support
 
+---
 
+## Protocol Decoders
+
+The CAN Analyzer includes **modular protocol decoders** for automatic message interpretation:
+
+### FTCAN 2.0 (FuelTech CAN Protocol)
+
+**Description:** Proprietary protocol from FuelTech for ECUs and sensors.
+
+**Features:**
+- **Broadcast Protocol**: Automatic transmission at ~100 Hz
+- **29-bit Extended IDs**: Product ID, Data Field, Message ID
+- **100+ Measures**: Lambda, RPM, TPS, MAP, temperatures, pressures, injection, ignition
+- **Supported Devices**: WB-O2 Nano, FT500/FT600 ECUs, sensors
+- **Bitrate**: 1 Mbps (fixed)
+- **Byte Order**: Big-endian, signed 16-bit values with multipliers
+
+**Interface:**
+- **FTCAN Analyzer** (Ctrl+Shift+F): Dedicated UI for FTCAN messages
+  - Decoded Messages: Full message decoding
+  - Live Measures: Real-time sensor values
+  - Diagnostics: Network statistics and device detection
+
+**Documentation:**
+- [FTCAN Protocol Documentation](docs/ftcan/README.md) - Complete technical specification
+- [FTCAN Decoder Documentation](docs/decoders/FTCAN.md) - Implementation details
+- [Official FuelTech Specification](https://files.fueltech.net/manuals/Protocol_FTCAN20_Public_R026.pdf)
+
+**Tools:**
+- `tools/ftcan/ftcan_simulator.py` - Message simulator for testing
+- `tools/ftcan/ftcan_config_capture.py` - Configuration capture tool
+
+---
+
+### OBD-II (On-Board Diagnostics II)
+
+**Description:** Standardized automotive diagnostic protocol (ISO 15765-4).
+
+**Features:**
+- **Request/Response Protocol**: Polling required for data access
+- **11-bit Standard IDs**: 0x7DF (request), 0x7E8-0x7EF (responses)
+- **60+ PIDs**: Engine, fuel, air intake, lambda/O2 sensors, advanced parameters
+- **Services**: Current data, freeze frame, DTCs, vehicle info
+- **Bitrate**: 500 kbps (most common) or 250 kbps
+- **Byte Order**: Big-endian
+- **Universal**: Works with all vehicles 1996+ (US/EU/Japan)
+
+**Interface:**
+- **OBD-II Monitor** (Ctrl+Shift+O): Dedicated UI for OBD-II diagnostics
+  - PID Selection: Choose parameters to monitor
+  - Quick Presets: Basic, Extended, Lambda, Fuel
+  - Automatic Polling: Configurable interval (100ms-10s)
+  - Live Values: Real-time data display
+  - DTC Reading: Read and decode diagnostic trouble codes
+  - Raw Messages: Request/response log
+  - Statistics: Success rate, response time
+
+**Documentation:**
+- [OBD-II Protocol Documentation](docs/decoders/OBD2.md) - Complete technical specification
+- [ISO 15765-4 Standard](https://www.iso.org/standard/66574.html)
+- [SAE J1979 Standard](https://www.sae.org/standards/content/j1979_201702/)
+- [Wikipedia: OBD-II PIDs](https://en.wikipedia.org/wiki/OBD-II_PIDs)
+
+**Tools:**
+- `tools/general/obd2_poller.py` - CLI polling tool
+- `tools/arduino/arduino_obd2_ecu_simulator.ino` - Arduino ECU simulator
+
+---
+
+### Protocol Decoder Manager
+
+**Access:** Tools → Protocol Decoders → Manage Decoders (Ctrl+Shift+D)
+
+**Features:**
+- Enable/disable decoders independently
+- View decoding statistics (decoded/failed messages)
+- Configure decoder priority
+- Reset statistics
+
+**Automatic Decoding:**
+- Messages are automatically identified and decoded when decoders are active
+- Decoded information appears in tooltips and dedicated interfaces
+- Multiple decoders can be active simultaneously
+
+---
 
 ## Project Structure
 
 ```
 can-bus-analyzer/
-├── can_analyzer_qt.py          # Application entry point (run this to start the app)
+├── can_analyzer.py             # Application entry point (run this to start the app)
 ├── can_analyzer.spec           # PyInstaller spec for Linux builds
 ├── setup.py                    # py2app configuration for macOS builds
 ├── requirements.txt            # Runtime Python dependencies (included in packaged app)
@@ -149,37 +240,63 @@ can-bus-analyzer/
 ├── LICENSE                     # GNU GPL v3.0 (see License section)
 ├── config.json                 # Saved settings (created at first run)
 ├── icon.icns / icon.ico        # App icons (macOS / Linux); generated from icon.png via extras
-├── docs/                       # Additional documentation
+├── docs/                       # Documentation
 │   ├── images/                 # Screenshots and app images (used in README)
 │   ├── BUILD.md                # Packaging and standalone build instructions
 │   ├── INTERNATIONALIZATION.md # Adding and editing translations
 │   ├── RELEASE_MANUAL.md       # How to create a release manually on GitHub
-│   ├── PROTOCOL.md             # CAN/protocol notes
-│   └── TOOLS.md                # Overview of tools and scripts
+│   ├── TOOLS.md                # Overview of tools and scripts
+│   ├── ftcan/                  # FTCAN protocol documentation
+│   │   └── README.md           # Complete FTCAN 2.0 specification
+│   └── decoders/               # Protocol decoder documentation
+│       ├── FTCAN.md            # FTCAN decoder implementation details
+│       └── OBD2.md             # OBD-II decoder implementation details
 ├── extras/                     # Build and icon helper scripts (run from project root)
 │   ├── build.sh                # Build standalone app (macOS or Linux)
 │   └── create_icon.sh          # Generate icon.icns / icon.ico from a PNG
-├── tools/                      # Testing and example scripts (see tools/README.md)
-│   ├── README.md               # CAN testing tools and Arduino examples
-│   ├── send_can_message.py     # Python script to send CAN messages
-│   ├── arduino_msg_generator.ino
-│   └── arduino_msg_receiver.ino
+├── tools/                      # Testing and utility scripts
+│   ├── README.md               # Overview of all tools
+│   ├── general/                # General CAN tools
+│   │   ├── README.md           # Documentation for general tools
+│   │   ├── send_can_message.py # Send CAN messages via command line
+│   │   ├── baudrate_detect.py  # Auto-detect CAN baudrate
+│   │   └── obd2_poller.py      # OBD-II polling tool
+│   ├── arduino/                # Arduino examples and simulators
+│   │   ├── README.md           # Arduino tools documentation
+│   │   ├── arduino_msg_generator.ino # CAN message generator
+│   │   ├── arduino_msg_receiver.ino  # CAN message receiver
+│   │   └── arduino_obd2_ecu_simulator.ino # OBD-II ECU simulator
+│   └── ftcan/                  # FTCAN-specific tools
+│       ├── README.md           # FTCAN tools documentation
+│       ├── ftcan_simulator.py  # FTCAN message simulator
+│       └── ftcan_config_capture.py # Configuration capture tool
 ├── src/                        # Application source code
 │   ├── __init__.py
 │   ├── main_window.py          # Main window, reception/transmission UI, modes
 │   ├── models.py               # Data models (CANMessage, CANFilter, TransmitMessage, etc.)
-│   ├── dialogs_new.py          # Dialogs: Settings, Filters, Triggers, Bit Field Viewer
+│   ├── dialogs.py              # General dialogs: Settings, Filters, Triggers, Bit Field Viewer
+│   ├── dialogs_ftcan.py        # FTCAN Analyzer dialog
+│   ├── dialogs_obd2.py         # OBD-II Monitor dialog
 │   ├── file_operations.py      # Save/load logs and transmit lists (JSON, CSV, TRC)
 │   ├── logger.py               # Logging to files and UI
 │   ├── i18n.py                 # Internationalization (EN, PT, ES, DE, FR)
 │   ├── utils.py                # Helpers (formatting, filtering)
 │   ├── can_interface.py        # CAN bus connection and message send/receive
-│   └── usb_device_monitor.py   # USB/serial device detection
+│   ├── can_bus_manager.py      # Multi-CAN bus management
+│   ├── config_manager.py       # Configuration file management
+│   ├── protocol_decoder.py     # Protocol decoder base class
+│   ├── theme.py                # UI theme management
+│   ├── usb_device_monitor.py   # USB/serial device detection
+│   └── decoders/               # Protocol decoders
+│       ├── __init__.py
+│       ├── ftcan_decoder.py    # FTCAN core decoder
+│       ├── ftcan_protocol_decoder.py # FTCAN protocol adapter
+│       ├── obd2_decoder.py     # OBD-II core decoder
+│       └── obd2_protocol_decoder.py  # OBD-II protocol adapter
 └── logs/                       # Application log files (created at runtime)
 ```
 
 ---
-
 
 ## Hardware Support
 
@@ -199,7 +316,6 @@ The application includes **automatic device detection** on all supported OSes:
 - **Hot-swap support**: Automatically disconnects if device is removed
 - **Simulation Mode**: Test without hardware
 
-
 **Device paths by OS:**
 
 | OS      | Serial (SLCAN) examples      | SocketCAN |
@@ -214,14 +330,14 @@ Configure in **Settings** dialog (Ctrl+,):
 **Device Configuration:**
 - **CAN Device**: Select your adapter (e.g., `/dev/tty.usbserial`, `can0`)
 - **COM Baudrate**: Serial communication speed (default: 115200 bps)
-- **CAN Baudrate**: CAN bus speed (125K, 250K, 500K, 1000K)
+- **CAN Baudrate**: CAN bus speed (125K, 250K, 500K, 1M)
 
 **Operating Modes:**
 - **Normal Mode**: Receive and Transmit messages
 - **Listen Only**: Receive-only mode (no ACK transmission)
 - **Simulation Mode**: Use simulated data instead of real hardware
 
-
+---
 
 ## Advanced Features
 
@@ -332,6 +448,7 @@ The application automatically detects the interface type based on the device nam
 - **Gateway testing**: Send on one bus, verify on another
 - **Dual-adapter setups**: Use two USB-CAN adapters for isolated testing
 - **Channel comparison**: Compare same ID on different buses
+- **Protocol mixing**: FTCAN on one bus, OBD-II on another
 
 ---
 
@@ -400,6 +517,9 @@ You can manually edit `config.json` if needed (application must be closed).
 | Triggers | `Ctrl+G` |
 | Gateway | `Ctrl+W` |
 | Split-Screen Mode | `Ctrl+D` |
+| **FTCAN Analyzer** | `Ctrl+Shift+F` |
+| **OBD-II Monitor** | `Ctrl+Shift+O` |
+| **Decoder Manager** | `Ctrl+Shift+D` |
 | Settings | `Ctrl+,` |
 | Exit | `Ctrl+Q` |
 
@@ -407,7 +527,7 @@ You can manually edit `config.json` if needed (application must be closed).
 
 ## Documentation
 
-Additional documentation and references:
+### Main Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -415,8 +535,56 @@ Additional documentation and references:
 | [docs/INTERNATIONALIZATION.md](docs/INTERNATIONALIZATION.md) | Internationalization (i18n): adding and editing translations |
 | [docs/RELEASE_MANUAL.md](docs/RELEASE_MANUAL.md) | How to create a release manually on GitHub |
 | [docs/TOOLS.md](docs/TOOLS.md) | Overview of tools and scripts in the repository |
-| [tools/README.md](tools/README.md) | CAN testing tools: Python sender, Arduino examples, protocol reference |
 
+### Protocol Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/ftcan/README.md](docs/ftcan/README.md) | **FTCAN 2.0 Protocol** - Complete technical specification |
+| [docs/decoders/FTCAN.md](docs/decoders/FTCAN.md) | FTCAN decoder implementation details |
+| [docs/decoders/OBD2.md](docs/decoders/OBD2.md) | **OBD-II Protocol** - Complete technical specification |
+
+### Tools Documentation
+
+| Document | Description |
+|----------|-------------|
+| [tools/README.md](tools/README.md) | Overview of all testing and utility tools |
+| [tools/general/README.md](tools/general/README.md) | General CAN tools (send, baudrate detect, OBD-II poller) |
+| [tools/arduino/README.md](tools/arduino/README.md) | Arduino examples and simulators (CAN, OBD-II) |
+| [tools/ftcan/README.md](tools/ftcan/README.md) | FTCAN-specific tools (simulator, config capture) |
+
+---
+
+## Tools & Utilities
+
+### General CAN Tools
+
+**Location:** `tools/general/`
+
+- **send_can_message.py** - Send CAN messages via command line
+- **baudrate_detect.py** - Auto-detect CAN baudrate (trial and error)
+- **obd2_poller.py** - OBD-II polling tool with interactive PID selection
+
+**Documentation:** [tools/general/README.md](tools/general/README.md)
+
+### Arduino Tools
+
+**Location:** `tools/arduino/`
+
+- **arduino_msg_generator.ino** - CAN message generator (MCP2515)
+- **arduino_msg_receiver.ino** - CAN message receiver (MCP2515)
+- **arduino_obd2_ecu_simulator.ino** - OBD-II ECU simulator with animated data
+
+**Documentation:** [tools/arduino/README.md](tools/arduino/README.md)
+
+### FTCAN Tools
+
+**Location:** `tools/ftcan/`
+
+- **ftcan_simulator.py** - FTCAN message simulator (WB-O2 Nano, ECU)
+- **ftcan_config_capture.py** - Capture and replay configuration commands
+
+**Documentation:** [tools/ftcan/README.md](tools/ftcan/README.md)
 
 ---
 
@@ -456,6 +624,21 @@ pip install -r requirements.txt
 3. Check software filters (disable if enabled)
 4. Try clearing and reconnecting
 
+### Protocol Decoder Issues
+
+**FTCAN not decoding:**
+1. Verify baudrate is exactly 1 Mbps
+2. Check that FTCAN decoder is enabled (Ctrl+Shift+D)
+3. Open FTCAN Analyzer (Ctrl+Shift+F) and check Diagnostics tab
+4. Ensure messages use 29-bit Extended IDs
+
+**OBD-II not responding:**
+1. Verify baudrate is 500 kbps (or 250 kbps)
+2. Turn vehicle ignition to ON position
+3. Check that OBD-II decoder is enabled (Ctrl+Shift+D)
+4. Open OBD-II Monitor (Ctrl+Shift+O) and try "Check Available PIDs"
+5. Increase polling interval to 500-1000ms
+
 ---
 
 ## Contributing
@@ -475,7 +658,7 @@ Contributions are welcome! Here's how you can help:
 1. Check existing issues
 2. Provide detailed description
 3. Include log files (`logs/`)
-4. Specify macOS version and Python version
+4. Specify OS version and Python version
 
 ### Feature Requests
 
@@ -489,7 +672,25 @@ Contributions are welcome! Here's how you can help:
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
 
-**Latest Release: v0.3.0** - CAN Gateway & Split-Screen
+**Latest Release: v1.0.0** - First Stable Release with Protocol Decoders
+- **FTCAN 2.0 Protocol Decoder**: Automatic decoding of FuelTech devices
+- **OBD-II Protocol Decoder**: Universal automotive diagnostics support
+- **FTCAN Analyzer**: Dedicated UI for FTCAN messages with live measures
+- **OBD-II Monitor**: Interactive PID selection, polling, and DTC reading
+- **Protocol Decoder Manager**: Enable/disable decoders, view statistics
+- **Comprehensive Documentation**: Complete technical specs for FTCAN and OBD-II
+- **Testing Tools**: Arduino OBD-II simulator, FTCAN simulator, OBD-II poller
+- **Improved Architecture**: Modular decoder system (core + adapter pattern)
+- **File Reorganization**: Decoders in `src/decoders/`, improved project structure
+
+**Previous Releases:**
+
+**v0.4.0** - Protocol Decoders & Enhanced Documentation
+- FTCAN 2.0 and OBD-II protocol decoders
+- Dedicated protocol analyzer UIs
+- Comprehensive technical documentation
+
+**v0.3.0** - CAN Gateway & Split-Screen
 - CAN Gateway for bridging and filtering between two CAN buses
 - Split-Screen Monitor for side-by-side channel viewing
 - Static and dynamic message blocking
@@ -521,13 +722,12 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 **Full license text**: [LICENSE](LICENSE) (in this repo) · [GNU GPL v3.0](https://www.gnu.org/licenses/gpl-3.0.en.html) (official)
 
-
 ---
 
 ## Project Status
 
-**Version**: 0.3.0  
-**Status**: Active  
+**Version**: 1.0.0  
+**Status**: Stable  
 **Last Updated**: February 2026
 
 ### Implemented Features
@@ -544,10 +744,22 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 - Hot-swap device support
 - Multi-CAN support (multiple buses simultaneously)
 - Per-channel filters and improved terminology (Channel/Device)
+- CAN Gateway (bridge and filter between buses)
+- Split-Screen Monitor (dual channel view)
+- **FTCAN 2.0 Protocol Decoder** (FuelTech devices)
+- **OBD-II Protocol Decoder** (universal automotive diagnostics)
+- **Protocol Decoder Manager** (enable/disable, statistics)
+- **FTCAN Analyzer** (dedicated FTCAN UI)
+- **OBD-II Monitor** (interactive diagnostics UI)
 
-### Recently Added Features
-- **CAN Gateway**: Bridge and filter messages between two CAN buses
-- **Split-Screen Monitor**: View messages from different channels side-by-side
+### Recently Added Features (v1.0.0)
+- **FTCAN 2.0 Support**: Automatic decoding of FuelTech ECUs and sensors
+- **OBD-II Support**: Universal automotive diagnostics (60+ PIDs, DTCs)
+- **Modular Decoder System**: Extensible architecture for adding new protocols
+- **Dedicated Protocol UIs**: FTCAN Analyzer and OBD-II Monitor
+- **Comprehensive Documentation**: Complete technical specifications
+- **Testing Tools**: Simulators and utilities for both protocols
+- **Improved Project Structure**: Organized decoders, tools, and documentation
 
 ### Planned Features
 - Hardware filters (28 configurable)
@@ -555,7 +767,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 - Statistics & analytics
 - DBC file support
 - Real-time plotting
-
+- Additional protocol decoders (J1939, CANopen)
 
 ---
 
@@ -581,4 +793,23 @@ The application automatically detects the interface type based on the device pat
 - `/dev/tty.*` or `/dev/cu.*` → SLCAN
 - `can*` or `vcan*` → SocketCAN
 
+### Protocol Decoder Architecture
+
+**Modular Design:**
+- **Core Decoder** (`*_decoder.py`): Pure decoding logic, protocol-specific
+- **Protocol Adapter** (`*_protocol_decoder.py`): Integration with app, wraps core decoder
+- **Base Class** (`protocol_decoder.py`): Abstract interface for all decoders
+
+**Benefits:**
+- Easy to add new protocols
+- Clean separation of concerns
+- Testable decoder logic
+- Consistent API for all protocols
+
+**Supported Protocols:**
+- **FTCAN 2.0**: FuelTech proprietary (1 Mbps, 29-bit, broadcast)
+- **OBD-II**: ISO 15765-4 (500 kbps, 11-bit, request/response)
+
 ---
+
+**Ready to analyze CAN traffic? Start with `./run.sh` or explore the [documentation](docs/)!** 🚗💨

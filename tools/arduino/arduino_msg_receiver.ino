@@ -9,7 +9,7 @@
  * - Filters support (optional)
  * 
  * Copyright (C) 2020 Seeed Technology Co.,Ltd.
- * Enhanced by Paulo Nahes - 2026
+ * Enhanced by phnahes - 2026
  */
 #include <SPI.h>
 

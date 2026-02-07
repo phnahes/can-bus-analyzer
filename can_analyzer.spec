@@ -34,7 +34,7 @@ hidden_imports = [
 datas = []
 
 a = Analysis(
-    ['can_analyzer_qt.py'],
+    ['can_analyzer.py'],
     pathex=[],
     binaries=[],
     datas=datas,
