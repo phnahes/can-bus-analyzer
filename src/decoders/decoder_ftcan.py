@@ -381,11 +381,91 @@ class FTCANSegmentedPacket:
             )
 
 
+class StreamBuffer:
+    """
+    Buffer for ECU broadcast stream reassembly
+    Based on TManiac's CanFT2p0Stream implementation
+    """
+    MAX_MEASURES = 24  # Maximum measures per stream
+    
+    def __init__(self):
+        self.segment_count = 0
+        self.data_count = 0  # Total bytes expected
+        self.read_count = 0  # Bytes read so far
+        self.buffer = bytearray()
+        self.packets: List[FTCANSegmentedPacket] = []
+    
+    def add_packet(self, packet: FTCANSegmentedPacket) -> bool:
+        """
+        Add packet to stream buffer
+        Returns True if stream is complete
+        """
+        if packet.segment_number == 0:
+            # First segment - initialize buffer
+            if packet.total_length is None:
+                return False
+            
+            self.data_count = packet.total_length
+            self.buffer = bytearray(self.data_count)
+            self.read_count = 0
+            self.segment_count = 1
+            self.packets = [packet]
+            
+            # Store bytes in REVERSE order (as per TManiac implementation)
+            payload = packet.payload
+            for i, byte in enumerate(payload):
+                if self.read_count < self.data_count:
+                    # CRITICAL: Store in reverse order!
+                    self.buffer[(self.data_count - 1) - self.read_count] = byte
+                    self.read_count += 1
+            
+            return self.read_count >= self.data_count
+        
+        elif packet.segment_number == self.segment_count:
+            # Expected next segment
+            self.packets.append(packet)
+            self.segment_count += 1
+            
+            # Store bytes in REVERSE order
+            payload = packet.payload
+            for i, byte in enumerate(payload):
+                if self.read_count < self.data_count:
+                    self.buffer[(self.data_count - 1) - self.read_count] = byte
+                    self.read_count += 1
+            
+            return self.read_count >= self.data_count
+        
+        return False
+    
+    def get_complete_payload(self) -> Optional[bytes]:
+        """Get complete reassembled payload if ready"""
+        if self.read_count >= self.data_count and self.data_count > 0:
+            return bytes(self.buffer[:self.data_count])
+        return None
+    
+    def reset(self):
+        """Reset buffer"""
+        self.segment_count = 0
+        self.data_count = 0
+        self.read_count = 0
+        self.buffer = bytearray()
+        self.packets = []
+
+
 class FTCANDecoder:
     """FTCAN 2.0 protocol decoder"""
     
     def __init__(self):
+        # Legacy buffer for non-ECU devices (WB-O2, etc)
         self.segmented_packets: Dict[int, List[FTCANSegmentedPacket]] = {}
+        
+        # Stream buffers for ECU broadcasts (4 priority levels)
+        self.stream_buffers: Dict[int, Dict[int, StreamBuffer]] = {
+            BROADCAST_CRITICAL: {},  # Key: ProductID
+            BROADCAST_HIGH: {},
+            BROADCAST_MEDIUM: {},
+            BROADCAST_LOW: {}
+        }
     
     def decode_message(self, can_id: int, data: bytes) -> Dict:
         """
@@ -458,25 +538,37 @@ class FTCANDecoder:
                     result['total_length'] = packet.total_length
                     result['payload'] = packet.payload.hex()
                     
-                    # Store segment for reassembly
-                    if can_id not in self.segmented_packets:
-                        self.segmented_packets[can_id] = []
+                    # Check if this is an ECU broadcast stream
+                    is_ecu = ident.product_type_id in [ProductType.FT500_ECU, ProductType.FT600_ECU]
+                    is_broadcast = ident.message_id in self.stream_buffers
                     
-                    self.segmented_packets[can_id].append(packet)
-                    
-                    # Check if complete
-                    if packet.segment_number == 0 and packet.total_length is not None:
-                        # First segment
-                        result['is_complete'] = False
+                    if is_ecu and is_broadcast:
+                        # Use stream buffer system
+                        stream_result = self._process_stream_packet(ident, packet)
+                        if stream_result:
+                            result.update(stream_result)
+                        else:
+                            result['is_complete'] = False
                     else:
-                        # Try reassembly
-                        complete_payload = self._try_reassembly(can_id)
-                        if complete_payload:
-                            result['payload'] = complete_payload.hex()
-                            result['is_complete'] = True
-                            result['measures'] = self._decode_measures(complete_payload)
-                            # Clear buffer
-                            del self.segmented_packets[can_id]
+                        # Use legacy reassembly for non-ECU devices
+                        if can_id not in self.segmented_packets:
+                            self.segmented_packets[can_id] = []
+                        
+                        self.segmented_packets[can_id].append(packet)
+                        
+                        # Check if complete
+                        if packet.segment_number == 0 and packet.total_length is not None:
+                            # First segment
+                            result['is_complete'] = False
+                        else:
+                            # Try reassembly
+                            complete_payload = self._try_reassembly(can_id)
+                            if complete_payload:
+                                result['payload'] = complete_payload.hex()
+                                result['is_complete'] = True
+                                result['measures'] = self._decode_measures(complete_payload)
+                                # Clear buffer
+                                del self.segmented_packets[can_id]
         
         except Exception as e:
             result['error'] = str(e)
@@ -506,6 +598,47 @@ class FTCANDecoder:
                 break
         
         return measures
+    
+    def _process_stream_packet(self, ident: FTCANIdentification, packet: FTCANSegmentedPacket) -> Optional[Dict]:
+        """
+        Process packet using stream buffer system (for ECU broadcasts)
+        Returns result dict if stream is complete, None otherwise
+        """
+        message_id = ident.message_id
+        product_id = ident.product_id
+        
+        # Check if this is a broadcast stream
+        if message_id not in self.stream_buffers:
+            return None
+        
+        # Get or create stream buffer for this device+stream
+        if product_id not in self.stream_buffers[message_id]:
+            self.stream_buffers[message_id][product_id] = StreamBuffer()
+        
+        stream_buffer = self.stream_buffers[message_id][product_id]
+        
+        # Add packet to stream
+        is_complete = stream_buffer.add_packet(packet)
+        
+        if is_complete:
+            # Get complete payload
+            complete_payload = stream_buffer.get_complete_payload()
+            if complete_payload:
+                # Reset buffer for next stream
+                stream_buffer.reset()
+                
+                return {
+                    'payload': complete_payload.hex(),
+                    'is_complete': True,
+                    'measures': self._decode_measures(complete_payload),
+                    'stream_info': {
+                        'priority': self.get_broadcast_priority(message_id),
+                        'total_bytes': len(complete_payload),
+                        'total_measures': len(complete_payload) // 4
+                    }
+                }
+        
+        return None
     
     def _try_reassembly(self, can_id: int) -> Optional[bytes]:
         """Try to reassemble segmented packets"""
@@ -541,6 +674,18 @@ class FTCANDecoder:
     def clear_segmented_buffers(self):
         """Clear segmented packet buffers"""
         self.segmented_packets.clear()
+    
+    def clear_stream_buffers(self):
+        """Clear all stream buffers"""
+        for priority_buffers in self.stream_buffers.values():
+            for stream_buffer in priority_buffers.values():
+                stream_buffer.reset()
+            priority_buffers.clear()
+    
+    def clear_all_buffers(self):
+        """Clear all buffers (legacy and stream)"""
+        self.clear_segmented_buffers()
+        self.clear_stream_buffers()
     
     @staticmethod
     def is_ftcan_message(can_id: int) -> bool:
