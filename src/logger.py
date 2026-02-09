@@ -1,32 +1,44 @@
 """
 Logger - Logging system for CAN Analyzer
 Saves logs to file with automatic rotation
+
+Uses configuration from config.logger_config for centralized settings.
 """
 
 import logging
-import os
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+from .config.logger_config import LoggerConfig
 
 
 class CANLogger:
     """Application log manager"""
     
-    def __init__(self, log_dir: str = "logs", max_bytes: int = 10*1024*1024, backup_count: int = 5):
+    def __init__(self, log_dir: str = None, max_bytes: int = None, backup_count: int = None):
         """
         Initialize the logging system
         
         Args:
-            log_dir: Directory to save logs
-            max_bytes: Maximum log file size (default: 10MB)
-            backup_count: Number of backup files (default: 5)
+            log_dir: Directory to save logs (default: from LoggerConfig)
+            max_bytes: Maximum log file size (default: from LoggerConfig)
+            backup_count: Number of backup files (default: from LoggerConfig)
         """
-        self.log_dir = Path(log_dir)
-        self.log_dir.mkdir(exist_ok=True)
+        # Use config defaults if not provided
+        if log_dir is None:
+            self.log_dir = LoggerConfig.get_log_directory()
+        else:
+            self.log_dir = Path(log_dir)
+            self.log_dir.mkdir(exist_ok=True)
+        
+        if max_bytes is None:
+            max_bytes = LoggerConfig.MAX_LOG_FILE_SIZE
+        if backup_count is None:
+            backup_count = LoggerConfig.BACKUP_COUNT
         
         # Log filename with date
-        log_filename = self.log_dir / f"can_analyzer_{datetime.now().strftime('%Y%m%d')}.log"
+        log_filename = LoggerConfig.get_log_filepath()
         
         # Configure main logger
         self.logger = logging.getLogger('CANAnalyzer')
@@ -42,21 +54,21 @@ class CANLogger:
             backupCount=backup_count,
             encoding='utf-8'
         )
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(LoggerConfig.FILE_LOG_LEVEL)
         
-        # Console handler (INFO and above only)
+        # Console handler
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(LoggerConfig.CONSOLE_LOG_LEVEL)
         
         # Detailed format for file
         file_formatter = logging.Formatter(
-            '%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            LoggerConfig.FILE_LOG_FORMAT,
+            datefmt=LoggerConfig.DATE_FORMAT
         )
         
         # Simple format for console
         console_formatter = logging.Formatter(
-            '%(levelname)s: %(message)s'
+            LoggerConfig.CONSOLE_LOG_FORMAT
         )
         
         file_handler.setFormatter(file_formatter)
@@ -65,10 +77,16 @@ class CANLogger:
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
         
+        # Store handlers for level updates
+        self.file_handler = file_handler
+        self.console_handler = console_handler
+        
         # Initial log
         self.logger.info("=" * 80)
         self.logger.info("CAN Analyzer started")
         self.logger.info(f"Log file: {log_filename}")
+        self.logger.info(f"File log level: {logging.getLevelName(LoggerConfig.FILE_LOG_LEVEL)}")
+        self.logger.info(f"Console log level: {logging.getLevelName(LoggerConfig.CONSOLE_LOG_LEVEL)}")
         self.logger.info("=" * 80)
     
     def debug(self, message: str):
@@ -128,6 +146,40 @@ class CANLogger:
         """Log exceptions with context"""
         self.logger.error(f"Exception in {context}: {str(exception)}", exc_info=True)
     
+    def set_console_level(self, level: int):
+        """
+        Update console log level dynamically.
+        
+        Args:
+            level: Logging level (logging.DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        """
+        self.console_handler.setLevel(level)
+        level_name = logging.getLevelName(level)
+        self.logger.info(f"Console log level changed to: {level_name}")
+    
+    def set_file_level(self, level: int):
+        """
+        Update file log level dynamically.
+        
+        Args:
+            level: Logging level (logging.DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        """
+        self.file_handler.setLevel(level)
+        level_name = logging.getLevelName(level)
+        self.logger.info(f"File log level changed to: {level_name}")
+    
+    def get_log_file_path(self) -> str:
+        """
+        Get the current log file path.
+        
+        Returns:
+            str: Path to current log file
+        """
+        for handler in self.logger.handlers:
+            if isinstance(handler, RotatingFileHandler):
+                return handler.baseFilename
+        return ""
+    
     def shutdown(self):
         """Shutdown the logging system"""
         self.logger.info("=" * 80)
@@ -175,3 +227,90 @@ def shutdown_logger():
     if _logger_instance:
         _logger_instance.shutdown()
         _logger_instance = None
+
+
+# Decorators for error handling
+
+def log_errors(operation_name: str):
+    """
+    Decorator to automatically log errors in functions
+    
+    Args:
+        operation_name: Name of the operation for logging
+        
+    Example:
+        @log_errors("database connection")
+        def connect_to_db():
+            # code that might raise exceptions
+            pass
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger = get_logger()
+                logger.error(f"Error in {operation_name}: {str(e)}", exc_info=True)
+                raise
+        return wrapper
+    return decorator
+
+
+def log_and_suppress_errors(operation_name: str, default_return=None):
+    """
+    Decorator to log errors and suppress them (return default value)
+    
+    Args:
+        operation_name: Name of the operation for logging
+        default_return: Value to return if exception occurs
+        
+    Example:
+        @log_and_suppress_errors("optional feature", default_return=False)
+        def optional_feature():
+            # code that might fail
+            return True
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger = get_logger()
+                logger.warning(f"Error in {operation_name} (suppressed): {str(e)}")
+                return default_return
+        return wrapper
+    return decorator
+
+
+def log_execution(operation_name: str, log_args: bool = False):
+    """
+    Decorator to log function execution (entry and exit)
+    
+    Args:
+        operation_name: Name of the operation for logging
+        log_args: Whether to log function arguments
+        
+    Example:
+        @log_execution("file processing", log_args=True)
+        def process_file(filename):
+            # processing code
+            pass
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            logger = get_logger()
+            
+            if log_args:
+                logger.debug(f"Starting {operation_name} with args={args}, kwargs={kwargs}")
+            else:
+                logger.debug(f"Starting {operation_name}")
+            
+            try:
+                result = func(*args, **kwargs)
+                logger.debug(f"Completed {operation_name}")
+                return result
+            except Exception as e:
+                logger.error(f"Failed {operation_name}: {str(e)}", exc_info=True)
+                raise
+        return wrapper
+    return decorator

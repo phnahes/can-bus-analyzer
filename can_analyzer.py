@@ -5,6 +5,7 @@ CAN bus analyzer with SLCAN-based real-time analysis. Runs on macOS and Linux.
 """
 
 import sys
+import signal
 import atexit
 from PyQt6.QtWidgets import QApplication
 
@@ -32,6 +33,14 @@ def main():
     
     # Register logger shutdown on exit
     atexit.register(shutdown_logger)
+    
+    # Setup signal handlers for graceful shutdown
+    def signal_handler(signum, frame):
+        logger.info(f"Received signal {signum}, shutting down gracefully...")
+        QApplication.quit()
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     try:
         # Configurar nome da aplicação ANTES de criar QApplication (para menu macOS)
@@ -86,6 +95,18 @@ def main():
         
         logger.info("Main window displayed")
         
+        # Install global exception handler
+        def handle_exception(exc_type, exc_value, exc_traceback):
+            if issubclass(exc_type, KeyboardInterrupt):
+                sys.__excepthook__(exc_type, exc_value, exc_traceback)
+                return
+            logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+            # Force quit the application
+            QApplication.quit()
+            sys.exit(1)
+        
+        sys.excepthook = handle_exception
+        
         exit_code = app.exec()
         logger.info(f"Application terminated with code: {exit_code}")
         
@@ -93,6 +114,11 @@ def main():
         
     except Exception as e:
         logger.critical(f"Critical application error: {str(e)}", exc_info=True)
+        # Try to quit the app if it exists
+        try:
+            QApplication.quit()
+        except:
+            pass
         sys.exit(1)
 
 

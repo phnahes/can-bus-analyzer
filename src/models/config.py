@@ -14,7 +14,6 @@ class CANConfig:
     com_baudrate: str = "115200 bit/s"
     interface: str = "socketcan"
     listen_only: bool = True
-    timestamp: bool = True
     rts_hs: bool = False
     baudrate_reg: str = "FFFFFF"
     custom_baudrate: Optional[int] = None

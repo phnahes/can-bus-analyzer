@@ -18,6 +18,7 @@ A comprehensive CAN bus analyzer with SLCAN support, protocol decoders, and real
 - [Project Structure](#project-structure)
 - [Hardware Support](#hardware-support)
 - [Advanced Features](#advanced-features)
+- [Usability](#usability)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
 - [Tools & Utilities](#tools--utilities)
@@ -151,27 +152,27 @@ The CAN Analyzer includes **modular protocol decoders** for automatic message in
 **Description:** Proprietary protocol from FuelTech for ECUs and sensors.
 
 **Features:**
-- **Broadcast Protocol**: Automatic transmission at ~100 Hz
+- **Broadcast Protocol**: Automatic transmission; ECUs use 4 priority streams (Critical, High, Medium, Low)
 - **29-bit Extended IDs**: Product ID, Data Field, Message ID
 - **100+ Measures**: Lambda, RPM, TPS, MAP, temperatures, pressures, injection, ignition
-- **Supported Devices**: WB-O2 Nano, FT500/FT600 ECUs, sensors
-- **Bitrate**: 1 Mbps (fixed)
-- **Byte Order**: Big-endian, signed 16-bit values with multipliers
+- **Supported Devices**: WB-O2 Nano (wideband), FT500/FT600 ECUs, FTSwitchPanel (button/LED), EGT-8 (exhaust gas temperature)
+- **Bitrate**: 1 Mbps (fixed) — required for FTCAN
+- **Byte Order**: Big-endian; segmented ECU streams use reverse byte order during reassembly
 
-**Interface:**
-- **FTCAN Analyzer** (Ctrl+Shift+F): Dedicated UI for FTCAN messages
-  - Decoded Messages: Full message decoding
-  - Live Measures: Real-time sensor values
-  - Diagnostics: Network statistics and device detection
+**Interface — FTCAN Analyzer** (shortcut: **Ctrl+1** or Tools → FTCAN 2.0 Analyzer):
+- **Live Measures** (first tab): Real-time sensor values; best for monitoring
+- **Decoded Messages**: Full decoding of each frame; product-type filter and auto-scroll; may be slower under high message load
+- **Diagnostics**: Stream statistics (per-priority message/measure counts, update rate) and device list
+
+**Usability:** Open the FTCAN Analyzer only after connecting at 1 Mbps, or use Simulation mode. For high traffic, use the product filter (e.g. “O2 Sensors” or “ECUs”) to reduce clutter.
 
 **Documentation:**
-- [FTCAN Protocol Documentation](docs/ftcan/README.md) - Complete technical specification
-- [FTCAN Decoder Documentation](docs/decoders/FTCAN.md) - Implementation details
+- [FTCAN Protocol & Decoder Documentation](docs/decoders/FTCAN.md) — Protocol, ECU streams, SwitchPanel, EGT-8, implementation
 - [Official FuelTech Specification](https://files.fueltech.net/manuals/Protocol_FTCAN20_Public_R026.pdf)
 
 **Tools:**
-- `tools/ftcan/ftcan_simulator.py` - Message simulator for testing
-- `tools/ftcan/ftcan_config_capture.py` - Configuration capture tool
+- `tools/ftcan/ftcan_simulator.py` — Message simulator for testing
+- `tools/ftcan/ftcan_config_capture.py` — Configuration capture tool
 
 ---
 
@@ -272,10 +273,10 @@ can-bus-analyzer/
 │       └── ftcan_config_capture.py # Configuration capture tool
 ├── src/                        # Application source code
 │   ├── __init__.py
-│   ├── main_window.py          # Main window, reception/transmission UI, modes
+│   ├── main_window.py          # Main window, reception/transmission UI, modes (orchestrator)
 │   ├── models.py               # Data models (CANMessage, CANFilter, TransmitMessage, etc.)
 │   ├── dialogs.py              # General dialogs: Settings, Filters, Triggers, Bit Field Viewer
-│   ├── dialogs_ftcan.py        # FTCAN Analyzer dialog
+│   ├── dialogs_ftcan.py        # FTCAN Analyzer dialog (Live Measures, Decoded Messages, Diagnostics)
 │   ├── dialogs_obd2.py         # OBD-II Monitor dialog
 │   ├── file_operations.py      # Save/load logs and transmit lists (JSON, CSV, TRC)
 │   ├── logger.py               # Logging to files and UI
@@ -287,12 +288,32 @@ can-bus-analyzer/
 │   ├── protocol_decoder.py     # Protocol decoder base class
 │   ├── theme.py                # UI theme management
 │   ├── usb_device_monitor.py   # USB/serial device detection
+│   ├── config/                 # Centralized configuration
+│   │   ├── shortcuts.py       # Keyboard shortcuts (platform-aware)
+│   │   └── ...
+│   ├── handlers/               # Business logic (connection, playback, filters, gateway, etc.)
+│   │   ├── connection_manager.py
+│   │   ├── playback_handler.py
+│   │   ├── recording_handler.py
+│   │   ├── filter_manager.py
+│   │   ├── dialog_manager.py
+│   │   ├── ui_state_manager.py
+│   │   ├── gateway_manager.py
+│   │   ├── transmit_handler.py
+│   │   ├── file_handler.py
+│   │   └── ...
+│   ├── ui/                     # Reusable UI components
+│   │   ├── menu_bar.py         # Menu bar builder
+│   │   ├── table_helpers.py    # Table formatting helpers
+│   │   ├── receive_table.py    # Receive table component
+│   │   └── ...
 │   └── decoders/               # Protocol decoders
 │       ├── __init__.py
-│       ├── ftcan_decoder.py    # FTCAN core decoder
-│       ├── ftcan_protocol_decoder.py # FTCAN protocol adapter
-│       ├── obd2_decoder.py     # OBD-II core decoder
-│       └── obd2_protocol_decoder.py  # OBD-II protocol adapter
+│       ├── base.py             # Decoder base and manager
+│       ├── decoder_ftcan.py    # FTCAN core (streams, measures, SwitchPanel, EGT-8)
+│       ├── adapter_ftcan.py    # FTCAN protocol adapter
+│       ├── decoder_obd2.py     # OBD-II core decoder
+│       └── adapter_obd2.py     # OBD-II protocol adapter
 └── logs/                       # Application log files (created at runtime)
 ```
 
@@ -452,6 +473,36 @@ The application automatically detects the interface type based on the device nam
 
 ---
 
+## Usability
+
+Tips for day-to-day use and common workflows.
+
+### General
+
+- **Connect before protocol tools:** For **FTCAN Analyzer**, connect to the bus first (or enable Simulation mode). FTCAN requires **1 Mbps**; if no bus is at 1 Mbps, the analyzer will show a clear message.
+- **Simulation mode:** In **Settings**, enable “Simulation Mode” to run without hardware. Useful for learning the UI, testing filters/triggers, and trying decoders.
+- **Multi-CAN:** To use **Gateway** or **Split-Screen**, configure at least two CAN buses in **Settings** and connect.
+
+### FTCAN Analyzer
+
+- **Live Measures** is the first tab: use it for real-time sensor values (lambda, RPM, etc.).
+- **Decoded Messages** can be slower under very high message rates; a note appears next to “Auto-Decode”. Use the **product type filter** (e.g. “O2 Sensors”, “ECUs”) to reduce rows and improve responsiveness.
+- **Auto-scroll** in Decoded Messages can be turned on/off; status (cache, workers) is shown at the bottom-left of the dialog.
+- **Diagnostics** tab shows stream statistics (messages/measures per priority) and devices.
+
+### Keyboard Shortcuts (Platform)
+
+- On **macOS**, the shortcut modifier is **Command (⌘)** for the actions in the table (the app uses Qt’s “Ctrl” for both Command on macOS and Control on Windows/Linux).
+- Shortcuts are centralized in `src/config/shortcuts.py` and can be adjusted there.
+
+### Saving and Loading
+
+- **Receive:** Save/Load Monitor or Tracer log (JSON, CSV, or trace format) from the File menu or toolbar.
+- **Transmit:** Save/Load the transmit list (JSON) to reuse message sets.
+- **Settings** (including multi-CAN and theme) are stored in `config.json` and persist between runs.
+
+---
+
 ## Configuration
 
 ### Configuration File
@@ -503,22 +554,26 @@ You can manually edit `config.json` if needed (application must be closed).
 
 ### Keyboard Shortcuts
 
+On **macOS**, the modifier is shown and works as **Command (⌘)**. Shortcuts are centralized in `src/config/shortcuts.py` and can be adjusted there.
+
 | Action | Shortcut |
 |--------|----------|
 | Connect | `Ctrl+O` |
 | Reset | `Ctrl+R` |
-| Save Receive Log | `Ctrl+S` |
-| Load Receive Log | `Ctrl+L` |
+| Save Receive Log | `Ctrl+Shift+M` |
+| Load Receive Log | `Ctrl+Alt+M` |
+| Save Tracer Log | `Ctrl+S` |
+| Load Tracer Log | `Ctrl+Alt+L` |
 | Save Transmit List | `Ctrl+Shift+S` |
-| Load Transmit List | `Ctrl+Shift+L` |
+| Load Transmit List | `Ctrl+Alt+T` |
 | Clear Receive | `Ctrl+K` |
 | Tracer Mode | `Ctrl+T` |
 | Filters | `Ctrl+F` |
-| Triggers | `Ctrl+G` |
-| Gateway | `Ctrl+W` |
-| Split-Screen Mode | `Ctrl+D` |
-| **FTCAN Analyzer** | `Ctrl+Shift+F` |
-| **OBD-II Monitor** | `Ctrl+Shift+O` |
+| Triggers | `Ctrl+Alt+G` |
+| Gateway | `Ctrl+Shift+W` |
+| Split-Screen Mode | `Ctrl+Alt+D` |
+| **FTCAN Analyzer** | `Ctrl+1` |
+| **OBD-II Monitor** | `Ctrl+2` |
 | **Decoder Manager** | `Ctrl+Shift+D` |
 | Settings | `Ctrl+,` |
 | Exit | `Ctrl+Q` |
@@ -540,9 +595,8 @@ You can manually edit `config.json` if needed (application must be closed).
 
 | Document | Description |
 |----------|-------------|
-| [docs/ftcan/README.md](docs/ftcan/README.md) | **FTCAN 2.0 Protocol** - Complete technical specification |
-| [docs/decoders/FTCAN.md](docs/decoders/FTCAN.md) | FTCAN decoder implementation details |
-| [docs/decoders/OBD2.md](docs/decoders/OBD2.md) | **OBD-II Protocol** - Complete technical specification |
+| [docs/decoders/FTCAN.md](docs/decoders/FTCAN.md) | **FTCAN 2.0** — Protocol, ECU 4-stream broadcast, SwitchPanel, EGT-8, decoder implementation |
+| [docs/decoders/OBD2.md](docs/decoders/OBD2.md) | **OBD-II Protocol** — Complete technical specification |
 
 ### Tools Documentation
 
@@ -627,10 +681,14 @@ pip install -r requirements.txt
 ### Protocol Decoder Issues
 
 **FTCAN not decoding:**
-1. Verify baudrate is exactly 1 Mbps
-2. Check that FTCAN decoder is enabled (Ctrl+Shift+D)
-3. Open FTCAN Analyzer (Ctrl+Shift+F) and check Diagnostics tab
-4. Ensure messages use 29-bit Extended IDs
+1. Verify baudrate is exactly **1 Mbps** (required for FTCAN)
+2. Connect to the bus before opening FTCAN Analyzer, or use Simulation mode
+3. Check that FTCAN decoder is enabled (Decoder Manager: Ctrl+Shift+D)
+4. Open FTCAN Analyzer (Ctrl+1) and check the **Diagnostics** tab for stream/device info
+5. Ensure messages use 29-bit Extended IDs
+
+**FTCAN Decoded Messages tab slow:**
+- At high message rates the Decoded Messages tab can be slower; use the **product type filter** (e.g. O2 Sensors, ECUs) to reduce rows. Prefer the **Live Measures** tab for real-time values.
 
 **OBD-II not responding:**
 1. Verify baudrate is 500 kbps (or 250 kbps)
@@ -752,14 +810,11 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 - **FTCAN Analyzer** (dedicated FTCAN UI)
 - **OBD-II Monitor** (interactive diagnostics UI)
 
-### Recently Added Features (v1.0.0)
-- **FTCAN 2.0 Support**: Automatic decoding of FuelTech ECUs and sensors
-- **OBD-II Support**: Universal automotive diagnostics (60+ PIDs, DTCs)
-- **Modular Decoder System**: Extensible architecture for adding new protocols
-- **Dedicated Protocol UIs**: FTCAN Analyzer and OBD-II Monitor
-- **Comprehensive Documentation**: Complete technical specifications
-- **Testing Tools**: Simulators and utilities for both protocols
-- **Improved Project Structure**: Organized decoders, tools, and documentation
+### Recently Added / Updated
+- **FTCAN 2.0**: ECU 4-stream broadcast decoding, SwitchPanel (buttons/LED), EGT-8 support; Live Measures as primary tab; product filter and diagnostics
+- **Usability**: Centralized shortcuts (`src/config/shortcuts.py`), usability section in README, FTCAN tips (1 Mbps, filters, performance)
+- **Architecture**: Handlers (`src/handlers/`) and UI components (`src/ui/`), config module (`src/config/`) for maintainability
+- **Documentation**: [FTCAN.md](docs/decoders/FTCAN.md) updated with streams, reverse byte order, WB-O2 vs ECU, EGT-8; SwitchPanel viewer in `tools/ftcan/`
 
 ### Planned Features
 - Hardware filters (28 configurable)
@@ -812,4 +867,4 @@ The application automatically detects the interface type based on the device pat
 
 ---
 
-**Ready to analyze CAN traffic? Start with `./run.sh` or explore the [documentation](docs/)!** 🚗💨
+**Ready to analyze CAN traffic? Start with `./run.sh` or explore the [documentation](docs/)!** 

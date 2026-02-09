@@ -174,6 +174,7 @@ class CANBusInstance:
                             data=bytes(message.data),
                             is_extended=message.is_extended_id,
                             is_rtr=message.is_remote_frame,
+                            channel=self.config.channel if isinstance(self.config.channel, int) else 1,
                             source=self.config.name  # Mark source bus
                         )
                         self.message_callback(self.config.name, can_msg)
@@ -222,6 +223,7 @@ class CANBusInstance:
                     can_id=can_id,
                     dlc=dlc,
                     data=data,
+                    channel=self.config.channel if isinstance(self.config.channel, int) else 1,
                     source=self.config.name
                 )
                 self.message_callback(self.config.name, msg)
