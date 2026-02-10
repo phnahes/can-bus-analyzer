@@ -19,7 +19,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-*.json
 
 # Virtual Environment
 venv/
@@ -47,9 +46,6 @@ logs/
 config.json
 
 # CAN logs (but not config.json)
-can_*.json
-trace_*.json
-transmit_*.json
 *.csv
 *.asc
 *.blf

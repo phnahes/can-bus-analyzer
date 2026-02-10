@@ -37,7 +37,7 @@ from .utils import get_platform_display_name
 from .can_bus_manager import CANBusManager, CANBusConfig
 from . import __version__, __build__
 
-from .config import get_shortcut
+from .config import get_shortcut, DEFAULT_CAN_ID_STR, DEFAULT_CHANNEL, DEFAULT_DLC_STR_EMPTY
 from .ui import (
     MenuBarBuilder, ReceiveTable, table_helpers, ContextMenuManager, 
     ReceiveTableManager, TransmitTableManager, TransmitPanelBuilder, 
@@ -1412,35 +1412,23 @@ class CANAnalyzerWindow(QMainWindow):
         row = selected_rows[0].row()
         
         if self.tracer_mode:
-            pid_str = table.item(row, 3).text() if table.item(row, 3) else "0x000"
-            dlc_str = table.item(row, 4).text() if table.item(row, 4) else "0"
+            pid_str = table.item(row, 3).text() if table.item(row, 3) else DEFAULT_CAN_ID_STR
+            dlc_str = table.item(row, 4).text() if table.item(row, 4) else DEFAULT_DLC_STR_EMPTY
             data_str = table.item(row, 5).text() if table.item(row, 5) else ""
-            
-            can_id = int(pid_str.replace('0x', ''), 16)
-            dlc = int(dlc_str)
-            data = bytes.fromhex(data_str.replace(' ', ''))
-            
-            message = CANMessage(
-                timestamp=0,
-                can_id=can_id,
-                dlc=dlc,
-                data=data
-            )
         else:
-            pid_str = table.item(row, 3).text() if table.item(row, 3) else "0x000"
-            dlc_str = table.item(row, 4).text() if table.item(row, 4) else "0"
+            pid_str = table.item(row, 3).text() if table.item(row, 3) else DEFAULT_CAN_ID_STR
+            dlc_str = table.item(row, 4).text() if table.item(row, 4) else DEFAULT_DLC_STR_EMPTY
             data_str = table.item(row, 5).text() if table.item(row, 5) else ""
-            
-            can_id = int(pid_str.replace('0x', ''), 16)
-            dlc = int(dlc_str)
-            data = bytes.fromhex(data_str.replace(' ', ''))
-            
-            message = CANMessage(
-                timestamp=0,
-                can_id=can_id,
-                dlc=dlc,
-                data=data
-            )
+
+        can_id = int(pid_str.replace('0x', ''), 16)
+        dlc = int(dlc_str)
+        data = bytes.fromhex(data_str.replace(' ', ''))
+        message = CANMessage(
+            timestamp=0,
+            can_id=can_id,
+            dlc=dlc,
+            data=data
+        )
         
         if message:
             
@@ -1541,7 +1529,7 @@ class CANAnalyzerWindow(QMainWindow):
                 rx_channel = trigger.get('rx_channel', 'ANY').upper()
                 if rx_channel != 'ANY':
                     # Get message source (bus name like "CAN1", "CAN2")
-                    msg_source = getattr(msg, 'source', 'CAN1').upper()
+                    msg_source = getattr(msg, 'source', DEFAULT_CHANNEL).upper()
                     if msg_source != rx_channel:
                         continue
                 

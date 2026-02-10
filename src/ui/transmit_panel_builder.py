@@ -13,6 +13,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 
+from ..config import DEFAULT_CHANNEL
+
 
 class TransmitPanelBuilder:
     """Builds transmit panel UI"""
@@ -179,7 +181,7 @@ class TransmitPanelBuilder:
         row2.addWidget(QLabel("│"))
         row2.addWidget(QLabel(f"{t('col_channel')}:"))
         parent.tx_source_combo = QComboBox()
-        parent.tx_source_combo.addItem("CAN1")
+        parent.tx_source_combo.addItem(DEFAULT_CHANNEL)
         parent.tx_source_combo.setMaximumWidth(100)
         row2.addWidget(parent.tx_source_combo)
         

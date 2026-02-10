@@ -10,6 +10,8 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt
 from typing import Callable, Optional
 
+from ..config import DEFAULT_CAN_ID_STR, DEFAULT_CHANNEL, DEFAULT_DLC_STR, DEFAULT_DLC_STR_EMPTY
+
 
 class ContextMenuManager:
     """Manages context menus for tables"""
@@ -134,16 +136,16 @@ class ContextMenuManager:
                 period_for_tx = "off"
                 if self.parent.tracer_mode:
                     # Tracer: columns are ID, Time, Channel, PID, DLC, Data, ASCII, Comment
-                    pid_str = table.item(row, 3).text() if table.item(row, 3) else "0x000"
-                    dlc_str = table.item(row, 4).text() if table.item(row, 4) else "8"
+                    pid_str = table.item(row, 3).text() if table.item(row, 3) else DEFAULT_CAN_ID_STR
+                    dlc_str = table.item(row, 4).text() if table.item(row, 4) else DEFAULT_DLC_STR
                     data_str = table.item(row, 5).text() if table.item(row, 5) else ""
-                    channel_str = table.item(row, 2).text() if table.item(row, 2) else "CAN1"
+                    channel_str = table.item(row, 2).text() if table.item(row, 2) else DEFAULT_CHANNEL
                 else:
                     # Monitor: columns are ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
-                    pid_str = table.item(row, 3).text() if table.item(row, 3) else "0x000"
-                    dlc_str = table.item(row, 4).text() if table.item(row, 4) else "8"
+                    pid_str = table.item(row, 3).text() if table.item(row, 3) else DEFAULT_CAN_ID_STR
+                    dlc_str = table.item(row, 4).text() if table.item(row, 4) else DEFAULT_DLC_STR
                     data_str = table.item(row, 5).text() if table.item(row, 5) else ""
-                    channel_str = table.item(row, 2).text() if table.item(row, 2) else "CAN1"
+                    channel_str = table.item(row, 2).text() if table.item(row, 2) else DEFAULT_CHANNEL
                     # Use observed period from monitor; fallback to default 100 ms
                     period_item = table.item(row, 6)
                     period_str = period_item.text().strip() if period_item else ""
@@ -240,8 +242,8 @@ class ContextMenuManager:
         row = selected_rows[0].row()
         
         # Get message data from table
-        pid_str = table.item(row, 3).text() if table.item(row, 3) else "0x000"
-        dlc_str = table.item(row, 4).text() if table.item(row, 4) else "0"
+        pid_str = table.item(row, 3).text() if table.item(row, 3) else DEFAULT_CAN_ID_STR
+        dlc_str = table.item(row, 4).text() if table.item(row, 4) else DEFAULT_DLC_STR_EMPTY
         data_str = table.item(row, 5).text() if table.item(row, 5) else ""
         
         try:

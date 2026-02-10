@@ -4,6 +4,7 @@ Handles saving of transmit message lists
 """
 
 from PyQt6.QtWidgets import QFileDialog
+from ..config import DEFAULT_CHANNEL
 from ..ui.message_box_helper import MessageBoxHelper
 from ..i18n import t
 
@@ -75,7 +76,7 @@ class SaveTransmitHandler:
                 'trigger_data': trigger_data_item.text() if trigger_data_item else '',
                 'count': int(count_item.text()) if count_item else 0,
                 'comment': comment_item.text() if comment_item else '',
-                'source': source_item.text() if source_item else 'CAN1'
+                'source': source_item.text() if source_item else DEFAULT_CHANNEL
             }
             transmit_data.append(item_data)
         

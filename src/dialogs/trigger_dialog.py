@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+from ..config import DEFAULT_CAN_ID_STR
 from ..theme import get_adaptive_colors
 
 
@@ -160,7 +161,7 @@ class TriggerDialog(QDialog):
             self.triggers_table.setItem(row, 1, QTableWidgetItem(rx_channel))
             
             # Trigger ID
-            self.triggers_table.setItem(row, 2, QTableWidgetItem(trigger.get('trigger_id', '0x000')))
+            self.triggers_table.setItem(row, 2, QTableWidgetItem(trigger.get('trigger_id', DEFAULT_CAN_ID_STR)))
             
             # Trigger Data (opcional)
             trigger_data = trigger.get('trigger_data', '')
@@ -171,7 +172,7 @@ class TriggerDialog(QDialog):
             self.triggers_table.setItem(row, 4, QTableWidgetItem(tx_channel))
             
             # TX ID
-            self.triggers_table.setItem(row, 5, QTableWidgetItem(trigger.get('tx_id', '0x000')))
+            self.triggers_table.setItem(row, 5, QTableWidgetItem(trigger.get('tx_id', DEFAULT_CAN_ID_STR)))
             
             # TX Data
             self.triggers_table.setItem(row, 6, QTableWidgetItem(trigger.get('tx_data', '00 00 00 00 00 00 00 00')))

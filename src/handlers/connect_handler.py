@@ -3,6 +3,7 @@ Connect Handler
 Handles CAN bus connection logic
 """
 
+from ..config import DEFAULT_CHANNEL
 from ..handlers.transmit_handler import TransmitHandler
 from ..i18n import t
 
@@ -72,7 +73,7 @@ class ConnectHandler:
         can_buses = self.parent.config.get('can_buses', [])
         if not can_buses:
             can_buses = [{
-                'name': 'CAN1',
+                'name': DEFAULT_CHANNEL,
                 'channel': self.parent.config.get('channel', 'can0'),
                 'baudrate': self.parent.config.get('baudrate', 500000)
             }]

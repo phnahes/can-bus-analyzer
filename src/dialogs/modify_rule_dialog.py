@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+from ..config import DEFAULT_CAN_ID_STR, DEFAULT_CHANNEL
 from ..models import GatewayModifyRule
 from ..i18n import get_i18n, t
 from ..theme import get_adaptive_colors
@@ -17,7 +18,7 @@ class ModifyRuleDialog(QDialog):
     """Dialog to configure message modification rule with bit mask"""
     def __init__(self, parent=None, channel=None, can_id=None, existing_rule=None):
         super().__init__(parent)
-        self.channel = channel or "CAN1"
+        self.channel = channel or DEFAULT_CHANNEL
         self.can_id = can_id or 0x000
         self.existing_rule = existing_rule
         self.i18n = get_i18n()
@@ -69,7 +70,7 @@ class ModifyRuleDialog(QDialog):
         
         id_layout.addWidget(QLabel(t('gateway_new_id') + ":"))
         self.new_id_input = QLineEdit()
-        self.new_id_input.setPlaceholderText("0x000")
+        self.new_id_input.setPlaceholderText(DEFAULT_CAN_ID_STR)
         self.new_id_input.setMaximumWidth(100)
         self.new_id_input.setEnabled(self.new_id is not None)
         if self.new_id is not None:

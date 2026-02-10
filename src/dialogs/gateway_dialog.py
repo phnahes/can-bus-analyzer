@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+from ..config import DEFAULT_BUS_NAMES, DEFAULT_CAN_ID_STR
 from ..models import GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule, GatewayRoute
 from ..i18n import get_i18n, t
 from ..theme import get_adaptive_colors
@@ -24,7 +25,7 @@ class GatewayDialog(QDialog):
     def __init__(self, parent=None, config=None, bus_names=None):
         super().__init__(parent)
         self.config = config or GatewayConfig()
-        self.bus_names = bus_names or ["CAN1", "CAN2"]
+        self.bus_names = bus_names or DEFAULT_BUS_NAMES.copy()
         self.i18n = get_i18n()
         self.init_ui()
     
@@ -116,7 +117,7 @@ class GatewayDialog(QDialog):
         
         add_block_layout.addWidget(QLabel(t('gateway_block_id') + ":"))
         self.block_id_input = QLineEdit()
-        self.block_id_input.setPlaceholderText("0x000")
+        self.block_id_input.setPlaceholderText(DEFAULT_CAN_ID_STR)
         self.block_id_input.setMaximumWidth(100)
         add_block_layout.addWidget(self.block_id_input)
         
@@ -160,7 +161,7 @@ class GatewayDialog(QDialog):
         
         dyn_control_layout.addWidget(QLabel(t('gateway_id_from') + ":"))
         self.dyn_id_from_input = QLineEdit()
-        self.dyn_id_from_input.setPlaceholderText("0x000")
+        self.dyn_id_from_input.setPlaceholderText(DEFAULT_CAN_ID_STR)
         self.dyn_id_from_input.setMaximumWidth(100)
         dyn_control_layout.addWidget(self.dyn_id_from_input)
         
@@ -221,7 +222,7 @@ class GatewayDialog(QDialog):
         
         modify_control_layout.addWidget(QLabel(t('gateway_modify_id') + ":"))
         self.modify_id_input = QLineEdit()
-        self.modify_id_input.setPlaceholderText("0x000")
+        self.modify_id_input.setPlaceholderText(DEFAULT_CAN_ID_STR)
         self.modify_id_input.setMaximumWidth(100)
         modify_control_layout.addWidget(self.modify_id_input)
         

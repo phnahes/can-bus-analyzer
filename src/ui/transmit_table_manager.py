@@ -9,6 +9,8 @@ from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QMessageBox
 from PyQt6.QtCore import Qt
 from typing import Dict, List, Optional
 
+from ..config import DEFAULT_CHANNEL
+
 
 class TransmitTableManager:
     """Manages transmit table operations"""
@@ -367,7 +369,7 @@ class TransmitTableManager:
             table.setItem(row, 15, QTableWidgetItem(str(item.get('count', 0))))
             table.setItem(row, 16, QTableWidgetItem(item.get('comment', '')))
             
-            source = item.get('source', 'CAN1')
+            source = item.get('source', DEFAULT_CHANNEL)
             source_item = QTableWidgetItem(source)
             source_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             table.setItem(row, 17, source_item)

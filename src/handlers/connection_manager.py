@@ -5,6 +5,7 @@ Extracted from main_window.py to reduce complexity
 from typing import Optional, Callable, Dict, List, Any
 from PyQt6.QtWidgets import QMessageBox
 from ..can_bus_manager import CANBusManager, CANBusConfig
+from ..config import DEFAULT_CHANNEL
 
 try:
     import can
@@ -143,7 +144,7 @@ class ConnectionManager:
         if not can_buses:
             # Fallback to legacy single-bus config
             can_buses = [{
-                'name': 'CAN1',
+                'name': DEFAULT_CHANNEL,
                 'channel': self.config.get('channel', 'can0'),
                 'baudrate': self.config.get('baudrate', 500000),
                 'interface': 'socketcan',

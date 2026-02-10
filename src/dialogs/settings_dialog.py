@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
+from ..config import DEFAULT_CHANNEL
 from ..i18n import get_i18n, t
 from ..theme import get_adaptive_colors
 from ..baudrate_detect_dialog import BaudrateDetectDialog
@@ -123,7 +124,7 @@ class SettingsDialog(QDialog):
         if not can_buses:
             # Default: single CAN bus with current settings
             can_buses = [{
-                'name': 'CAN1',
+                'name': DEFAULT_CHANNEL,
                 'channel': self.config.get('channel', 'can0'),
                 'baudrate': self.config.get('baudrate', 500000),
                 'listen_only': self.config.get('listen_only', True)
