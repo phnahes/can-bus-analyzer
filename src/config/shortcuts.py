@@ -30,7 +30,8 @@ def get_shortcuts() -> Dict[str, str]:
     
     return {
         # File Menu
-        'connect': f'{mod}+C',                  # Connect/Disconnect
+        'connect': f'{mod}+C',                   # Connect
+        'disconnect': f'{mod}+C',                 # Disconnect (same key, toggles state)
         'reset': f'{mod}+R',                     # Reset
         'save_monitor': f'{mod}+Shift+M',        # Save Monitor Log
         'load_monitor': f'{mod}+Alt+Shift+M',   # Load Monitor Log
@@ -65,7 +66,8 @@ def get_shortcut_descriptions() -> Dict[str, str]:
     """
     return {
         # File Menu
-        'connect': 'Connect/Disconnect',
+        'connect': 'Connect',
+        'disconnect': 'Disconnect',
         'reset': 'Reset',
         'save_monitor': 'Save Monitor Log',
         'load_monitor': 'Load Monitor Log',

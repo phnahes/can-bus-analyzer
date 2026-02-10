@@ -116,6 +116,7 @@ class ConnectHandler:
         self.parent.btn_connect.setEnabled(False)
         self.parent.btn_disconnect.setEnabled(True)
         self.parent.btn_pause.setEnabled(True)
+        self.parent.btn_record.setEnabled(True)
         
         # Enable gateway button if multiple buses
         if (self.parent.can_bus_manager and 

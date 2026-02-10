@@ -321,6 +321,7 @@ class CANAnalyzerWindow(QMainWindow):
          self.receive_container_layout, self.tracer_controls_widget) = ReceivePanelBuilder.create_panel(
             self, self.colors, callbacks
         )
+        self.btn_record.setEnabled(self.connected)
         
         self.receive_container = self.receive_group.findChild(QWidget)
         self.setup_receive_table()
@@ -507,6 +508,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_disconnect.setEnabled(False)
         self.btn_pause.setEnabled(False)
         self.btn_gateway.setEnabled(False)
+        self.btn_record.setEnabled(False)
         
         if self.config.get('listen_only', True):
             self.mode_label.setText("Listen Only Mode")
@@ -543,7 +545,10 @@ class CANAnalyzerWindow(QMainWindow):
         self.show_notification(t('notif_reset'))
     
     def toggle_recording(self):
-        """Start/stop recording messages for playback (Tracer only)"""
+        """Start/stop recording messages for playback (Tracer only). Recording only starts when connected."""
+        if not self.recording_mgr.is_recording_active() and not self.connected:
+            self.show_notification(t('notif_connect_first'), 3000)
+            return
         is_recording = self.recording_mgr.toggle_recording()
         self.recording = is_recording
         

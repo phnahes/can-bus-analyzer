@@ -131,6 +131,7 @@ class ContextMenuManager:
             
             try:
                 # Get message data from table
+                period_for_tx = "off"
                 if self.parent.tracer_mode:
                     # Tracer: columns are ID, Time, Channel, PID, DLC, Data, ASCII, Comment
                     pid_str = table.item(row, 3).text() if table.item(row, 3) else "0x000"
@@ -143,6 +144,14 @@ class ContextMenuManager:
                     dlc_str = table.item(row, 4).text() if table.item(row, 4) else "8"
                     data_str = table.item(row, 5).text() if table.item(row, 5) else ""
                     channel_str = table.item(row, 2).text() if table.item(row, 2) else "CAN1"
+                    # Use observed period from monitor; fallback to default 100 ms
+                    period_item = table.item(row, 6)
+                    period_str = period_item.text().strip() if period_item else ""
+                    try:
+                        period_ms = int(period_str)
+                        period_for_tx = str(period_ms) if period_ms > 0 else "off"
+                    except ValueError:
+                        period_for_tx = "100"  # predefined default when period not yet available
                 
                 # Parse data
                 can_id_str = pid_str.replace('0x', '').replace('0X', '')
@@ -159,7 +168,7 @@ class ContextMenuManager:
                 self.parent.transmit_table.setItem(tx_row, 0, QTableWidgetItem(pid_str))
                 self.parent.transmit_table.setItem(tx_row, 1, QTableWidgetItem(str(dlc)))
                 self.parent.transmit_table.setItem(tx_row, 2, QTableWidgetItem(""))  # RTR
-                self.parent.transmit_table.setItem(tx_row, 3, QTableWidgetItem("off"))  # Period
+                self.parent.transmit_table.setItem(tx_row, 3, QTableWidgetItem(period_for_tx))  # Period (from monitor or default)
                 self.parent.transmit_table.setItem(tx_row, 4, QTableWidgetItem("off"))  # TX Mode
                 self.parent.transmit_table.setItem(tx_row, 5, QTableWidgetItem(""))  # Trigger ID
                 self.parent.transmit_table.setItem(tx_row, 6, QTableWidgetItem(""))  # Trigger Data

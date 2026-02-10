@@ -49,6 +49,7 @@ class MenuBarBuilder:
         file_menu.addAction(connect_action)
         
         disconnect_action = QAction(t('menu_disconnect'), self.parent)
+        disconnect_action.setShortcut(get_shortcut('disconnect'))
         disconnect_action.triggered.connect(self.parent.disconnect)
         file_menu.addAction(disconnect_action)
         
