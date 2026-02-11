@@ -7,7 +7,7 @@ Extracted from main_window.py to reduce complexity.
 
 from PyQt6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QTableWidget, 
-    QPushButton, QLabel, QWidget
+    QPushButton, QLabel, QWidget, QComboBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
@@ -71,6 +71,20 @@ class ReceivePanelBuilder:
         tracer_controls_widget = QWidget()
         tracer_controls_layout = QHBoxLayout(tracer_controls_widget)
         tracer_controls_layout.setContentsMargins(0, 5, 0, 5)
+        
+        # Channel selector dropdown (only visible when multiple channels are connected)
+        parent.tracer_channel_label = QLabel("Channel:")
+        parent.tracer_channel_label.setVisible(False)
+        tracer_controls_layout.addWidget(parent.tracer_channel_label)
+        
+        parent.tracer_channel_combo = QComboBox()
+        parent.tracer_channel_combo.setToolTip("Select channel to trace (ALL = all channels)")
+        parent.tracer_channel_combo.addItem("ALL")
+        parent.tracer_channel_combo.setVisible(False)
+        parent.tracer_channel_combo.setMinimumWidth(100)
+        tracer_controls_layout.addWidget(parent.tracer_channel_combo)
+        
+        tracer_controls_layout.addWidget(QLabel("|"))
         
         # Record button
         parent.btn_record = QPushButton("⏺ Record")

@@ -20,5 +20,11 @@ DEFAULT_DLC_STR = "8"
 # Default DLC when cell is empty (e.g. Bit Field Viewer fallback)
 DEFAULT_DLC_STR_EMPTY = "0"
 
+# Default transmit period (ms) for new messages and after Add
+DEFAULT_TX_PERIOD_MS = 100
+
+# Default TX Mode for new messages and after Add: "off", "on", or "trigger"
+DEFAULT_TX_MODE = "on"
+
 # Default list of bus names for gateway / multi-bus UI
 DEFAULT_BUS_NAMES = [DEFAULT_CHANNEL, DEFAULT_CHANNEL_SECOND]

@@ -85,11 +85,28 @@ class TransmitHandler:
             self.logger.debug(f"send_single: message_data={message_data}")
             self.logger.debug(f"send_single: target_bus={target_bus}")
             
+            # Support both 'can_id' (from table) and 'id' (from single-send form)
+            arbitration_id = message_data.get('can_id', message_data.get('id'))
+            if arbitration_id is None:
+                self.logger.error("Message data has neither 'can_id' nor 'id'")
+                return False
+            if isinstance(arbitration_id, str):
+                arbitration_id = int(arbitration_id.replace('0x', '').replace('0X', ''), 16)
+            
+            # Support both 'is_extended' and 'extended'
+            is_extended = message_data.get('is_extended', message_data.get('extended', False))
+            
+            data = message_data.get('data', b'')
+            if isinstance(data, str):
+                data = bytes.fromhex(data.replace(' ', ''))
+            elif not isinstance(data, (bytes, bytearray)):
+                data = b''
+            
             # Create CAN message
             can_msg = can.Message(
-                arbitration_id=message_data['can_id'],
-                data=message_data['data'],
-                is_extended_id=message_data.get('is_extended', False),
+                arbitration_id=arbitration_id,
+                data=data,
+                is_extended_id=is_extended,
                 is_remote_frame=message_data.get('is_rtr', False)
             )
             
@@ -109,9 +126,9 @@ class TransmitHandler:
             
             if success:
                 msg_type = "RTR" if message_data.get('is_rtr', False) else "Data"
-                self.logger.info(f"Sent {msg_type} 0x{message_data['can_id']:03X} to {target_bus or 'all'}")
+                self.logger.info(f"Sent {msg_type} 0x{arbitration_id:03X} to {target_bus or 'all'}")
             else:
-                self.logger.warning(f"Failed to send 0x{message_data['can_id']:03X}")
+                self.logger.warning(f"Failed to send 0x{arbitration_id:03X}")
             return success
             
         except Exception as e:
@@ -163,12 +180,13 @@ class TransmitHandler:
         self.logger.info(f"start_periodic: started periodic send for index {index} with period {period_ms}ms")
         return True
     
-    def stop_periodic(self, index: int) -> bool:
+    def stop_periodic(self, index: int, join_timeout: float = 0.15) -> bool:
         """
         Stop periodic transmission of a message.
         
         Args:
             index: Index of message in transmit list
+            join_timeout: Max seconds to wait for thread (avoid blocking UI)
             
         Returns:
             bool: True if stopped successfully
@@ -176,13 +194,13 @@ class TransmitHandler:
         if index not in self.periodic_threads:
             return False
         
-        # Signal stop
+        # Signal stop first so worker exits on next wait() or loop check
         self.periodic_stop_events[index].set()
         
-        # Wait for thread to finish
-        self.periodic_threads[index].join(timeout=1.0)
+        # Short wait so we don't freeze the UI (worker may still be in send_single)
+        self.periodic_threads[index].join(timeout=join_timeout)
         
-        # Clean up
+        # Clean up (thread may still be running if blocked on send - it's daemon)
         del self.periodic_threads[index]
         del self.periodic_stop_events[index]
         
@@ -192,11 +210,30 @@ class TransmitHandler:
         
         return True
     
-    def stop_all_periodic(self) -> None:
-        """Stop all periodic transmissions"""
+    def stop_all_periodic(self, join_timeout: float = 0.1) -> None:
+        """Stop all periodic transmissions without blocking the UI.
+        
+        Signals all workers to stop, then does a short join per thread.
+        Workers are daemon threads; any still blocked in send will exit when
+        send fails or when they check stop_event.
+        """
         indices = list(self.periodic_threads.keys())
+        if not indices:
+            self.periodic_send_active = False
+            return
+        # Signal all stop events first so workers see stop as soon as they wake
         for index in indices:
-            self.stop_periodic(index)
+            if index in self.periodic_stop_events:
+                self.periodic_stop_events[index].set()
+        # Short join per thread so UI stays responsive
+        for index in indices:
+            if index in self.periodic_threads:
+                self.periodic_threads[index].join(timeout=join_timeout)
+        # Clean up
+        for index in indices:
+            self.periodic_threads.pop(index, None)
+            self.periodic_stop_events.pop(index, None)
+        self.periodic_send_active = False
     
     def is_periodic_active(self, index: int) -> bool:
         """Check if periodic sending is active for a message"""

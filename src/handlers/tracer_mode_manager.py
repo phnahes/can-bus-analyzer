@@ -28,6 +28,8 @@ class TracerModeManager:
         """Toggle between Tracer and Monitor mode"""
         from ..i18n import t
         
+        # Store previous mode
+        was_tracer_mode = self.parent.tracer_mode
         self.parent.tracer_mode = not self.parent.tracer_mode
         self.parent.btn_tracer.setChecked(False)
         
@@ -35,6 +37,17 @@ class TracerModeManager:
             self.parent.btn_tracer.setText(f"📊 {t('btn_monitor')}")
         else:
             self.parent.btn_tracer.setText(f"📊 {t('btn_tracer')}")
+        
+        # If switching TO Tracer mode, disable split-screen
+        if self.parent.tracer_mode and self.parent.split_screen_mode:
+            self.parent.logger.info("Switching to Tracer mode: disabling split-screen")
+            self._disable_split_screen_for_tracer()
+        
+        # If switching FROM Tracer TO Monitor, restore split-screen if it was active before
+        if not self.parent.tracer_mode and was_tracer_mode and hasattr(self.parent, '_split_screen_was_active'):
+            if self.parent._split_screen_was_active:
+                self.parent.logger.info("Switching to Monitor mode: restoring split-screen")
+                self._restore_split_screen_for_monitor()
         
         self.parent.receive_table.setUpdatesEnabled(False)
         self.parent.receive_table.setRowCount(0)
@@ -45,16 +58,38 @@ class TracerModeManager:
         self.parent.receive_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         
         if self.parent.tracer_mode:
+            # Tracer mode: only populate if we have recorded messages
+            # Don't populate with all received_messages to avoid slowdown
             self._populate_tracer_mode()
         else:
+            # Monitor mode: populate with all received messages
             self._populate_monitor_mode()
         
         self.parent.receive_table.setUpdatesEnabled(True)
         self.parent.tracer_controls_widget.setVisible(self.parent.tracer_mode)
     
+    def _disable_split_screen_for_tracer(self):
+        """Disable split-screen when entering Tracer mode"""
+        # Store that split-screen was active
+        self.parent._split_screen_was_active = True
+        
+        # Restore single screen view
+        self.parent._setup_single_screen_view()
+        self.parent.split_screen_mode = False
+    
+    def _restore_split_screen_for_monitor(self):
+        """Restore split-screen when returning to Monitor mode"""
+        if self.parent.can_bus_manager and len(self.parent.can_bus_manager.get_bus_names()) >= 2:
+            # Re-enable split-screen with previous channels
+            self.parent.split_screen_mode = True
+            self.parent._setup_split_screen_view()
+            self.parent._split_screen_was_active = False
+    
     def _populate_tracer_mode(self):
-        """Populate table in tracer mode"""
+        """Populate table in tracer mode - shows recorded messages only"""
         recorded_messages = self.parent.recording_mgr.get_recorded_messages()
+        
+        self.parent.logger.info(f"Populating Tracer mode with {len(recorded_messages)} recorded messages")
         
         if len(recorded_messages) == 0:
             return
@@ -81,11 +116,14 @@ class TracerModeManager:
             self.parent.receive_table.setItem(row_idx, 7, QTableWidgetItem(msg.comment))
     
     def _populate_monitor_mode(self):
-        """Populate table in monitor mode"""
+        """Populate table in monitor mode - preserves all received messages"""
+        # Clear counters to recalculate from scratch
         self.parent.message_counters.clear()
         self.parent.message_last_timestamp.clear()
         
         total_messages = len(self.parent.received_messages)
+        
+        self.parent.logger.info(f"Populating Monitor mode with {total_messages} received messages")
         
         if total_messages == 0:
             return

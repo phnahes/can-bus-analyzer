@@ -77,7 +77,8 @@ class ConnectionManager:
                     channel=bus_cfg['channel'],
                     baudrate=bus_cfg['baudrate'],
                     listen_only=bus_cfg.get('listen_only', True),
-                    interface=bus_cfg.get('interface', 'socketcan')
+                    interface=bus_cfg.get('interface', 'socketcan'),
+                    receive_own_messages=bus_cfg.get('receive_own_messages', True)
                 )
                 self.can_bus_manager.add_bus(config)
             

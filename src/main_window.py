@@ -370,6 +370,30 @@ class CANAnalyzerWindow(QMainWindow):
             else:
                 parent.setTitle(t('label_receive'))
     
+    def update_tracer_channel_selector(self):
+        """Update tracer channel selector dropdown based on connected buses"""
+        if not hasattr(self, 'tracer_channel_combo'):
+            return
+        
+        # Clear existing items except "ALL"
+        self.tracer_channel_combo.clear()
+        self.tracer_channel_combo.addItem("ALL")
+        
+        # Add connected channels
+        if self.can_bus_manager:
+            bus_names = self.can_bus_manager.get_bus_names()
+            for bus_name in bus_names:
+                self.tracer_channel_combo.addItem(bus_name)
+            
+            # Show dropdown only if there are multiple channels
+            show_selector = len(bus_names) > 1
+            self.tracer_channel_label.setVisible(show_selector)
+            self.tracer_channel_combo.setVisible(show_selector)
+        else:
+            # No buses connected, hide selector
+            self.tracer_channel_label.setVisible(False)
+            self.tracer_channel_combo.setVisible(False)
+    
     def update_ui_translations(self):
         """Update all UI texts with current language translations"""
         self.setWindowTitle(f"{t('app_title')} - {get_platform_display_name()}")
@@ -455,7 +479,16 @@ class CANAnalyzerWindow(QMainWindow):
     def _on_can_message_received(self, bus_name: str, msg: CANMessage):
         """Callback when a CAN message is received from any bus"""
         self.message_queue.put(msg)
-        
+        # Debug: log receive flow (1st, 2nd, 3rd, then every 20th)
+        if not hasattr(self, '_rx_log_count'):
+            self._rx_log_count = 0
+        self._rx_log_count += 1
+        n = self._rx_log_count
+        if n <= 3 or n % 20 == 0:
+            self.logger.info(
+                f"RX queue: msg 0x{msg.can_id:03X} from '{msg.source}' "
+                f"(queue put #{n}, qsize≈{self.message_queue.qsize()})"
+            )
         if hasattr(self, '_obd2_dialog') and self._obd2_dialog:
             self._obd2_dialog.on_can_message(bus_name, msg)
     
@@ -484,9 +517,15 @@ class CANAnalyzerWindow(QMainWindow):
     def connect(self):
         """Connect to CAN bus (with multi-CAN support)"""
         self.connect_handler.connect()
+        # Update tracer channel dropdown after connection
+        self.update_tracer_channel_selector()
     
     def disconnect(self):
         """Disconnect from CAN bus"""
+        # Stop periodic send without blocking: tell transmit handler we're
+        # disconnecting so send_single returns immediately instead of blocking on bus
+        if self.transmit_handler:
+            self.transmit_handler.set_can_bus_manager(None)
         if self.periodic_send_active:
             self.stop_all()
         
@@ -509,6 +548,9 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_pause.setEnabled(False)
         self.btn_gateway.setEnabled(False)
         self.btn_record.setEnabled(False)
+        
+        # Update tracer channel dropdown after disconnection
+        self.update_tracer_channel_selector()
         
         if self.config.get('listen_only', True):
             self.mode_label.setText("Listen Only Mode")
@@ -549,6 +591,19 @@ class CANAnalyzerWindow(QMainWindow):
         if not self.recording_mgr.is_recording_active() and not self.connected:
             self.show_notification(t('notif_connect_first'), 3000)
             return
+        
+        # When starting recording, ensure we're in Tracer mode and full screen
+        if not self.recording_mgr.is_recording_active():
+            # Switch to Tracer mode if not already
+            if not self.tracer_mode:
+                self.toggle_tracer_mode()
+            
+            # Disable split-screen if active (Tracer always uses full screen)
+            if self.split_screen_mode:
+                self.logger.info("Recording started: disabling split-screen for Tracer")
+                self._setup_single_screen_view()
+                self.split_screen_mode = False
+        
         is_recording = self.recording_mgr.toggle_recording()
         self.recording = is_recording
         
@@ -671,14 +726,24 @@ class CANAnalyzerWindow(QMainWindow):
         """Add message in Tracer mode"""
         if not self.message_passes_filter(msg):
             return
-        
+        if not hasattr(self, '_table_add_count'):
+            self._table_add_count = 0
+        self._table_add_count += 1
+        n = self._table_add_count
+        if n <= 5 or n % 30 == 0:
+            self.logger.debug(f"Table: adding 0x{msg.can_id:03X} from '{msg.source}' (tracer, #{n})")
         self.receive_table_mgr.add_message_tracer(self.receive_table, msg, highlight)
     
     def add_message_monitor_mode(self, msg: CANMessage, highlight: bool = True, target_table: QTableWidget = None):
         """Add message in Monitor mode (grouped by ID)"""
         if not self.message_passes_filter(msg):
             return
-        
+        if not hasattr(self, '_table_add_count'):
+            self._table_add_count = 0
+        self._table_add_count += 1
+        n = self._table_add_count
+        if n <= 5 or n % 30 == 0:
+            self.logger.debug(f"Table: adding 0x{msg.can_id:03X} from '{msg.source}' (monitor, #{n})")
         table = target_table if target_table else self.receive_table
         
         self.receive_table_mgr.add_message_monitor(table, msg, self.colors, highlight)
@@ -896,6 +961,7 @@ class CANAnalyzerWindow(QMainWindow):
     def add_tx_message(self):
         """Add or update message in the transmit list"""
         self.transmit_table_mgr.add_message(self.transmit_table)
+        self.transmit_table_mgr.clear_fields()  # reset to defaults (period 100, TX mode on) for next add
     
     def load_tx_message_to_edit(self, item=None):
         """Load message from table into edit fields (double-click or copy)"""
@@ -1174,6 +1240,10 @@ class CANAnalyzerWindow(QMainWindow):
     def show_receive_context_menu(self, position):
         """Show context menu on main receive table"""
         self.context_menu_mgr.show_receive_menu(self.receive_table, position)
+    
+    def show_receive_context_menu_for_table(self, table: QTableWidget, position):
+        """Show context menu for a specific receive table (used in split-screen)"""
+        self.context_menu_mgr.show_receive_menu(table, position)
     
     def show_transmit_context_menu(self, position):
         """Show context menu on transmit table"""
@@ -1652,6 +1722,9 @@ class CANAnalyzerWindow(QMainWindow):
     def message_passes_filter(self, msg: CANMessage) -> bool:
         """Check if a message passes configured filters"""
         if not self.filter_mgr.message_passes_filter(msg):
+            self.logger.info(
+                f"Filter: blocked 0x{msg.can_id:03X} from '{msg.source}' (filter_mgr: enabled or ID filter)"
+            )
             return False
         
         if not self.message_filters['enabled']:
@@ -1676,11 +1749,16 @@ class CANAnalyzerWindow(QMainWindow):
                     self.logger.debug(f"message_passes_filter: [{msg.source}] id_match={id_match}, show_only={channel_show_only}")
                     # Whitelist: show only matching
                     if channel_show_only and not id_match:
-                        self.logger.debug(f"message_passes_filter: BLOCKED (whitelist, no match)")
+                        self.logger.info(
+                            f"Filter: blocked 0x{msg.can_id:03X} from '{msg.source}' "
+                            f"(channel whitelist, ID not in list)"
+                        )
                         return False
                     # Blacklist: hide matching
                     elif not channel_show_only and id_match:
-                        self.logger.debug(f"message_passes_filter: BLOCKED (blacklist, match)")
+                        self.logger.info(
+                            f"Filter: blocked 0x{msg.can_id:03X} from '{msg.source}' (channel blacklist)"
+                        )
                         return False
             # Check 'ALL' channel filter if no specific filter
             elif 'ALL' in channel_filters:
@@ -1693,11 +1771,16 @@ class CANAnalyzerWindow(QMainWindow):
                     self.logger.debug(f"message_passes_filter: [ALL] id_match={id_match}, show_only={channel_show_only}")
                     # Whitelist: show only matching
                     if channel_show_only and not id_match:
-                        self.logger.debug(f"message_passes_filter: BLOCKED (whitelist, no match)")
+                        self.logger.info(
+                            f"Filter: blocked 0x{msg.can_id:03X} from '{msg.source}' "
+                            f"(ALL channel whitelist, ID not in list)"
+                        )
                         return False
                     # Blacklist: hide matching
                     elif not channel_show_only and id_match:
-                        self.logger.debug(f"message_passes_filter: BLOCKED (blacklist, match)")
+                        self.logger.info(
+                            f"Filter: blocked 0x{msg.can_id:03X} from '{msg.source}' (ALL channel blacklist)"
+                        )
                         return False
         
         # Check data filters (all must match)
@@ -1899,7 +1982,18 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_gateway.setChecked(False)
     
     def toggle_split_screen(self):
-        """Toggle split-screen mode"""
+        """Toggle split-screen mode (only available in Monitor mode)"""
+        # Split-screen is only for Monitor mode, not Tracer
+        if self.tracer_mode:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "Split-screen unavailable",
+                "Split-screen mode is only available in Monitor mode.\n\n"
+                "Tracer mode always displays messages in full screen chronologically."
+            )
+            return
+        
         result = self.split_screen_mgr.toggle(self.can_bus_manager)
         self.split_screen_mode = self.split_screen_mgr.is_active
         
@@ -1954,7 +2048,10 @@ class CANAnalyzerWindow(QMainWindow):
         table_widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table_widget.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        table_widget.customContextMenuRequested.connect(self.show_receive_context_menu)
+        # Use lambda to pass the correct table widget to the context menu
+        table_widget.customContextMenuRequested.connect(
+            lambda pos, table=table_widget: self.show_receive_context_menu_for_table(table, pos)
+        )
         
         header = table_widget.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)

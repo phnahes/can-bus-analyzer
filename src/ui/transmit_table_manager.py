@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QMessageBox
 from PyQt6.QtCore import Qt
 from typing import Dict, List, Optional
 
-from ..config import DEFAULT_CHANNEL
+from ..config import DEFAULT_CHANNEL, DEFAULT_TX_PERIOD_MS, DEFAULT_TX_MODE
 
 
 class TransmitTableManager:
@@ -26,15 +26,15 @@ class TransmitTableManager:
         self.editing_row = -1
     
     def clear_fields(self):
-        """Clear all transmit edit fields"""
+        """Clear all transmit edit fields (defaults from config: period, TX mode)"""
         self.parent.tx_id_input.setText("000")
         self.parent.tx_dlc_input.setValue(8)
         self.parent.tx_29bit_check.setChecked(False)
         self.parent.tx_rtr_check.setChecked(False)
         for i in range(8):
             self.parent.tx_data_bytes[i].setText("00")
-        self.parent.tx_period_input.setText("0")
-        self.parent.tx_mode_combo.setCurrentIndex(0)
+        self.parent.tx_period_input.setText(str(DEFAULT_TX_PERIOD_MS))
+        self.parent.tx_mode_combo.setCurrentText(DEFAULT_TX_MODE)
         self.parent.trigger_id_input.setText("")
         self.parent.trigger_data_input.setText("")
         self.parent.tx_comment_input.setText("")

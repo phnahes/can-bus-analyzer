@@ -148,7 +148,8 @@ class TransmitPanelBuilder:
         
         row1.addWidget(QLabel("│"))
         row1.addWidget(QLabel("Period:"))
-        parent.tx_period_input = QLineEdit("0")
+        from ..config import DEFAULT_TX_PERIOD_MS
+        parent.tx_period_input = QLineEdit(str(DEFAULT_TX_PERIOD_MS))
         parent.tx_period_input.setMaximumWidth(70)
         parent.tx_period_input.setPlaceholderText("ms")
         row1.addWidget(parent.tx_period_input)
@@ -194,9 +195,10 @@ class TransmitPanelBuilder:
         row3 = QHBoxLayout()
         
         row3.addWidget(QLabel("TX Mode:"))
+        from ..config import DEFAULT_TX_MODE
         parent.tx_mode_combo = QComboBox()
         parent.tx_mode_combo.addItems(["off", "on", "trigger"])
-        parent.tx_mode_combo.setCurrentText("on")  # Default to "on"
+        parent.tx_mode_combo.setCurrentText(DEFAULT_TX_MODE)
         parent.tx_mode_combo.setMaximumWidth(100)
         row3.addWidget(parent.tx_mode_combo)
         

@@ -31,6 +31,7 @@ class CANBusConfig:
     baudrate: int
     listen_only: bool = True
     interface: str = 'socketcan'  # socketcan, slcan, etc.
+    receive_own_messages: bool = True  # if True, this channel sees its own TX (for display)
     
     def __post_init__(self):
         """Validate configuration"""
@@ -72,17 +73,22 @@ class CANBusInstance:
             
             # Detect interface type from channel
             interface = self.config.interface
-            if self.config.channel.startswith('/dev/tty') or self.config.channel.startswith('COM'):
+            channel = self.config.channel
+            is_serial = (channel.startswith('/dev/tty') or channel.startswith('/dev/cu.') or
+                        channel.startswith('COM'))
+            if is_serial:
                 interface = 'slcan'
-            elif self.config.channel in ['can0', 'can1', 'vcan0', 'vcan1']:
+            elif channel in ['can0', 'can1', 'vcan0', 'vcan1']:
                 interface = 'socketcan'
             
-            # Create CAN bus
+            # receive_own_messages=True: the channel that sends also sees its own frames
+            # (so e.g. CAN2 TX appears in CAN2 receive pane). Set False to hide own TX.
+            receive_own = getattr(self.config, 'receive_own_messages', True)
             self.bus = can.interface.Bus(
                 channel=self.config.channel,
                 interface=interface,
                 bitrate=self.config.baudrate,
-                receive_own_messages=False
+                receive_own_messages=receive_own
             )
             
             self.connected = True

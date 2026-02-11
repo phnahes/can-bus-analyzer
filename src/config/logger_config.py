@@ -22,7 +22,7 @@ class LoggerConfig:
     BACKUP_COUNT = 5  # Number of backup log files to keep
     
     # Log levels
-    FILE_LOG_LEVEL = logging.DEBUG      # Level for file logs
+    FILE_LOG_LEVEL = logging.INFO      # Level for file logs
     CONSOLE_LOG_LEVEL = logging.INFO    # Level for console output
     
     # Log format strings
