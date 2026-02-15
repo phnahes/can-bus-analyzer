@@ -1,0 +1,57 @@
+{
+  "version": "1.0",
+  "transmit_messages": [
+    {
+      "id": "160",
+      "dlc": 8,
+      "rtr": false,
+      "data": "0010203040506070",
+      "period": "160",
+      "tx_mode": "on",
+      "trigger_id": "",
+      "trigger_data": "",
+      "count": 10140,
+      "comment": "",
+      "source": "CAN2"
+    },
+    {
+      "id": "250",
+      "dlc": 8,
+      "rtr": false,
+      "data": "AABBCCDDEEFF0000",
+      "period": "250",
+      "tx_mode": "on",
+      "trigger_id": "",
+      "trigger_data": "",
+      "count": 1790,
+      "comment": "",
+      "source": "CAN1"
+    },
+    {
+      "id": "322",
+      "dlc": 8,
+      "rtr": false,
+      "data": "AA0000BB0000CC00",
+      "period": "1000",
+      "tx_mode": "on",
+      "trigger_id": "",
+      "trigger_data": "",
+      "count": 10,
+      "comment": "",
+      "source": "CAN1"
+    },
+    {
+      "id": "556",
+      "dlc": 6,
+      "rtr": false,
+      "data": "6666ACAFFFFF",
+      "period": "300",
+      "tx_mode": "on",
+      "trigger_id": "",
+      "trigger_data": "",
+      "count": 33,
+      "comment": "",
+      "source": "CAN2"
+    }
+  ]
+}
