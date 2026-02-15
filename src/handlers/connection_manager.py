@@ -21,7 +21,8 @@ class ConnectionManager:
                  message_callback: Callable,
                  logger: Any,
                  config: Dict,
-                 config_manager):
+                 config_manager,
+                 disconnect_callback: Optional[Callable] = None):
         """
         Initialize connection manager
         
@@ -30,8 +31,10 @@ class ConnectionManager:
             logger: Logger instance
             config: Configuration dictionary
             config_manager: Configuration manager instance
+            disconnect_callback: Callback when device disconnects
         """
         self.message_callback = message_callback
+        self.disconnect_callback = disconnect_callback
         self.logger = logger
         self.config = config
         self.config_manager = config_manager
@@ -64,7 +67,8 @@ class ConnectionManager:
             # Initialize CANBusManager
             self.can_bus_manager = CANBusManager(
                 message_callback=self.message_callback,
-                logger=self.logger
+                logger=self.logger,
+                disconnect_callback=self.disconnect_callback
             )
             
             # Load CAN buses from config

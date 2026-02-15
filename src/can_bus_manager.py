@@ -20,7 +20,7 @@ except ImportError:
     CAN_AVAILABLE = False
     print("python-can not installed. Simulation mode activated.")
 
-from .models import CANMessage, GatewayConfig
+from .models import CANMessage, GatewayConfig, GatewayRoute
 
 
 @dataclass
@@ -44,14 +44,20 @@ class CANBusConfig:
 class CANBusInstance:
     """Represents a single CAN bus interface"""
     
-    def __init__(self, config: CANBusConfig, message_callback: Optional[Callable] = None):
+    def __init__(self, config: CANBusConfig, message_callback: Optional[Callable] = None, disconnect_callback: Optional[Callable] = None):
         self.config = config
         self.bus: Optional[can.BusABC] = None
         self.thread: Optional[threading.Thread] = None
         self.running = False
         self.connected = False
         self.message_callback = message_callback
+        self.disconnect_callback = disconnect_callback  # Callback when device disconnects
         self._lock = threading.Lock()
+        self._consecutive_errors = 0  # Track consecutive errors for disconnect detection
+        self._max_consecutive_errors = 50  # Threshold for considering device disconnected
+        self._last_message_time = 0  # Track last message received time
+        self._watchdog_timeout = 10.0  # Seconds without messages before checking connection
+        self._watchdog_thread: Optional[threading.Thread] = None
     
     def connect(self) -> bool:
         """Connect to the CAN bus"""
@@ -93,12 +99,24 @@ class CANBusInstance:
             
             self.connected = True
             self.running = True
+            self._last_message_time = time.time()  # Initialize watchdog timer
+            
+            # Start receive thread
             self.thread = threading.Thread(
                 target=self._receive_loop,
                 daemon=True,
                 name=f"CANRx-{self.config.name}"
             )
             self.thread.start()
+            
+            # Start watchdog thread for serial devices
+            if self.config.channel.startswith('/dev/') or self.config.channel.startswith('COM'):
+                self._watchdog_thread = threading.Thread(
+                    target=self._connection_watchdog,
+                    daemon=True,
+                    name=f"CANWatch-{self.config.name}"
+                )
+                self._watchdog_thread.start()
             
             print(f"[{self.config.name}] Connected: {self.config.channel} @ {self.config.baudrate} bps")
             return True
@@ -112,8 +130,12 @@ class CANBusInstance:
         """Disconnect from the CAN bus"""
         self.running = False
         
+        # Wait for threads to finish
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.0)
+        
+        if self._watchdog_thread and self._watchdog_thread.is_alive():
+            self._watchdog_thread.join(timeout=1.0)
         
         if self.bus:
             try:
@@ -184,21 +206,46 @@ class CANBusInstance:
                             source=self.config.name  # Mark source bus
                         )
                         self.message_callback(self.config.name, can_msg)
-                        # Reset error count on successful receive
+                        # Reset error counts on successful receive
                         error_count = 0
+                        self._consecutive_errors = 0
+                        self._last_message_time = time.time()  # Update watchdog timer
                 else:
                     time.sleep(0.1)
             except Exception as e:
                 if self.running:  # Only log if not shutting down
                     # Suppress repetitive serial/parsing errors (common with SLCAN noise)
                     error_str = str(e)
+                    
+                    # Check for critical disconnect errors
+                    is_disconnect_error = any(x in error_str for x in [
+                        'device disconnected', 'Device or resource busy',
+                        'No such file or directory', 'I/O error',
+                        'device reports readiness', 'Errno 5', 'Errno 6',
+                        'Errno 19'  # ENODEV - No such device
+                    ])
+                    
                     is_parse_error = any(x in error_str for x in [
                         'invalid literal', 'non-hexadecimal', 'Could not read from serial'
                     ])
                     
                     current_time = time.time()
                     
-                    if is_parse_error:
+                    if is_disconnect_error:
+                        # Critical error - device likely disconnected
+                        self._consecutive_errors += 1
+                        print(f"[{self.config.name}] Critical error detected: {e}")
+                        
+                        if self._consecutive_errors >= self._max_consecutive_errors:
+                            print(f"[{self.config.name}] Device appears to be disconnected (too many errors)")
+                            # Notify disconnect callback
+                            if self.disconnect_callback:
+                                self.disconnect_callback(self.config.name, error_str)
+                            # Auto-disconnect
+                            self.running = False
+                            self.connected = False
+                            break
+                    elif is_parse_error:
                         error_count += 1
                         # Only log every 10th error or every 5 seconds
                         if error_count % 10 == 1 or (current_time - last_error_time) > 5.0:
@@ -206,9 +253,69 @@ class CANBusInstance:
                             last_error_time = current_time
                     else:
                         # Log non-parse errors normally
+                        self._consecutive_errors += 1
                         print(f"[{self.config.name}] Receive error: {e}")
+                        
+                        # Check if too many consecutive errors
+                        if self._consecutive_errors >= self._max_consecutive_errors:
+                            print(f"[{self.config.name}] Too many consecutive errors, assuming device disconnected")
+                            if self.disconnect_callback:
+                                self.disconnect_callback(self.config.name, error_str)
+                            self.running = False
+                            self.connected = False
+                            break
                 
                 time.sleep(0.1)
+    
+    def _connection_watchdog(self):
+        """Monitor connection health and detect silent disconnections"""
+        print(f"[{self.config.name}] Connection watchdog started")
+        
+        while self.running and self.connected:
+            time.sleep(2.0)  # Check every 2 seconds
+            
+            if not self.running:
+                break
+            
+            # Check if we haven't received messages for too long
+            time_since_last_msg = time.time() - self._last_message_time
+            
+            if time_since_last_msg > self._watchdog_timeout:
+                # No messages for too long - check if device is still there
+                print(f"[{self.config.name}] Watchdog: No messages for {time_since_last_msg:.1f}s, checking connection...")
+                
+                # Try to verify if device is still connected
+                if self.bus:
+                    try:
+                        # For serial devices, check if port is still accessible
+                        if hasattr(self.bus, 'bus') and hasattr(self.bus.bus, 'is_open'):
+                            if not self.bus.bus.is_open:
+                                print(f"[{self.config.name}] Watchdog: Serial port is closed!")
+                                if self.disconnect_callback:
+                                    self.disconnect_callback(self.config.name, "Serial port closed")
+                                self.running = False
+                                self.connected = False
+                                break
+                        
+                        # Check if we can still access the device file (for serial devices)
+                        import os
+                        if self.config.channel.startswith('/dev/'):
+                            if not os.path.exists(self.config.channel):
+                                print(f"[{self.config.name}] Watchdog: Device file no longer exists!")
+                                if self.disconnect_callback:
+                                    self.disconnect_callback(self.config.name, "Device file removed")
+                                self.running = False
+                                self.connected = False
+                                break
+                    except Exception as e:
+                        print(f"[{self.config.name}] Watchdog: Error checking connection: {e}")
+                        if self.disconnect_callback:
+                            self.disconnect_callback(self.config.name, f"Connection check failed: {e}")
+                        self.running = False
+                        self.connected = False
+                        break
+        
+        print(f"[{self.config.name}] Connection watchdog stopped")
     
     def _receive_loop_simulation(self):
         """Simulation mode receive loop"""
@@ -240,9 +347,10 @@ class CANBusInstance:
 class CANBusManager:
     """Manages multiple CAN bus instances with Gateway support"""
     
-    def __init__(self, message_callback: Optional[Callable[[CANMessage], None]] = None, logger=None):
+    def __init__(self, message_callback: Optional[Callable[[CANMessage], None]] = None, logger=None, disconnect_callback: Optional[Callable] = None):
         self.buses: Dict[str, CANBusInstance] = {}
         self.message_callback = message_callback
+        self.disconnect_callback = disconnect_callback  # Callback when device disconnects
         self.logger = logger
         self._lock = threading.Lock()
         
@@ -255,8 +363,12 @@ class CANBusManager:
         self.gateway_stats = {
             'forwarded': 0,
             'blocked': 0,
-            'modified': 0
+            'modified': 0,
+            'loops_prevented': 0
         }
+        
+        # Statistics per route (for bidirectional tracking)
+        self.route_stats: Dict[str, int] = {}  # key: "source->destination", value: count
     
     def add_bus(self, config: CANBusConfig) -> bool:
         """Add a CAN bus to the manager"""
@@ -265,7 +377,7 @@ class CANBusManager:
                 print(f"Bus '{config.name}' already exists")
                 return False
             
-            bus_instance = CANBusInstance(config, self._on_message_received)
+            bus_instance = CANBusInstance(config, self._on_message_received, self._on_device_disconnected)
             self.buses[config.name] = bus_instance
             print(f"Bus '{config.name}' added")
             return True
@@ -341,20 +453,41 @@ class CANBusManager:
         """Check if a specific bus is connected"""
         return name in self.buses and self.buses[name].connected
     
+    def get_connection_status(self) -> Dict[str, bool]:
+        """Get connection status for all buses
+        
+        Returns:
+            Dictionary mapping bus name to connection status
+        """
+        return {name: bus.connected for name, bus in self.buses.items()}
+    
     def set_message_callback(self, callback: Callable[[str, CANMessage], None]):
         """Set callback for received messages. Signature: callback(bus_name, message)"""
         self.message_callback = callback
     
     def _on_message_received(self, bus_name: str, msg: CANMessage):
         """Internal callback that forwards to user callback and handles gateway"""
-        # Process gateway if enabled
+        # Process gateway if enabled (but don't block display)
         if self.gateway_config and self.gateway_config.enabled:
             self._process_gateway_message(msg)
         
-        # Forward to user callback
+        # ALWAYS forward to user callback (UI display)
+        # The UI should show everything the interface receives
         if self.message_callback:
             # Forward with bus_name and message
             self.message_callback(bus_name, msg)
+    
+    def _on_device_disconnected(self, bus_name: str, error_msg: str):
+        """Internal callback when a device is physically disconnected"""
+        print(f"[CANBusManager] Device disconnected: {bus_name} - {error_msg}")
+        
+        # Mark bus as disconnected
+        if bus_name in self.buses:
+            self.buses[bus_name].connected = False
+        
+        # Notify parent callback if available
+        if self.disconnect_callback:
+            self.disconnect_callback(bus_name, error_msg)
     
     def get_bus_info(self, name: str) -> Optional[Dict]:
         """Get information about a bus"""
@@ -411,42 +544,102 @@ class CANBusManager:
         self.gateway_stats = {
             'forwarded': 0,
             'blocked': 0,
-            'modified': 0
+            'modified': 0,
+            'loops_prevented': 0
         }
+        self.route_stats.clear()
     
     def _process_gateway_message(self, msg: CANMessage):
-        """Process message through gateway rules"""
+        """Process message through gateway rules with loop prevention"""
         if not self.gateway_config or not self.gateway_config.enabled:
             return
         
-        # Check if message should be blocked
-        if self.gateway_config.should_block(msg):
-            self.gateway_stats['blocked'] += 1
+        # Loop prevention: check if message already processed by gateway
+        if self.gateway_config.loop_prevention_enabled and msg.gateway_processed:
+            self.gateway_stats['loops_prevented'] += 1
+            msg.gateway_action = "loop_prevented"
+            if self.logger:
+                self.logger.debug(f"Loop prevented: ID 0x{msg.can_id:03X} from {msg.source} (already processed)")
             return
         
-        # Check if message should be modified
-        modify_rule = self.gateway_config.get_modify_rule(msg)
-        if modify_rule:
-            msg = modify_rule.apply(msg)
-            self.gateway_stats['modified'] += 1
-        
-        # Determine target bus based on routes (new method)
-        target_bus = self.gateway_config.get_destination_for_source(msg.source)
+        # Find all active routes from this source
+        active_routes = [r for r in self.gateway_config.routes if r.enabled and r.source == msg.source]
         
         # Fallback to old method for backward compatibility
-        if not target_bus:
+        if not active_routes:
             bus_names = self.get_bus_names()
             if len(bus_names) >= 2:
                 bus1, bus2 = bus_names[0], bus_names[1]
                 if msg.source == bus1 and self.gateway_config.transmit_1_to_2:
-                    target_bus = bus2
+                    active_routes.append(GatewayRoute(source=bus1, destination=bus2, enabled=True))
                 elif msg.source == bus2 and self.gateway_config.transmit_2_to_1:
-                    target_bus = bus1
+                    active_routes.append(GatewayRoute(source=bus2, destination=bus1, enabled=True))
         
-        # Send to target bus if determined
-        if target_bus and target_bus in self.buses:
-            if self.send_to(target_bus, msg):
-                self.gateway_stats['forwarded'] += 1
+        # Track if message was blocked or forwarded
+        was_blocked = False
+        was_forwarded = False
+        was_modified = False
+        
+        # Process each active route
+        for route in active_routes:
+            target_bus = route.destination
+            
+            # Check if message should be blocked for this specific route
+            if self.gateway_config.should_block(msg, target_bus):
+                self.gateway_stats['blocked'] += 1
+                was_blocked = True
+                if self.logger:
+                    self.logger.debug(f"Blocked: ID 0x{msg.can_id:03X} from {msg.source} to {target_bus}")
+                continue
+            
+            # Check if message should be modified for this specific route
+            modify_rule = self.gateway_config.get_modify_rule(msg, target_bus)
+            forwarded_msg = msg
+            if modify_rule:
+                forwarded_msg = modify_rule.apply(msg)
+                self.gateway_stats['modified'] += 1
+                was_modified = True
+                if self.logger:
+                    self.logger.debug(f"Modified: ID 0x{msg.can_id:03X} from {msg.source} to {target_bus}")
+            
+            # Mark message as processed to prevent loops
+            if self.gateway_config.loop_prevention_enabled:
+                # Create a copy with gateway_processed flag set
+                forwarded_msg = CANMessage(
+                    timestamp=forwarded_msg.timestamp,
+                    can_id=forwarded_msg.can_id,
+                    dlc=forwarded_msg.dlc,
+                    data=forwarded_msg.data,
+                    comment=forwarded_msg.comment,
+                    period=forwarded_msg.period,
+                    count=forwarded_msg.count,
+                    channel=forwarded_msg.channel,
+                    is_extended=forwarded_msg.is_extended,
+                    is_rtr=forwarded_msg.is_rtr,
+                    source=forwarded_msg.source,
+                    gateway_processed=True  # Mark as processed
+                )
+            
+            # Send to target bus
+            if target_bus and target_bus in self.buses:
+                if self.send_to(target_bus, forwarded_msg):
+                    self.gateway_stats['forwarded'] += 1
+                    was_forwarded = True
+                    
+                    # Update per-route statistics
+                    route_key = f"{msg.source}->{target_bus}"
+                    self.route_stats[route_key] = self.route_stats.get(route_key, 0) + 1
+                    
+                    if self.logger:
+                        self.logger.debug(f"Forwarded: ID 0x{msg.can_id:03X} from {msg.source} to {target_bus}")
+        
+        # Mark the original message with gateway action for UI display
+        if was_blocked and not was_forwarded:
+            msg.gateway_action = "blocked"
+        elif was_modified:
+            msg.gateway_action = "modified"
+        elif was_forwarded:
+            msg.gateway_action = "forwarded"
     
     def _start_dynamic_blocking(self):
         """Start thread for dynamic blocking"""

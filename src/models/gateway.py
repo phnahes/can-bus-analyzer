@@ -11,12 +11,32 @@ from .can_message import CANMessage
 class GatewayBlockRule:
     """Message blocking rule in Gateway"""
     can_id: int
-    channel: str  # Channel name (CAN1, CAN2, etc.)
+    channel: str  # Source channel name (CAN1, CAN2, etc.)
     enabled: bool = True
+    destination: Optional[str] = None  # If set, only blocks for this specific destination
+    block_display: bool = True  # If True, also blocks message from appearing in UI
     
-    def matches(self, msg_id: int, msg_channel: str) -> bool:
-        """Check if message should be blocked"""
-        return self.enabled and self.can_id == msg_id and self.channel == msg_channel
+    def matches(self, msg_id: int, msg_channel: str, target_channel: Optional[str] = None) -> bool:
+        """Check if message should be blocked
+        
+        Args:
+            msg_id: CAN message ID
+            msg_channel: Source channel of the message
+            target_channel: Destination channel (for directional rules)
+        """
+        if not self.enabled:
+            return False
+        
+        # Check ID and source channel
+        if self.can_id != msg_id or self.channel != msg_channel:
+            return False
+        
+        # If destination is specified, check if it matches
+        if self.destination is not None and target_channel is not None:
+            return self.destination == target_channel
+        
+        # If no destination specified, block for all routes
+        return True
 
 
 @dataclass
@@ -47,12 +67,35 @@ class GatewayDynamicBlock:
 class GatewayModifyRule:
     """Rule to modify messages in Gateway"""
     can_id: int
-    channel: str
+    channel: str  # Source channel
     enabled: bool = True
+    destination: Optional[str] = None  # If set, only applies for this specific destination
     # Possible modifications
     new_id: Optional[int] = None  # New ID (if None, keep original)
     data_mask: List[bool] = field(default_factory=lambda: [False] * 8)  # Which bytes to modify
     new_data: bytes = bytes([0x00] * 8)  # New values for marked bytes
+    
+    def matches(self, msg_id: int, msg_channel: str, target_channel: Optional[str] = None) -> bool:
+        """Check if rule applies to this message
+        
+        Args:
+            msg_id: CAN message ID
+            msg_channel: Source channel of the message
+            target_channel: Destination channel (for directional rules)
+        """
+        if not self.enabled:
+            return False
+        
+        # Check ID and source channel
+        if self.can_id != msg_id or self.channel != msg_channel:
+            return False
+        
+        # If destination is specified, check if it matches
+        if self.destination is not None and target_channel is not None:
+            return self.destination == target_channel
+        
+        # If no destination specified, apply for all routes
+        return True
     
     def apply(self, msg: CANMessage) -> CANMessage:
         """Apply modifications to message"""
@@ -79,7 +122,8 @@ class GatewayModifyRule:
             channel=msg.channel,
             is_extended=msg.is_extended,
             is_rtr=msg.is_rtr,
-            source=msg.source
+            source=msg.source,
+            gateway_processed=msg.gateway_processed
         )
 
 
@@ -113,6 +157,10 @@ class GatewayConfig:
     # State
     enabled: bool = False
     
+    # Loop prevention settings
+    loop_prevention_enabled: bool = True  # Enable loop prevention
+    max_hops: int = 1  # Maximum number of times a message can pass through gateway
+    
     def get_destination_for_source(self, source: str) -> Optional[str]:
         """Return destination for a specific source, if enabled"""
         for route in self.routes:
@@ -124,11 +172,16 @@ class GatewayConfig:
         """Check if there's an active route for the source"""
         return any(r.enabled and r.source == source for r in self.routes)
     
-    def should_block(self, msg: CANMessage) -> bool:
-        """Check if message should be blocked"""
+    def should_block(self, msg: CANMessage, target_channel: Optional[str] = None) -> bool:
+        """Check if message should be blocked
+        
+        Args:
+            msg: The CAN message to check
+            target_channel: The destination channel (for directional rules)
+        """
         # Check static blocks
         for rule in self.block_rules:
-            if rule.matches(msg.can_id, msg.source):
+            if rule.matches(msg.can_id, msg.source, target_channel):
                 return True
         
         # Check dynamic blocks
@@ -139,10 +192,37 @@ class GatewayConfig:
         
         return False
     
-    def get_modify_rule(self, msg: CANMessage) -> Optional[GatewayModifyRule]:
-        """Return modification rule for message, if exists"""
+    def should_block_display(self, msg: CANMessage) -> bool:
+        """Check if message should be blocked from UI display
+        
+        Args:
+            msg: The CAN message to check
+        """
+        # Check static blocks with block_display enabled
+        for rule in self.block_rules:
+            if rule.enabled and rule.block_display:
+                if rule.can_id == msg.can_id and rule.channel == msg.source:
+                    # If destination is None, block for all
+                    if rule.destination is None:
+                        return True
+        
+        # Check dynamic blocks (always block display)
+        for dyn_block in self.dynamic_blocks:
+            if dyn_block.enabled and dyn_block.channel == msg.source:
+                if msg.can_id == dyn_block.get_current_blocked_id():
+                    return True
+        
+        return False
+    
+    def get_modify_rule(self, msg: CANMessage, target_channel: Optional[str] = None) -> Optional[GatewayModifyRule]:
+        """Return modification rule for message, if exists
+        
+        Args:
+            msg: The CAN message to check
+            target_channel: The destination channel (for directional rules)
+        """
         for rule in self.modify_rules:
-            if rule.enabled and rule.can_id == msg.can_id and rule.channel == msg.source:
+            if rule.matches(msg.can_id, msg.source, target_channel):
                 return rule
         return None
     
@@ -156,8 +236,16 @@ class GatewayConfig:
             'transmit_1_to_2': self.transmit_1_to_2,
             'transmit_2_to_1': self.transmit_2_to_1,
             'enabled': self.enabled,
+            'loop_prevention_enabled': self.loop_prevention_enabled,
+            'max_hops': self.max_hops,
             'block_rules': [
-                {'can_id': r.can_id, 'channel': r.channel, 'enabled': r.enabled}
+                {
+                    'can_id': r.can_id,
+                    'channel': r.channel,
+                    'enabled': r.enabled,
+                    'destination': r.destination,
+                    'block_display': r.block_display
+                }
                 for r in self.block_rules
             ],
             'dynamic_blocks': [
@@ -175,6 +263,7 @@ class GatewayConfig:
                     'can_id': r.can_id,
                     'channel': r.channel,
                     'enabled': r.enabled,
+                    'destination': r.destination,
                     'new_id': r.new_id,
                     'data_mask': r.data_mask,
                     'new_data': r.new_data.hex()
@@ -189,7 +278,9 @@ class GatewayConfig:
         config = cls(
             transmit_1_to_2=data.get('transmit_1_to_2', False),
             transmit_2_to_1=data.get('transmit_2_to_1', False),
-            enabled=data.get('enabled', False)
+            enabled=data.get('enabled', False),
+            loop_prevention_enabled=data.get('loop_prevention_enabled', True),
+            max_hops=data.get('max_hops', 1)
         )
         
         # Load routes (new format)
@@ -205,7 +296,9 @@ class GatewayConfig:
             config.block_rules.append(GatewayBlockRule(
                 can_id=rule_data['can_id'],
                 channel=rule_data['channel'],
-                enabled=rule_data.get('enabled', True)
+                enabled=rule_data.get('enabled', True),
+                destination=rule_data.get('destination'),
+                block_display=rule_data.get('block_display', True)
             ))
         
         # Load dynamic blocks
@@ -224,6 +317,7 @@ class GatewayConfig:
                 can_id=mod_data['can_id'],
                 channel=mod_data['channel'],
                 enabled=mod_data.get('enabled', True),
+                destination=mod_data.get('destination'),
                 new_id=mod_data.get('new_id'),
                 data_mask=mod_data.get('data_mask', [False] * 8),
                 new_data=bytes.fromhex(mod_data.get('new_data', '0000000000000000'))

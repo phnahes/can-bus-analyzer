@@ -1,6 +1,6 @@
 # CAN Analyzer
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 A comprehensive CAN bus analyzer with SLCAN support, protocol decoders, and real-time analysis. Built with Python and PyQt6. **Runs on macOS and Linux.**
@@ -61,6 +61,8 @@ python can_analyzer.py
 |:---:|:---:|
 | ![CAN Bus Config](docs/images/image3.png) | ![Bit Viewer](docs/images/image4.png) |
 | *Multi-CAN Bus Configuration* | *Bit Field Viewer* |
+| ![Dual Device Connection](docs/images/image16.png) | |
+| *Connected to Two CAN Devices Simultaneously* | |
 
 ### Split-Screen Monitor (Dual Channel View)
 | | |
@@ -71,14 +73,16 @@ python can_analyzer.py
 | *Multi-CAN Without Split* | *Split-Screen Channel Selection Dialog* |
 | ![Split with Active TX](docs/images/image9.png) | ![Tracer Multi-CAN](docs/images/image10.png) |
 | *Split-Screen + Active Transmission* | *Tracer Mode with Multi-CAN* |
+| ![Multi-Channel Tracer](docs/images/image17.png) | |
+| *Tracer Mode - Multiple Channels with Gateway Indicators* | |
 
 ### CAN Gateway (Message Routing & Modification)
 | | |
 |:---:|:---:|
 | ![Gateway Configuration](docs/images/image11.png) | ![Message Modification Editor](docs/images/image12.png) |
 | *Gateway Basic Configuration* | *Bit-Level Message Modification* |
-| ![Modified Message Result](docs/images/image13.png) | |
-| *Original vs Modified Message Result* | |
+| ![Modified Message Result](docs/images/image13.png) | ![Gateway Visual Indicators](docs/images/image15.png) |
+| *Original vs Modified Message Result* | *Gateway Action Indicators (🚫 blocked, ➡️ forwarded, ✏️ modified)* |
 
 ---
 
@@ -378,29 +382,47 @@ Automatically send a CAN message when a specific message is received. You define
 
 Replay previously recorded traffic back onto the bus. In **Tracer** mode, use **Record** to capture messages; then **Play All** or **Play Selected** sends them with the same timing. Requires an active connection. Use it to reproduce scenarios, test other nodes, or repeat a sequence without manual retyping.
 
-### **CAN Gateway**
+### **CAN Gateway** 🌉
 
-Bridge and filter messages between two CAN buses. The Gateway feature allows you to:
+Bridge and filter messages between multiple CAN buses with intelligent routing and real-time control. The Gateway feature allows you to:
 
-- **Bidirectional Transmission**: Control message flow from CAN1→CAN2 and/or CAN2→CAN1
-- **Static Blocking**: Block specific message IDs on specific channels
-- **Dynamic Blocking**: Automatically cycle through a range of IDs, blocking each for a specified period
-- **Message Modification**: Modify message IDs and data bytes as they pass through the gateway
-- **Statistics**: Track forwarded, blocked, and modified messages in real-time
+**Core Features:**
+- **Bidirectional Routes**: Configure message flow in both directions (CAN1↔CAN2) with automatic loop prevention
+- **Static Blocking**: Block specific message IDs from being forwarded
+- **Dynamic Blocking**: Automatically cycle through ID ranges, blocking each for a specified period
+- **Message Modification**: Modify message IDs and data bytes as they pass through
+- **Directional Rules**: Apply different rules based on route direction
+- **Visual Indicators**: Real-time feedback showing gateway actions (🚫 blocked, ➡️ forwarded, ✏️ modified, 🔄 loop prevented)
+- **Loop Prevention**: Automatic detection and prevention of infinite message loops
+- **Statistics**: Track forwarded, blocked, modified, and loop-prevented messages in real-time
+- **Configuration Save/Load**: Save gateway setups as JSON files for reuse
 
 **How to Use:**
 
 1. Configure at least 2 CAN buses in Settings
-2. Open **Tools → Gateway** (Ctrl+W)
-3. Enable Gateway and configure transmission direction
-4. Add blocking rules or dynamic blocks as needed
-5. Monitor statistics to verify gateway operation
+2. Open **Tools → Gateway** (Ctrl+Shift+W)
+3. Click **"⇄ Add Bidirectional"** for quick bidirectional setup
+4. Enable **"Enable Gateway"** and **"Enable loop prevention"** (recommended)
+5. Add blocking rules or modification rules as needed
+6. Monitor statistics and visual indicators to verify operation
+
+**Visual Indicators in UI:**
+- `CAN1 🚫` - Message blocked (not forwarded)
+- `CAN1 ➡️` - Message forwarded to destination
+- `CAN1 ✏️` - Message modified before forwarding
+- `CAN1 🔄` - Loop detected and prevented
+
+**Important**: All received messages **always appear in the UI**, regardless of gateway actions. The gateway only controls forwarding, not display.
 
 **Use Cases:**
-- Isolate two CAN networks while selectively forwarding messages
+- Bridge two isolated CAN networks with selective filtering
 - Test ECU behavior by blocking specific messages
-- Simulate gateway ECUs in automotive systems
+- Simulate automotive gateway ECUs
+- Protocol translation between networks
 - Debug multi-network vehicle architectures
+- Test network resilience by blocking messages dynamically
+
+**Documentation:** See [docs/GATEWAY.md](docs/GATEWAY.md) for complete gateway documentation
 
 ### **Split-Screen Monitor**
 
@@ -570,7 +592,7 @@ On **macOS**, the modifier is shown and works as **Command (⌘)**. Shortcuts ar
 | Tracer Mode | `Ctrl+T` |
 | Filters | `Ctrl+F` |
 | Triggers | `Ctrl+Alt+G` |
-| Gateway | `Ctrl+Shift+W` |
+| **Gateway** | `Ctrl+Shift+W` |
 | Split-Screen Mode | `Ctrl+Alt+D` |
 | **FTCAN Analyzer** | `Ctrl+1` |
 | **OBD-II Monitor** | `Ctrl+2` |
@@ -587,6 +609,7 @@ On **macOS**, the modifier is shown and works as **Command (⌘)**. Shortcuts ar
 | Document | Description |
 |----------|-------------|
 | [docs/BUILD.md](docs/BUILD.md) | Packaging and standalone build (py2app, PyInstaller, icons) |
+| [docs/GATEWAY.md](docs/GATEWAY.md) | **CAN Gateway** — Complete documentation: bidirectional routes, blocking, modification, loop prevention |
 | [docs/INTERNATIONALIZATION.md](docs/INTERNATIONALIZATION.md) | Internationalization (i18n): adding and editing translations |
 | [docs/RELEASE_MANUAL.md](docs/RELEASE_MANUAL.md) | How to create a release manually on GitHub |
 | [docs/TOOLS.md](docs/TOOLS.md) | Overview of tools and scripts in the repository |
@@ -730,7 +753,7 @@ Contributions are welcome! Here's how you can help:
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
 
-**Latest Release: v1.0.0** - First Stable Release with Protocol Decoders
+**Latest Release: v1.1.0** - Gateway Bidirectional, Visual Indicators, Device Disconnect Detection
 - **FTCAN 2.0 Protocol Decoder**: Automatic decoding of FuelTech devices
 - **OBD-II Protocol Decoder**: Universal automotive diagnostics support
 - **FTCAN Analyzer**: Dedicated UI for FTCAN messages with live measures
@@ -784,7 +807,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 ## Project Status
 
-**Version**: 1.0.0  
+**Version**: 1.1.0  
 **Status**: Stable  
 **Last Updated**: February 2026
 
@@ -811,10 +834,18 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 - **OBD-II Monitor** (interactive diagnostics UI)
 
 ### Recently Added / Updated
+- **CAN Gateway Enhancements** (v1.1.0):
+  - ✅ **Bidirectional Gateway** with automatic loop prevention
+  - ✅ **Visual Indicators** (🚫 blocked, ➡️ forwarded, ✏️ modified, 🔄 loop prevented)
+  - ✅ **Directional Rules** for blocking and modification
+  - ✅ **Always Show Messages** in UI (gateway only controls forwarding)
+  - ✅ **Device Disconnect Detection** with automatic reconnection prompt
+  - ✅ **Connection Monitoring** with watchdog for serial devices
+  - ✅ **JSON Configuration Files** (`.json` instead of `.gwcfg`)
+  - ✅ **Complete Gateway Documentation** ([docs/GATEWAY.md](docs/GATEWAY.md))
 - **FTCAN 2.0**: ECU 4-stream broadcast decoding, SwitchPanel (buttons/LED), EGT-8 support; Live Measures as primary tab; product filter and diagnostics
 - **Usability**: Centralized shortcuts (`src/config/shortcuts.py`), usability section in README, FTCAN tips (1 Mbps, filters, performance)
 - **Architecture**: Handlers (`src/handlers/`) and UI components (`src/ui/`), config module (`src/config/`) for maintainability
-- **Documentation**: [FTCAN.md](docs/decoders/FTCAN.md) updated with streams, reverse byte order, WB-O2 vs ECU, EGT-8; SwitchPanel viewer in `tools/ftcan/`
 
 ### Planned Features
 - Hardware filters (28 configurable)

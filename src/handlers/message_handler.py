@@ -179,16 +179,34 @@ class MessageHandler:
         data_str = " ".join([f"{b:02X}" for b in msg.data])
         ascii_str = msg.to_ascii()
         
+        # Add gateway action indicator
+        gateway_indicator = ""
+        if msg.gateway_action:
+            if msg.gateway_action == "blocked":
+                gateway_indicator = "🚫"  # Blocked
+            elif msg.gateway_action == "forwarded":
+                gateway_indicator = "➡️"  # Forwarded
+            elif msg.gateway_action == "modified":
+                gateway_indicator = "✏️"  # Modified
+            elif msg.gateway_action == "loop_prevented":
+                gateway_indicator = "🔄"  # Loop prevented
+        
+        # Add indicator to channel display
+        channel_display = msg.source
+        if gateway_indicator:
+            channel_display = f"{msg.source} {gateway_indicator}"
+        
         return {
             'id': str(row_index + 1),
             'time': time_str,
-            'channel': msg.source,
+            'channel': channel_display,
             'pid': pid_str,
             'dlc': str(msg.dlc),
             'data': data_str,
             'ascii': ascii_str,
             'comment': msg.comment,
-            'msg_index': len(self.recorded_messages) - 1  # For UserRole
+            'msg_index': len(self.recorded_messages) - 1,  # For UserRole
+            'gateway_action': msg.gateway_action
         }
     
     def calculate_period(self, msg: CANMessage, counter_key: tuple) -> str:
@@ -233,17 +251,35 @@ class MessageHandler:
         # Get count
         count = self.message_counters[counter_key]
         
+        # Add gateway action indicator
+        gateway_indicator = ""
+        if msg.gateway_action:
+            if msg.gateway_action == "blocked":
+                gateway_indicator = "🚫"  # Blocked
+            elif msg.gateway_action == "forwarded":
+                gateway_indicator = "➡️"  # Forwarded
+            elif msg.gateway_action == "modified":
+                gateway_indicator = "✏️"  # Modified
+            elif msg.gateway_action == "loop_prevented":
+                gateway_indicator = "🔄"  # Loop prevented
+        
+        # Add indicator to channel display
+        channel_display = msg.source
+        if gateway_indicator:
+            channel_display = f"{msg.source} {gateway_indicator}"
+        
         return {
             'pid': pid_str,
             'count': str(count),
-            'channel': msg.source,
+            'channel': channel_display,
             'dlc': str(msg.dlc),
             'data': data_str,
             'period': period_str,
             'ascii': ascii_str,
             'comment': msg.comment,
             'can_id': msg.can_id,
-            'should_highlight': count > 1
+            'should_highlight': count > 1,
+            'gateway_action': msg.gateway_action
         }
     
     def update_counter(self, msg: CANMessage) -> tuple:

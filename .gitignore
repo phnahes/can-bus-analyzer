@@ -67,5 +67,8 @@ can_analyzer_icon.png
 docs/ARTICLE_CAN_ANALYZER.md
 docs/ARTICLE_CAN_ANALYZER_EN.md
 
+# Saved logs/sessions (can be large; use for local testing only)
+tools/saves/
+
 # Others
 COMMIT_MESSAGE.txt

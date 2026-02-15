@@ -155,12 +155,16 @@ class ReceiveTableManager:
         row_data = self.message_handler.prepare_monitor_row_data(msg, counter_key, period_str)
         
         # Check if row already exists for this PID and Channel
+        # Compare by PID and source channel (without gateway indicator)
         existing_row = -1
         for row in range(table.rowCount()):
             pid_item = table.item(row, 3)  # Column 3 = PID
             channel_item = table.item(row, 2)  # Column 2 = Channel
             if pid_item and channel_item:
-                if pid_item.text() == row_data['pid'] and channel_item.text() == row_data['channel']:
+                # Extract channel name without emoji indicators
+                existing_channel = channel_item.text().split()[0] if channel_item.text() else ""
+                new_channel = msg.source
+                if pid_item.text() == row_data['pid'] and existing_channel == new_channel:
                     existing_row = row
                     break
         
@@ -169,6 +173,12 @@ class ReceiveTableManager:
             count_item = QTableWidgetItem(row_data['count'])
             count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             table.setItem(existing_row, 1, count_item)
+            
+            # Update channel (to show gateway indicator)
+            channel_item = QTableWidgetItem(row_data['channel'])
+            channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(existing_row, 2, channel_item)
+            
             table.setItem(existing_row, 5, QTableWidgetItem(row_data['data']))
             table.setItem(existing_row, 6, QTableWidgetItem(row_data['period']))
             table.setItem(existing_row, 7, QTableWidgetItem(row_data['ascii']))

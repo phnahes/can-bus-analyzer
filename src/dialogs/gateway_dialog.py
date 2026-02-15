@@ -74,6 +74,11 @@ class GatewayDialog(QDialog):
         self.add_route_btn.clicked.connect(self.add_route)
         route_layout.addWidget(self.add_route_btn)
         
+        self.add_bidirectional_btn = QPushButton("⇄ Add Bidirectional")
+        self.add_bidirectional_btn.setToolTip("Add both directions at once (e.g., CAN1↔CAN2)")
+        self.add_bidirectional_btn.clicked.connect(self.add_bidirectional_route)
+        route_layout.addWidget(self.add_bidirectional_btn)
+        
         self.remove_route_btn = QPushButton("➖ " + t('btn_remove'))
         self.remove_route_btn.clicked.connect(self.remove_route)
         route_layout.addWidget(self.remove_route_btn)
@@ -107,6 +112,29 @@ class GatewayDialog(QDialog):
         info_label.setWordWrap(True)
         info_label.setStyleSheet(colors['info_text'])
         layout.addWidget(info_label)
+        
+        # ===== Loop Prevention Settings =====
+        loop_prevention_group = QGroupBox("🔄 Loop Prevention")
+        loop_prevention_layout = QVBoxLayout()
+        
+        self.loop_prevention_check = QCheckBox("Enable loop prevention (recommended for bidirectional routes)")
+        self.loop_prevention_check.setChecked(self.config.loop_prevention_enabled)
+        self.loop_prevention_check.setToolTip(
+            "Prevents infinite message forwarding when bidirectional routes are configured.\n"
+            "Messages that have already passed through the gateway will not be forwarded again."
+        )
+        loop_prevention_layout.addWidget(self.loop_prevention_check)
+        
+        loop_prevention_info = QLabel(
+            "ℹ️ Loop prevention marks forwarded messages to prevent them from being "
+            "forwarded again. This is essential for bidirectional gateway configurations."
+        )
+        loop_prevention_info.setWordWrap(True)
+        loop_prevention_info.setStyleSheet("color: #666; font-size: 10px;")
+        loop_prevention_layout.addWidget(loop_prevention_info)
+        
+        loop_prevention_group.setLayout(loop_prevention_layout)
+        layout.addWidget(loop_prevention_group)
         
         # ===== Static Blocking Rules =====
         blocking_group = QGroupBox(t('gateway_blocking'))
@@ -327,8 +355,30 @@ class GatewayDialog(QDialog):
         """Load existing routes into table"""
         self.routes_table.setRowCount(len(self.config.routes))
         for row, route in enumerate(self.config.routes):
-            self.routes_table.setItem(row, 0, QTableWidgetItem(route.source))
-            self.routes_table.setItem(row, 1, QTableWidgetItem(route.destination))
+            # Check if bidirectional route exists
+            has_reverse = any(
+                r.source == route.destination and r.destination == route.source 
+                for r in self.config.routes
+            )
+            
+            # Add visual indicator for bidirectional routes
+            source_text = route.source
+            dest_text = route.destination
+            if has_reverse:
+                source_text = f"⇄ {route.source}"
+                dest_text = f"{route.destination} ⇄"
+            
+            source_item = QTableWidgetItem(source_text)
+            dest_item = QTableWidgetItem(dest_text)
+            
+            # Add tooltip for bidirectional routes
+            if has_reverse:
+                tooltip = f"Bidirectional route: {route.source} ↔ {route.destination}"
+                source_item.setToolTip(tooltip)
+                dest_item.setToolTip(tooltip)
+            
+            self.routes_table.setItem(row, 0, source_item)
+            self.routes_table.setItem(row, 1, dest_item)
             
             widget, enabled_check = self._create_centered_checkbox(route.enabled)
             # Connect to apply changes immediately
@@ -382,6 +432,68 @@ class GatewayDialog(QDialog):
         # Connect to apply changes immediately
         enabled_check.stateChanged.connect(lambda state, r=row: self._on_route_enabled_changed(r, state))
         self.routes_table.setCellWidget(row, 2, widget)
+    
+    def add_bidirectional_route(self):
+        """Add bidirectional routes (both directions at once)"""
+        source = self.source_combo.currentText()
+        dest = self.dest_combo.currentText()
+        
+        # Validate
+        if source == dest:
+            QMessageBox.warning(
+                self,
+                t('warning'),
+                t('gateway_same_source_dest')
+            )
+            return
+        
+        # Check if routes already exist
+        route1_exists = any(r.source == source and r.destination == dest for r in self.config.routes)
+        route2_exists = any(r.source == dest and r.destination == source for r in self.config.routes)
+        
+        if route1_exists and route2_exists:
+            QMessageBox.warning(
+                self,
+                t('warning'),
+                f"Bidirectional routes between {source} and {dest} already exist."
+            )
+            return
+        
+        # Add first route (source -> dest) if not exists
+        if not route1_exists:
+            route1 = GatewayRoute(source=source, destination=dest, enabled=True)
+            self.config.routes.append(route1)
+            
+            row = self.routes_table.rowCount()
+            self.routes_table.insertRow(row)
+            self.routes_table.setItem(row, 0, QTableWidgetItem(source))
+            self.routes_table.setItem(row, 1, QTableWidgetItem(dest))
+            
+            widget, enabled_check = self._create_centered_checkbox(True)
+            enabled_check.stateChanged.connect(lambda state, r=row: self._on_route_enabled_changed(r, state))
+            self.routes_table.setCellWidget(row, 2, widget)
+        
+        # Add second route (dest -> source) if not exists
+        if not route2_exists:
+            route2 = GatewayRoute(source=dest, destination=source, enabled=True)
+            self.config.routes.append(route2)
+            
+            row = self.routes_table.rowCount()
+            self.routes_table.insertRow(row)
+            self.routes_table.setItem(row, 0, QTableWidgetItem(dest))
+            self.routes_table.setItem(row, 1, QTableWidgetItem(source))
+            
+            widget, enabled_check = self._create_centered_checkbox(True)
+            enabled_check.stateChanged.connect(lambda state, r=row: self._on_route_enabled_changed(r, state))
+            self.routes_table.setCellWidget(row, 2, widget)
+        
+        # Show info message
+        QMessageBox.information(
+            self,
+            "Bidirectional Routes Added",
+            f"✓ Added bidirectional routes:\n  • {source} → {dest}\n  • {dest} → {source}\n\n"
+            f"Loop prevention is enabled to avoid infinite message forwarding."
+        )
     
     def remove_route(self):
         """Remove selected route"""
@@ -617,17 +729,27 @@ class GatewayDialog(QDialog):
     
     def reset_stats(self):
         """Reset statistics (signal to parent)"""
-        self.stats_label.setText(t('gateway_stats_template').format(
-            forwarded=0, blocked=0, modified=0
-        ))
+        # Reset in parent if available
+        if self.parent() and hasattr(self.parent(), 'can_bus_manager'):
+            if self.parent().can_bus_manager:
+                self.parent().can_bus_manager.reset_gateway_stats()
+        
+        self.stats_label.setText(
+            f"Forwarded: 0 | Blocked: 0 | Modified: 0 | Loops Prevented: 0"
+        )
     
     def update_stats(self, stats):
         """Update statistics display"""
-        self.stats_label.setText(t('gateway_stats_template').format(
-            forwarded=stats.get('forwarded', 0),
-            blocked=stats.get('blocked', 0),
-            modified=stats.get('modified', 0)
-        ))
+        forwarded = stats.get('forwarded', 0)
+        blocked = stats.get('blocked', 0)
+        modified = stats.get('modified', 0)
+        loops_prevented = stats.get('loops_prevented', 0)
+        
+        stats_text = f"Forwarded: {forwarded} | Blocked: {blocked} | Modified: {modified}"
+        if loops_prevented > 0:
+            stats_text += f" | Loops Prevented: {loops_prevented}"
+        
+        self.stats_label.setText(stats_text)
     
     def show_modify_dialog(self):
         """Show dialog to add/edit modify rule (auto-detects channel)"""
@@ -728,11 +850,15 @@ class GatewayDialog(QDialog):
             self,
             t('gateway_save_config'),
             "",
-            "Gateway Config (*.gwcfg);;JSON Files (*.json);;All Files (*)"
+            "JSON Files (*.json);;All Files (*)"
         )
         
         if filename:
             try:
+                # Add .json extension if not present
+                if not filename.endswith('.json'):
+                    filename += '.json'
+                
                 # Get current config from UI
                 current_config = self.get_config()
                 
@@ -762,7 +888,7 @@ class GatewayDialog(QDialog):
             self,
             t('gateway_load_config'),
             "",
-            "Gateway Config (*.gwcfg);;JSON Files (*.json);;All Files (*)"
+            "JSON Files (*.json);;All Files (*)"
         )
         
         if filename:
@@ -799,6 +925,7 @@ class GatewayDialog(QDialog):
                 
                 # Reload UI
                 self.enable_gateway_check.setChecked(self.config.enabled)
+                self.loop_prevention_check.setChecked(self.config.loop_prevention_enabled)
                 
                 # Clear and reload tables
                 self.routes_table.setRowCount(0)
@@ -861,6 +988,7 @@ class GatewayDialog(QDialog):
         """Get the configured gateway settings"""
         # Update config from UI
         self.config.enabled = self.enable_gateway_check.isChecked()
+        self.config.loop_prevention_enabled = self.loop_prevention_check.isChecked()
         
         # Update routes enabled status
         for row in range(self.routes_table.rowCount()):

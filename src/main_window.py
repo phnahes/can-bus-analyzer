@@ -96,7 +96,8 @@ class CANAnalyzerWindow(QMainWindow):
             message_callback=self._on_can_message_received,
             logger=self.logger,
             config=self.config,
-            config_manager=self.config_manager
+            config_manager=self.config_manager,
+            disconnect_callback=self._on_device_disconnected
         )
         
         self.transmit_handler = None  # Will be initialized after can_bus_manager
@@ -492,6 +493,42 @@ class CANAnalyzerWindow(QMainWindow):
         if hasattr(self, '_obd2_dialog') and self._obd2_dialog:
             self._obd2_dialog.on_can_message(bus_name, msg)
     
+    def _on_device_disconnected(self, bus_name: str, error_msg: str):
+        """Callback when a device is physically disconnected"""
+        self.logger.warning(f"Device disconnected: {bus_name} - {error_msg}")
+        
+        # Show notification to user
+        self.show_notification(
+            f"⚠️ Device Disconnected: {bus_name}",
+            duration=5000
+        )
+        
+        # Auto-disconnect all buses
+        self.logger.info("Auto-disconnecting all buses due to device disconnect")
+        self.disconnect()
+    
+    def _check_connection_status(self):
+        """Periodically check if all buses are still connected"""
+        if not self.connection_mgr or not self.connection_mgr.is_connected():
+            return
+        
+        can_bus_manager = self.connection_mgr.get_bus_manager()
+        if not can_bus_manager:
+            return
+        
+        # Get current connection status
+        status = can_bus_manager.get_connection_status()
+        
+        # Check if any bus that should be connected is now disconnected
+        for bus_name, is_connected in status.items():
+            if not is_connected:
+                # Bus is disconnected but we thought we were connected
+                self.logger.warning(f"Connection status check: {bus_name} is disconnected")
+                
+                # Trigger disconnect callback
+                self._on_device_disconnected(bus_name, "Connection lost (detected by monitor)")
+                break  # Only handle one at a time
+    
     def _send_can_message(self, can_msg: 'can.Message', target_bus: str = None):
         """Send CAN message to specified bus or all buses
         
@@ -717,6 +754,11 @@ class CANAnalyzerWindow(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_ui)
         self.timer.start(50)  # Update every 50ms
+        
+        # Start connection monitor timer
+        self.connection_monitor_timer = QTimer()
+        self.connection_monitor_timer.timeout.connect(self._check_connection_status)
+        self.connection_monitor_timer.start(2000)  # Check every 2 seconds
     
     def update_ui(self):
         """Update interface with new messages"""
