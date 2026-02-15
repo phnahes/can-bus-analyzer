@@ -16,6 +16,12 @@
 #define CAN_2515
 // #define CAN_2518FD
 
+// Common modules: 16 MHz (default on most shields) or 8 MHz
+#define CAN_CRYSTAL_CLOCK  MCP_8MHz   // MCP_16MHz, MCP_12MHz, or MCP_8MHz
+
+// CAN bus speed (must match other devices on the bus)
+#define CAN_SPEED         CAN_500KBPS  // e.g. CAN_250KBPS, CAN_500KBPS, CAN_1000KBPS
+
 // Set SPI CS Pin according to your hardware
 #if defined(SEEED_WIO_TERMINAL) && defined(CAN_2518FD)
 const int SPI_CS_PIN  = BCM8;
@@ -72,7 +78,8 @@ void setup() {
     #endif
     
     // Initialize CAN bus at 500 KBPS
-    while (CAN_OK != CAN.begin(CAN_500KBPS)) {
+    //while (CAN_OK != CAN.begin(CAN_500KBPS, MCP_8MHz)) {
+    while (CAN_OK != CAN.begin(CAN_SPEED, CAN_CRYSTAL_CLOCK)) {
         SERIAL_PORT_MONITOR.println(F("CAN init fail, retry..."));
         delay(100);
     }

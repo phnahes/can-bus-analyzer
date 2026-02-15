@@ -17,7 +17,6 @@ class ConfigManager:
         'interface': 'socketcan',
         'channel': 'can0',
         'listen_only': True,
-        'timestamp': True,
         'com_baudrate': '115200 bit/s',
         'rts_hs': False,
         'baudrate_reg': 'FFFFFF'

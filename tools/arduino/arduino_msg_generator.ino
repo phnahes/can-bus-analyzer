@@ -22,7 +22,7 @@
 const int SPI_CS_PIN  = BCM8;
 const int CAN_INT_PIN = BCM25;
 #else
-const int SPI_CS_PIN = 9;
+const int SPI_CS_PIN = 10;
 const int CAN_INT_PIN = 2;
 #endif
 
@@ -41,6 +41,14 @@ mcp2515_can CAN(SPI_CS_PIN);
 // ============================================================================
 // CONFIGURATION - ADJUST HERE BEFORE UPLOAD
 // ============================================================================
+
+// MCP2515 crystal frequency (must match the oscillator on your CAN module)
+// Common modules: 16 MHz (default on most shields) or 8 MHz
+// Wrong value = wrong CAN baud rate (e.g. 250 kbps instead of 500 kbps)
+#define CAN_CRYSTAL_CLOCK  MCP_8MHz   // MCP_16MHz, MCP_12MHz, or MCP_8MHz
+
+// CAN bus speed (must match other devices on the bus)
+#define CAN_SPEED         CAN_500KBPS  // e.g. CAN_250KBPS, CAN_500KBPS, CAN_1000KBPS
 
 // Message structure:
 // {ID, isExtended, isRemote, length, periodMs, {data bytes}}
@@ -71,10 +79,10 @@ struct CANMessage {
 // Define your messages here
 CANMessage messageGroup[] = {
     // ID,    Ext,   Rem,  Len, Period, {Data bytes}
-    {0x100, false, false,  2,   10,    {0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},  // RPM - 10ms
-    {0x200, false, false,  2,   20,    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},  // Speed - 20ms
-    {0x300, false, false,  1,   100,   {0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},  // Temp - 100ms
-    {0x400, false, false,  4,   50,    {0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00}},  // Status - 50ms
+    {0x100, false, false,  2,   100,    {0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},  // RPM - 10ms
+    {0x200, false, false,  2,   200,    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},  // Speed - 20ms
+    {0x300, false, false,  1,   1000,   {0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},  // Temp - 100ms
+    {0x400, false, false,  4,   500,    {0x01, 0x02, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00}},  // Status - 50ms
 };
 
 #define MESSAGE_GROUP_SIZE (sizeof(messageGroup) / sizeof(CANMessage))
@@ -108,7 +116,7 @@ void setup() {
     CAN.setMode(CAN_NORMAL_MODE);
     #endif
     
-    while (CAN_OK != CAN.begin(CAN_500KBPS)) {
+    while (CAN_OK != CAN.begin(CAN_SPEED, CAN_CRYSTAL_CLOCK)) {
         SERIAL_PORT_MONITOR.println(F("CAN init fail, retry..."));
         delay(100);
     }
@@ -127,6 +135,7 @@ void setup() {
 
 void printCurrentConfig() {
     SERIAL_PORT_MONITOR.println(F("--- Configuration ---"));
+    SERIAL_PORT_MONITOR.println(F("CAN speed & crystal: see CAN_SPEED and CAN_CRYSTAL_CLOCK at top of file"));
     SERIAL_PORT_MONITOR.print(F("Group Size: "));
     SERIAL_PORT_MONITOR.print(MESSAGE_GROUP_SIZE);
     SERIAL_PORT_MONITOR.println(F(" messages"));

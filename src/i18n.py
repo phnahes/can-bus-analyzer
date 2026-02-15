@@ -1917,6 +1917,20 @@ class I18n:
             'de': '⚠️ Busse nicht gestartet. Klicken Sie auf "Verbinden", um die CAN-Schnittstelle zu starten.',
             'fr': '⚠️ Bus non démarrés. Cliquez sur "Connecter" pour démarrer l\'interface CAN.'
         },
+        'ftcan_bus_configured_1mbps': {
+            'en': 'is correctly configured for FTCAN (1 Mbps).',
+            'pt': 'está corretamente configurado para FTCAN (1 Mbps).',
+            'es': 'está correctamente configurado para FTCAN (1 Mbps).',
+            'de': 'ist korrekt für FTCAN (1 Mbps) konfiguriert.',
+            'fr': 'est correctement configuré pour FTCAN (1 Mbps).'
+        },
+        'ftcan_click_connect': {
+            'en': 'Click the "Connect" button to start the CAN interface.',
+            'pt': 'Clique no botão "Conectar" para iniciar a interface CAN.',
+            'es': 'Haga clic en el botón "Conectar" para iniciar la interfaz CAN.',
+            'de': 'Klicken Sie auf "Verbinden", um die CAN-Schnittstelle zu starten.',
+            'fr': 'Cliquez sur "Connecter" pour démarrer l\'interface CAN.'
+        },
         'ftcan_ready_to_connect': {
             'en': 'CAN2 is correctly configured for FTCAN (1 Mbps).\nJust click "Connect" to start!',
             'pt': 'CAN2 está corretamente configurado para FTCAN (1 Mbps).\nApenas clique em "Conectar" para iniciar!',

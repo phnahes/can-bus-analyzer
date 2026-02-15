@@ -72,7 +72,7 @@
 const int SPI_CS_PIN  = BCM8;
 const int CAN_INT_PIN = BCM25;
 #else
-const int SPI_CS_PIN = 9;
+const int SPI_CS_PIN = 10;
 const int CAN_INT_PIN = 2;
 #endif
 
@@ -107,6 +107,10 @@ mcp2515_can CAN(SPI_CS_PIN);
 // ============================================================================
 // GLOBAL VARIABLES
 // ============================================================================
+
+
+#define CAN_CRYSTAL_CLOCK  MCP_8MHz   // MCP_16MHz, MCP_12MHz, or MCP_8MHz
+#define CAN_SPEED         CAN_500KBPS  // e.g. CAN_250KBPS, CAN_500KBPS, CAN_1000KBPS
 
 // Simulated engine parameters (will change over time)
 struct EngineState {
@@ -148,7 +152,7 @@ void setup() {
   CAN.setMode(CAN_NORMAL_MODE);
   #endif
   
-  while (CAN_OK != CAN.begin(CAN_500KBPS)) {
+  while (CAN_OK != CAN.begin(CAN_SPEED, CAN_CRYSTAL_CLOCK)) {
     SERIAL_PORT_MONITOR.println(F("CAN init fail, retry..."));
     delay(100);
   }

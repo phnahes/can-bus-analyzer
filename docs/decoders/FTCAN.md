@@ -11,8 +11,12 @@ Complete technical documentation for FuelTech's FTCAN 2.0 protocol support in CA
 - [Identification Structure](#identification-structure)
 - [Data Field Layouts](#data-field-layouts)
 - [Message Types](#message-types)
+- [ECU Broadcast Strategy (4 Streams)](#ecu-broadcast-strategy-4-streams)
+- [Segmented Reassembly and Reverse Byte Order](#segmented-reassembly-and-reverse-byte-order)
 - [Measure IDs](#measure-ids)
 - [Supported Devices](#supported-devices)
+- [Device Behaviour: WB-O2 Nano vs ECU](#device-behaviour-wb-o2-nano-vs-ecu)
+- [EGT-8 Exhaust Gas Temperature Sensor](#egt-8-exhaust-gas-temperature-sensor)
 - [Implementation](#implementation)
 - [Usage Guide](#usage-guide)
 - [Official Documentation](#official-documentation)
@@ -306,6 +310,50 @@ Bytes 6-7: Engine Temperature
 
 ---
 
+## ECU Broadcast Strategy (4 Streams)
+
+FuelTech **ECUs** (FT500, FT600) transmit real-time data using **four independent priority-based streams**. Each stream has its own MessageID and its own reassembly buffer, so multiple segments can be in flight at once without mixing data.
+
+### Stream Priorities and MessageIDs
+
+| Priority  | MessageID | Typical content                    | Update rate (typical) |
+|-----------|-----------|------------------------------------|------------------------|
+| Critical  | 0x0FF     | Ignition cut, 2-step, emergency   | ~1000 Hz               |
+| High      | 0x1FF     | RPM, TPS, MAP, lambda, timing     | ~100 Hz                |
+| Medium    | 0x2FF     | Temperatures, pressures           | ~10 Hz                 |
+| Low       | 0x3FF     | Configuration, general data      | ~0.5–1 Hz              |
+
+### Behaviour
+
+- **Per-stream buffers:** Each (MessageID, ProductID) pair has its own reassembly buffer. Segments for 0x0FF, 0x1FF, 0x2FF, and 0x3FF are kept separate.
+- **Segmentation:** When a stream carries more than 7 bytes of payload, it uses FTCAN segmentation (first frame + continuation frames). Each stream can carry up to **24 measures** (each measure = 4 bytes) per logical packet.
+- **Device scope:** This 4-stream strategy applies to **ECUs**. Other devices (e.g. WB-O2 Nano) typically send single-packet broadcasts and do not use these segmented streams.
+
+Implementations (e.g. based on TManiac's CanFT2p0Stream) use separate stream buffers per priority so that decoding respects message boundaries and priority.
+
+---
+
+## Segmented Reassembly and Reverse Byte Order
+
+When reassembling **segmented FTCAN packets** (first frame + continuation frames), some FuelTech ECUs send payload bytes in an order that requires **reverse indexing** during reassembly.
+
+### Rule
+
+- **Byte storage index:** When appending bytes from a segment into the logical payload buffer, store the current byte at index:
+  - `(dataCount - 1) - readCount`
+- Here, `dataCount` is the total payload length (from the first segment), and `readCount` is the number of bytes written so far (incrementing as each byte is stored).
+
+So the **first bytes received are stored at the end** of the buffer, and the **last bytes received** fill the beginning. Without this reverse order, decoded measures (e.g. 4-byte MeasureID + value) would be wrong for segmented ECU streams.
+
+### Where it applies
+
+- **ECU broadcast streams:** Reassembly for the four priority streams (0x0FF, 0x1FF, 0x2FF, 0x3FF) when they use segmentation.
+- **Other devices:** Single-packet devices (e.g. WB-O2 Nano) do not use segmentation, so reverse byte order does not apply to them.
+
+This behaviour is consistent with community reverse engineering (e.g. TManiac's CanFT2p0Stream implementation).
+
+---
+
 ## Measure IDs
 
 Each measure consists of 4 bytes with identifier and value.
@@ -387,8 +435,54 @@ Value: 0x0352 (850 decimal)
 | 0x0280 | **FT500 ECU** | 0x5000-0x501F | Medium |
 | 0x0281 | **FT600 ECU** | 0x5020-0x503F | Medium |
 | 0x0282-0x02E4 | Future ECUs (reserved) | 0x5040-0x5C9F | Medium |
+| 0x0800 | **EGT-8 Model A** | — | Medium |
+| 0x0880 | **EGT-8 Model B** | — | Medium |
 
 **Note:** Up to 32 devices of the same type can coexist (UniqueID 0-31).
+
+---
+
+## Device Behaviour: WB-O2 Nano vs ECU
+
+Understanding the difference between **WB-O2 Nano** (wideband sensor) and **ECU** (FT500/FT600) helps avoid confusion when decoding.
+
+| Aspect | WB-O2 Nano | ECU (FT500/FT600) |
+|--------|------------|-------------------|
+| **Role** | Lambda (O2) sensor only | Engine control unit; many parameters |
+| **Broadcast style** | Single-packet broadcasts (0xFF first byte) | Four priority streams; often segmented |
+| **Typical MessageID** | 0x1FF (high) for lambda | 0x0FF, 0x1FF, 0x2FF, 0x3FF |
+| **Segmentation** | No | Yes, per-stream reassembly |
+| **Measures per message** | Usually 1–2 (e.g. lambda, status) | Up to 24 per stream when segmented |
+| **Reverse byte order** | N/A (no reassembly) | Used during segmented stream reassembly |
+
+### Decoding impact
+
+- **WB-O2 Nano:** Decoding stays as for single-packet FTCAN: one frame, 0xFF, then measure(s). Lambda and status continue to decode correctly.
+- **ECU:** The 4-stream strategy and reverse-byte-order reassembly **improve** decoding of segmented ECU data. They do not change how WB-O2 Nano or other single-packet devices are decoded.
+
+So adding or refining stream-based decoding for ECUs does not break existing WB-O2 Nano decoding; it only extends correct decoding to ECU streams.
+
+---
+
+## EGT-8 Exhaust Gas Temperature Sensor
+
+The **EGT-8** is a FuelTech exhaust gas temperature module with two product variants and dedicated MessageIDs for its channels.
+
+### Product type IDs
+
+| ProductTypeID | Variant    | Description        |
+|---------------|------------|--------------------|
+| 0x0800       | EGT-8 Model A | First variant   |
+| 0x0880       | EGT-8 Model B | Second variant  |
+
+### Special MessageIDs
+
+| MessageID | Description        | Typical use      |
+|-----------|--------------------|------------------|
+| 0x080     | EGT channels 1–4   | First four EGT inputs |
+| 0x100     | EGT channels 5–8   | Second four EGT inputs |
+
+Data format follows FTCAN measure encoding (MeasureID + value). Temperature scaling and units are device-specific; refer to FuelTech documentation or decoder implementation for multipliers and units.
 
 ---
 
@@ -507,6 +601,153 @@ Tools → FTCAN 2.0 Analyzer... (Ctrl+Shift+F)
 - Check "Devices Detected"
 - Should show: "WBO2_NANO #0" or "FT600_ECU #0"
 - Verify message rate (should be ~10-100 Hz)
+
+---
+
+## FTSwitchPanel Communication
+
+### Overview
+
+The **FTSwitchPanel** is a button panel accessory that communicates bidirectionally with FuelTech ECUs. It supports RGB LED control with dimming for visual feedback.
+
+### Product type and MessageIDs
+
+- **ProductTypeID:** 0x0244 (Switchpad). Multiple physical variants are distinguished by **UniqueID**.
+- **Special MessageIDs** (in the 11-bit MessageID field):
+  - **0x320:** Button states — Panel **TX** to ECU (button states and dimming).
+  - **0x321:** LED control — ECU **RX** to panel (RGB and dimming per button).
+
+### Panel variants (by UniqueID)
+
+| UniqueID | Description           | Buttons |
+|----------|-----------------------|---------|
+| 0x00     | SwitchPanel Big 8-button | 8    |
+| 0x01     | SwitchPanel Mini 4-button | 4   |
+| 0x02     | SwitchPanel Mini 5-button | 5   |
+| 0x03     | SwitchPanel Mini 8-button | 8   |
+
+**ProductID** is built from ProductTypeID 0x0244 and UniqueID (e.g. 0x0244 << 5 | UniqueID). Example CAN IDs use these MessageIDs (e.g. 0x320 in the ID for button-state frames).
+
+### Panel variant reference (legacy ProductID style)
+
+| ProductID | Description | Buttons |
+|-----------|-------------|---------|
+| 0x12200320 | 8-button panel | 8 |
+| 0x12210320 | 5-button mini panel | 5 |
+| 0x12218320 | 8-button mini panel | 8 |
+
+**Note:** Button 5 on the 5-button panel is coded as row 2, button 1.
+
+### Communication Protocol
+
+**Message Rate:**
+- Sent every **1 second** (periodic)
+- Sent on **state change** (button press/release)
+
+**Direction:**
+- **Panel → ECU:** Button states and dimming
+- **ECU → Panel:** LED colors and dimming control
+
+### Panel TX Format (to ECU)
+
+**CAN ID:** `0x12XXXXXX` (extended, ProductID varies by panel type)  
+**DLC:** 8 bytes
+
+```
+┌──────────────────────────────────────────────────────────┐
+│              Panel to ECU (Button States)                │
+├─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────────┤
+│Byte │  0  │  1  │  2  │  3  │  4  │  5  │  6  │  7      │
+├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────────┤
+│     │State│State│ dim │State│ dim │ Row │ Row │ not used│
+│     │ 1st │ 2nd │ 1st │ 2nd │ 2nd │  1  │  2  │         │
+│     │ row │ row │ row │ row │ row │ btn │ btn │         │
+│     │     │     │     │     │     │state│state│         │
+└─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────────┘
+```
+
+**Byte Details:**
+- **Byte 0:** State 1st row (bits for buttons 1-4)
+- **Byte 1:** State 2nd row (bits for buttons 5-8)
+- **Bytes 2-4:** Dimming values (0x00 = off, 0xFF = bright)
+- **Bytes 5-6:** Button states (pressed/released)
+- **Byte 7:** Reserved (not used)
+
+### ECU Response Format (to Panel)
+
+**CAN ID:** Response with +1 offset  
+**DLC:** 8 bytes
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                  ECU to Panel (LED Control)                              │
+├─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬───────────┤
+│Byte │  0  │  1  │  2  │  3  │  4  │  5  │  6  │  7  │ ... │           │
+├─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼───────────┤
+│     │State│ dim │State│ dim │ red │green│blue │ red │green│    ...    │
+│     │ 1st │ 1st │ 2nd │ 2nd │color│color│color│color│color│           │
+│     │ row │ row │ row │ row │btn  │btn  │btn  │btn  │btn  │           │
+│     │     │     │     │     │ 1st │ 1st │ 1st │ 2nd │ 2nd │           │
+│     │     │     │     │     │ row │ row │ row │ row │ row │           │
+└─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴───────────┘
+```
+
+**Control Fields:**
+- **State:** 0x00 = off, 0xFF = on
+- **Dimming:** 0x00 = dark, 0xFF = bright
+- **RGB Colors:** 0x00-0xFF for each channel (red, green, blue)
+
+### Example: 5-Button Panel
+
+**Panel TX (Button 3 pressed):**
+```
+ID:   0x12210320
+Data: 04 00 FF 00 00 04 00 00
+      │  │  │  │  │  │  │  └─ Reserved
+      │  │  │  │  │  │  └──── Row 2 states
+      │  │  │  │  │  └─────── Row 1 states (bit 2 = button 3)
+      │  │  │  │  └────────── Row 2 dimming
+      │  │  │  └───────────── Row 2 state
+      │  │  └──────────────── Row 1 dimming (full bright)
+      │  └─────────────────── Row 2 state
+      └────────────────────── Row 1 state (button 3 = 0x04)
+```
+
+**ECU Response (Button 3 LED green):**
+```
+ID:   0x12210321 (CAN ID +1)
+Data: FF FF 00 00 00 FF 00 00
+      │  │  │  │  │  │  │  └─ Blue (off)
+      │  │  │  │  │  │  └──── Green (full)
+      │  │  │  │  │  └─────── Red (off)
+      │  │  │  │  └────────── Row 2 dimming
+      │  │  │  └───────────── Row 2 state
+      │  │  └──────────────── Row 1 dimming (full)
+      │  └─────────────────── Row 1 state (all on)
+      └────────────────────── Row 1 state
+```
+
+### Implementation Notes
+
+1. **ECU Response Timing:**
+   - ECU must respond immediately to panel messages
+   - If no response, panel will detect ECU absence
+   - PDM should detect messages from ECU and send own responses
+
+2. **LED Control:**
+   - Each button has independent RGB control
+   - Dimming can be applied globally or per-button
+   - Colors mix additively (R+G = Yellow, etc.)
+
+3. **Button Mapping:**
+   - 5-button panel: Button 5 maps to row 2, position 1
+   - 8-button panel: 2 rows × 4 buttons each
+
+### Visual Reference
+
+![FuelTech SwitchPanel Communication Diagram](../images/Fueltech_SwitchPanel_Info.png)
+
+**Source:** [TManiac.de Reverse Engineering Project](https://tmaniac.de/html/priv_proj/rev_eng/rev_eng_ft.htm)
 
 ---
 
@@ -639,64 +880,6 @@ Total payload = 5 + 7 + 7 = 19 bytes
 
 ---
 
-## Troubleshooting
-
-### No Messages Detected
-
-**Check:**
-1. ✅ Baudrate is exactly **1 Mbps** (not 500k or 250k)
-2. ✅ Extended ID (29-bit) support enabled
-3. ✅ CAN-H and CAN-L connected correctly
-4. ✅ 120Ω termination at both ends
-5. ✅ Device is powered (12V)
-
-**Test:**
-```bash
-# Linux - monitor raw CAN traffic
-candump can0
-
-# Should see extended IDs starting with 0x12...
-```
-
-### Messages Not Decoded
-
-**Check:**
-1. ✅ FTCAN decoder is enabled
-2. ✅ ProductTypeID is recognized (see Supported Devices)
-3. ✅ Open FTCAN Analyzer dialog
-4. ✅ Check "Diagnostics" tab for errors
-
-**Debug:**
-```
-Diagnostics Tab:
-  - Unknown ProductIDs: Lists unrecognized devices
-  - Decoding Errors: Shows parsing failures
-  - Message Statistics: Verify traffic rate
-```
-
-### Incorrect Values
-
-**Check:**
-1. ✅ Byte order is big-endian
-2. ✅ Correct multiplier applied
-3. ✅ Value is signed 16-bit
-4. ✅ MeasureID bit 0 (IsStatus) handled correctly
-
-**Example Issue:**
-```
-Wrong: value = data[0] | (data[1] << 8)  # Little-endian
-Right: value = (data[0] << 8) | data[1]  # Big-endian
-```
-
-### Segmented Packets Not Reassembling
-
-**Check:**
-1. ✅ All frames have same CAN ID
-2. ✅ Sequence is complete (0x00, 0x01, 0x02, ...)
-3. ✅ Total length matches actual payload
-4. ✅ No frames lost (check CAN bus load)
-
----
 
 ## Official Documentation
 
@@ -819,42 +1002,6 @@ def decode_measure(data, offset=0):
 
 ---
 
-## Testing
-
-### Using Simulator
-
-```bash
-cd tools/ftcan
-python3 ftcan_simulator.py
-
-# Menu:
-1. WB-O2 Nano (Lambda readings)
-2. FT600 ECU (Multiple measures)
-3. Standard CAN (Non-FTCAN)
-4. Segmented Packet
-5. Run all simulations
-```
-
-### Expected Output
-
-```
-FTCAN 2.0 Simulator - WB-O2 Nano
-Device: WB-O2 Nano #0
-CAN ID: 0x1240A7FF
-
-Lambda: 0.850 - Rich - Max Power
-  Raw Data: FF002703520000000000
-  Decoded: Cylinder 1 O2: 0.850 λ
-```
-
-### Verify in CAN Analyzer
-
-1. Run simulator
-2. Open FTCAN Analyzer
-3. Check "Decoded Messages" tab
-4. Should see: "WBO2_NANO #0: Cylinder 1 O2 = 0.850λ"
-
----
 
 ## Performance Notes
 
@@ -888,33 +1035,7 @@ Lambda: 0.850 - Rich - Max Power
 ## License
 
 **CAN Bus Analyzer:** Open-source (see main repository)
-
 **FTCAN 2.0 Protocol:** © FuelTech - Public specification document provided by manufacturer for integration purposes.
-
----
-
-## Changelog
-
-### v1.0.0 (2026-02-06)
-- ✅ Complete protocol documentation
-- ✅ Technical specifications
-- ✅ Identification structure explained
-- ✅ Data field layouts documented
-- ✅ Measure ID reference
-- ✅ Decoding examples
-- ✅ Implementation guide
-- ✅ Official documentation reference
-
----
-
-## Contributing
-
-To improve this documentation:
-
-1. **Found an error?** Open an issue with details
-2. **Have a suggestion?** Create a pull request
-3. **Discovered new DataIDs?** Share your findings
-4. **Tested with new devices?** Document your experience
 
 ---
 
@@ -924,6 +1045,23 @@ To improve this documentation:
 - **Tools Documentation:** `../../tools/ftcan/README.md`
 - **General CAN Tools:** `../../tools/general/README.md`
 - **Arduino Tools:** `../../tools/arduino/README.md`
+
+---
+
+## References & Sources
+
+### Official FuelTech Documentation
+- **FuelTech Official Website:** https://www.fueltech.com.br/
+- **FTCAN 2.0 Protocol Specification:** https://files.fueltech.net/manuals/Protocol_FTCAN20_Public_R026.pdf
+
+### Community Research & Reverse Engineering
+- **TManiac.de - FuelTech Reverse Engineering Project:**
+  - Main page: https://tmaniac.de/html/priv_proj/rev_eng/rev_eng_ft.htm
+  - SwitchPanel diagram: https://tmaniac.de/pics/priv_proj/rev_eng/Fueltech_SwitchPanel_Info.png
+  - GitHub repository: https://github.com/TManiacDev/CAN_Stack_ExpPack
+  - **Credit:** FTSwitchPanel communication protocol and device variants; ECU 4-stream broadcast strategy and segmented reassembly (including reverse byte order) from CanFT2p0Stream and related FTCAN stack work.
+
+**Note:** Community research complements official documentation by providing practical implementation details and device-specific information discovered through reverse engineering.
 
 ---
 

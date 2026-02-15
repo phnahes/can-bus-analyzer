@@ -4,6 +4,8 @@ CAN Message Models - Core CAN message and filter classes
 
 from dataclasses import dataclass
 
+from ..config import DEFAULT_CHANNEL
+
 
 @dataclass
 class CANMessage:
@@ -18,7 +20,9 @@ class CANMessage:
     channel: int = 1  # CAN channel (1 or 2)
     is_extended: bool = False  # 29-bit ID
     is_rtr: bool = False  # Remote Transmission Request
-    source: str = "CAN1"  # Source bus name (for multi-CAN support)
+    source: str = DEFAULT_CHANNEL  # Source bus name (for multi-CAN support)
+    gateway_processed: bool = False  # Flag to prevent gateway loops
+    gateway_action: str = ""  # Gateway action: "blocked", "modified", "forwarded", ""
     
     def to_dict(self) -> dict:
         """Convert to dictionary"""
@@ -33,7 +37,9 @@ class CANMessage:
             'channel': self.channel,
             'is_extended': self.is_extended,
             'is_rtr': self.is_rtr,
-            'source': self.source
+            'source': self.source,
+            'gateway_processed': self.gateway_processed,
+            'gateway_action': self.gateway_action
         }
     
     @classmethod
@@ -50,7 +56,9 @@ class CANMessage:
             channel=data.get('channel', 1),
             is_extended=data.get('is_extended', False),
             is_rtr=data.get('is_rtr', False),
-            source=data.get('source', 'CAN1')
+            source=data.get('source', DEFAULT_CHANNEL),
+            gateway_processed=data.get('gateway_processed', False),
+            gateway_action=data.get('gateway_action', '')
         )
     
     def to_ascii(self) -> str:
