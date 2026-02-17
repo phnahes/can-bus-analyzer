@@ -1,0 +1,47 @@
+name: CI Build (macOS + Linux)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Build (extras/build.sh)
+        env:
+          # Keep zip creation enabled (default) so we can upload it.
+          SKIP_ZIP: ""
+        run: |
+          chmod +x extras/build.sh extras/create_icon.sh || true
+          ./extras/build.sh
+
+      - name: Upload artifacts (zip + dist)
+        uses: actions/upload-artifact@v4
+        with:
+          name: can-analyzer-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            CAN-Analyzer-*.zip
+            dist/**
+
