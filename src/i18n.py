@@ -1866,6 +1866,20 @@ class I18n:
             'de': 'DTCs lesen',
             'fr': 'Lire les DTCs'
         },
+        'obd2_clear_dtcs': {
+            'en': 'Clear DTCs',
+            'pt': 'Apagar DTCs',
+            'es': 'Borrar DTCs',
+            'de': 'DTCs löschen',
+            'fr': 'Effacer les DTCs'
+        },
+        'obd2_detect_vin': {
+            'en': 'Detect VIN',
+            'pt': 'Detectar VIN',
+            'es': 'Detectar VIN',
+            'de': 'VIN erkennen',
+            'fr': 'Detecter VIN'
+        },
         'obd2_save_results': {
             'en': 'Save Results',
             'pt': 'Salvar Resultados',
