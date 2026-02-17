@@ -5,6 +5,11 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.1.2). Required for manual runs."
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -48,13 +53,69 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [build]
+    env:
+      TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
 
     steps:
+      - name: Checkout (for CHANGELOG.md)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TAG_NAME }}
+
       - name: Download zip artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: zips-*
           merge-multiple: true
+
+      - name: Generate release notes from CHANGELOG
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+          from pathlib import Path
+          import os
+          import re
+          
+          tag = os.environ.get("TAG_NAME", "").strip()
+          version = tag[1:] if tag.startswith("v") else tag
+          
+          changelog = Path("CHANGELOG.md")
+          out = Path("release_body.md")
+          
+          if not changelog.exists() or not version:
+              out.write_text(f"Release {tag}\n", encoding="utf-8")
+              raise SystemExit(0)
+          
+          lines = changelog.read_text(encoding="utf-8").splitlines()
+          header_re = re.compile(r"^##\\s+\\[" + re.escape(version) + r"\\]\\b")
+          any_header_re = re.compile(r"^##\\s+\\[")
+          
+          start = None
+          for i, ln in enumerate(lines):
+              if header_re.match(ln.strip()):
+                  start = i
+                  break
+          
+          if start is None:
+              # Fallback: keep it non-empty even if the changelog format changed.
+              out.write_text(f"Release {tag}\n\n(Notes not found in CHANGELOG.md.)\n", encoding="utf-8")
+              raise SystemExit(0)
+          
+          end = len(lines)
+          for j in range(start + 1, len(lines)):
+              if any_header_re.match(lines[j].strip()):
+                  end = j
+                  break
+          
+          # Emit just the section body (skip the "## [x.y.z]" title line).
+          body = "\n".join(lines[start + 1:end]).strip() + "\n"
+          if not body.strip():
+              body = f"(No notes listed for {tag}.)\n"
+          
+          out.write_text(body, encoding="utf-8")
+          print(f"Wrote {out} for {tag}")
+          PY
 
       - name: List release files
         run: ls -la
@@ -62,6 +123,9 @@ jobs:
       - name: Create release and upload assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.TAG_NAME }}
+          body_path: release_body.md
           files: |
             CAN-Analyzer-*.zip
 
