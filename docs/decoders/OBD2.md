@@ -901,7 +901,7 @@ The OBD-II implementation follows a modular design:
                        │
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                   dialogs_obd2.py                           │
+│                   dialogs/obd2.py                           │
 │                   (User Interface)                          │
 │                                                             │
 │  • OBD2Dialog (PyQt6 GUI)                                  │
@@ -1023,6 +1023,20 @@ Dropdown → Select "Basic" (RPM, Speed, Coolant, TPS)
 3. View codes in popup dialog
 4. If no codes: "No DTCs found. Vehicle is healthy!"
 ```
+
+### 6.1 Detect VIN (Service 09 PID 02)
+
+The OBD-II Monitor includes a **Detect VIN** button. It requests vehicle information (Service `0x09`, PID `0x02`) and assembles the ISO-TP multi-frame response.
+
+```
+1. Click "Detect VIN"
+2. Wait for response (ISO-TP multi-frame)
+3. VIN is displayed in the header (right side), next to the channel status
+```
+
+Notes:
+- VIN responses are typically multi-frame (ISO-TP).
+- Some ECUs require a Flow Control (0x30) frame before sending consecutive frames.
 
 ### 7. Export Data
 
@@ -1244,7 +1258,7 @@ Dropdown → Select "Basic" (RPM, Speed, Coolant, TPS)
 |------|---------|-------|
 | `src/decoders/obd2_decoder.py` | Core decoder logic | ~505 |
 | `src/decoders/obd2_protocol_decoder.py` | Protocol adapter | ~66 |
-| `src/dialogs_obd2.py` | User interface | ~1,249 |
+| `src/dialogs/obd2.py` | User interface | ~1,249 |
 
 ### Tools
 

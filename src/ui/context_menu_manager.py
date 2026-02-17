@@ -197,7 +197,7 @@ class ContextMenuManager:
                 added_count += 1
                 
             except Exception as e:
-                self.parent.logger.error(f"Erro ao adicionar mensagem da linha {row}: {e}")
+                self.parent.logger.error(f"Error adding message from row {row}: {e}")
                 continue
         
         if added_count > 0:
@@ -264,7 +264,7 @@ class ContextMenuManager:
             dialog.exec()
             
         except Exception as e:
-            self.parent.logger.error(f"Erro ao abrir Bit Field Viewer: {e}")
+            self.parent.logger.error(f"Error opening Bit Field Viewer: {e}")
     
     def send_selected_tx_once(self):
         """Send selected transmit messages once"""
@@ -291,7 +291,7 @@ class ContextMenuManager:
                     self.parent._increment_tx_count(row)
                     
             except Exception as e:
-                self.parent.logger.error(f"Erro ao enviar mensagem da linha {row}: {e}")
+                self.parent.logger.error(f"Error sending message from row {row}: {e}")
         
         if sent_count > 0:
             from ..i18n import t

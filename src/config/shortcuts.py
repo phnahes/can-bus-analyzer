@@ -48,6 +48,7 @@ def get_shortcuts() -> Dict[str, str]:
         'filters': f'{mod}+F',                  # Open Filters
         'gateway': f'{mod}+G',                  # Gateway Configuration
         'triggers': f'{mod}+Shift+R',           # Trigger Configuration (Shift+R to avoid conflict with Reset)
+        'diff_mode': f'{mod}+D',                # Diff Mode Settings
         # Decoders Menu
         'decoder_manager': f'{mod}+Shift+D',
         'ftcan_analyzer': f'{mod}+1',
@@ -84,6 +85,7 @@ def get_shortcut_descriptions() -> Dict[str, str]:
         'filters': 'Open Filters',
         'triggers': 'Trigger Configuration',
         'gateway': 'Gateway Configuration',
+        'diff_mode': 'Diff Mode Settings',
         # Decoders Menu
         'decoder_manager': 'Manage Protocol Decoders',
         'ftcan_analyzer': 'Open FTCAN 2.0 Protocol Analyzer',

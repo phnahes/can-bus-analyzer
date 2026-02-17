@@ -25,6 +25,7 @@ from .ui_update_handler import UIUpdateHandler
 from .connect_handler import ConnectHandler
 from .monitor_log_handler import MonitorLogHandler
 from .transmit_load_handler import TransmitLoadHandler
+from .diff_manager import DiffManager, DiffConfig
 
 __all__ = [
     'MessageHandler',
@@ -47,5 +48,7 @@ __all__ = [
     'UIUpdateHandler',
     'ConnectHandler',
     'MonitorLogHandler',
-    'TransmitLoadHandler'
+    'TransmitLoadHandler',
+    'DiffManager',
+    'DiffConfig'
 ]

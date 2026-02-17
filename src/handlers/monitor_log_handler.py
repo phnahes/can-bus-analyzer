@@ -69,7 +69,7 @@ class MonitorLogHandler:
             )
             
         except Exception as e:
-            self.logger.error(f"Erro ao carregar Monitor log: {e}", exc_info=True)
+            self.logger.error(f"Error loading Monitor log: {e}", exc_info=True)
             MessageBoxHelper.show_error(
                 self.parent, 
                 "Load Error", 
@@ -118,7 +118,7 @@ class MonitorLogHandler:
                     5000
                 )
         except Exception as e:
-            self.logger.error(f"Erro ao salvar Monitor log: {str(e)}", exc_info=True)
+            self.logger.error(f"Error saving Monitor log: {str(e)}", exc_info=True)
             MessageBoxHelper.show_error(
                 self.parent, 
                 "Save Error", 

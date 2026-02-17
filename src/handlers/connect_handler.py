@@ -36,6 +36,8 @@ class ConnectHandler:
             # Initialize bus manager and connection state
             self.parent.can_bus_manager = self.parent.connection_mgr.get_bus_manager()
             self.parent.connected = True
+            # Only these buses should be considered "expected" for watchdog.
+            self.parent._expected_connected_buses = set(connected_buses)
             
             # Initialize transmit handler
             self.parent.transmit_handler = TransmitHandler(
@@ -143,7 +145,7 @@ class ConnectHandler:
             self.parent.receive_thread.start()
             self.logger.info("Thread de recepção iniciada (legacy mode)")
         elif self.parent.can_bus_manager:
-            self.logger.info("Usando threads de recepção do CANBusManager")
+            self.logger.info("Using CANBusManager receive threads")
         
         # Generate sample data if in simulation mode
         simulation_mode = self.parent.config.get('simulation_mode', False)
@@ -155,4 +157,4 @@ class ConnectHandler:
         if simulation_mode or not CAN_AVAILABLE:
             self.parent.generate_sample_data()
         
-        self.logger.info("Conexão estabelecida com sucesso")
+        self.logger.info("Connection established successfully")

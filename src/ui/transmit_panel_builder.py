@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QWidget, QHeaderView
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QAction, QKeySequence
 
 from ..config import DEFAULT_CHANNEL
 
@@ -59,6 +59,19 @@ class TransmitPanelBuilder:
             'PID', 'DLC', 'RTR', 'Period', 'TX Mode', 'Trigger ID', 'Trigger Data',
             'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'Count', 'Comment', t('col_channel')
         ])
+
+        # Support Delete/Backspace to remove selected TX rows when table is focused.
+        # (On Mac keyboards, "Delete" usually maps to Backspace.)
+        on_delete = callbacks.get('delete_selected_messages') or callbacks.get('delete_message')
+        if on_delete:
+            delete_action = QAction(table)
+            delete_action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+            delete_action.setShortcuts([
+                QKeySequence(Qt.Key.Key_Delete),
+                QKeySequence(Qt.Key.Key_Backspace),
+            ])
+            delete_action.triggered.connect(on_delete)
+            table.addAction(delete_action)
         
         table.itemDoubleClicked.connect(callbacks['load_to_edit'])
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)

@@ -56,6 +56,9 @@
  *   - P0300: Random/Multiple Cylinder Misfire Detected
  *   - C0035: Left Front Wheel Speed Sensor Circuit
  *   - B1234: Example Body Code
+ *
+ * - Service 09 (Vehicle information):
+ *   - PID 0x02: VIN (17 ASCII chars, ISO-TP multi-frame)
  * 
  * Author: CAN Analyzer Team
  * Date: 2026-02-05
@@ -95,6 +98,8 @@ mcp2515_can CAN(SPI_CS_PIN);
 // OBD-II IDs
 #define OBD2_REQUEST_ID  0x7DF     // Standard OBD-II request ID (broadcast)
 #define OBD2_RESPONSE_ID 0x7E8     // ECU response ID (ECU #1)
+// Many scanners send ISO-TP Flow Control to the physical tester->ECU ID (0x7E0)
+#define OBD2_PHYSICAL_REQUEST_ID 0x7E0
 
 // Simulation Parameters
 #define ENGINE_IDLE_RPM 800        // Idle RPM
@@ -103,6 +108,9 @@ mcp2515_can CAN(SPI_CS_PIN);
 
 // Debug Mode (set to true to enable Serial debug output)
 #define DEBUG_MODE true
+
+// Fake VIN to return in Service 09 PID 02 (must be 17 ASCII characters)
+static const char VIN_STRING[] = "1HGBH41JXMN109186";
 
 // ============================================================================
 // GLOBAL VARIABLES
@@ -200,8 +208,12 @@ void loop() {
     CAN.readMsgBuf(&len, buf);
     id = CAN.getCanId();
     
-    // Check if it's an OBD-II request
-    if (id == OBD2_REQUEST_ID && len >= 2) {
+    // Check if it's an OBD-II request (functional 0x7DF or physical 0x7E0).
+    // This simulator expects single-frame requests where buf[0] is the payload length (<= 0x07).
+    // Ignore ISO-TP Flow Control/FF/CF frames (e.g. 0x30..).
+    if ((id == OBD2_REQUEST_ID || id == OBD2_PHYSICAL_REQUEST_ID) &&
+        len >= 2 &&
+        ((buf[0] & 0xF0) == 0x00)) {
       request_count++;
       handle_obd2_request(buf, len);
     }
@@ -346,6 +358,100 @@ void handle_dtc_request() {
   }
 }
 
+// ============================================================================
+// SERVICE 09 (VEHICLE INFORMATION) - VIN (PID 0x02)
+// ============================================================================
+
+static bool wait_for_isotp_flow_control(uint16_t &out_stmin_ms) {
+  // ISO-TP FC: 0x30 (Continue to send), BS, STmin, ...
+  const unsigned long timeout_ms = 60;
+  unsigned long start = millis();
+
+  while (millis() - start < timeout_ms) {
+    if (CAN_MSGAVAIL == CAN.checkReceive()) {
+      unsigned long id;
+      byte len;
+      byte buf[MAX_DATA_SIZE];
+
+      CAN.readMsgBuf(&len, buf);
+      id = CAN.getCanId();
+
+      if (len >= 3 && (id == OBD2_PHYSICAL_REQUEST_ID || id == OBD2_REQUEST_ID)) {
+        if ((buf[0] & 0xF0) == 0x30) {
+          uint8_t stmin = buf[2];
+          // STmin 0x00-0x7F = milliseconds. Other encodings ignored for simplicity.
+          out_stmin_ms = (stmin <= 0x7F) ? stmin : 0;
+          return true;
+        }
+      }
+    }
+    delay(1);
+  }
+
+  return false;
+}
+
+static void handle_vin_request() {
+  // VIN response payload (without ISO-TP PCI):
+  // 0x49, 0x02, 0x01, then 17 ASCII chars.
+  // Total payload length = 3 + 17 = 20 (0x14) bytes -> 1 FF + 2 CF.
+  const uint8_t payload_len = 0x14;
+
+  // Ensure we always transmit exactly 17 bytes (pad with spaces if shorter).
+  char vin[17];
+  for (int i = 0; i < 17; i++) vin[i] = ' ';
+  for (int i = 0; i < 17 && VIN_STRING[i] != '\0'; i++) vin[i] = VIN_STRING[i];
+
+  uint8_t payload[0x14];
+  payload[0] = 0x49;  // 0x09 + 0x40
+  payload[1] = 0x02;  // PID 0x02 (VIN)
+  payload[2] = 0x01;  // VIN message count / frame index (common: 0x01)
+  for (int i = 0; i < 17; i++) {
+    payload[3 + i] = (uint8_t)vin[i];
+  }
+
+  if (DEBUG_MODE) {
+    SERIAL_PORT_MONITOR.print(F("  → Sending VIN (Mode 09 PID 02): "));
+    for (int i = 0; i < 17; i++) SERIAL_PORT_MONITOR.print(vin[i]);
+    SERIAL_PORT_MONITOR.println();
+  }
+
+  // First Frame (FF): [0x10 | (len >> 8), len, payload[0..5]]
+  byte ff[8];
+  ff[0] = 0x10 | ((payload_len >> 8) & 0x0F);
+  ff[1] = payload_len & 0xFF;
+  for (int i = 0; i < 6; i++) ff[2 + i] = payload[i];
+  CAN.sendMsgBuf(OBD2_RESPONSE_ID, 0, 8, ff);
+
+  // Wait for Flow Control (best-effort). If none arrives, continue with a safe delay.
+  uint16_t stmin_ms = 5;
+  uint16_t stmin_from_fc = 0;
+  if (wait_for_isotp_flow_control(stmin_from_fc)) {
+    stmin_ms = stmin_from_fc;
+  }
+  if (stmin_ms < 1) stmin_ms = 1;
+
+  // Consecutive Frame 1 (CF1): [0x21, payload[6..12]]
+  delay(stmin_ms);
+  byte cf1[8];
+  cf1[0] = 0x21;
+  for (int i = 0; i < 7; i++) cf1[1 + i] = payload[6 + i];
+  CAN.sendMsgBuf(OBD2_RESPONSE_ID, 0, 8, cf1);
+
+  // Consecutive Frame 2 (CF2): [0x22, payload[13..19]]
+  delay(stmin_ms);
+  byte cf2[8];
+  cf2[0] = 0x22;
+  for (int i = 0; i < 7; i++) cf2[1 + i] = payload[13 + i];
+  CAN.sendMsgBuf(OBD2_RESPONSE_ID, 0, 8, cf2);
+
+  response_count++;
+
+  if (DEBUG_MODE) {
+    SERIAL_PORT_MONITOR.println(F("  ✓ VIN sent (ISO-TP multi-frame)"));
+  }
+}
+
 void handle_obd2_request(byte *request, byte len) {
   // OBD-II request format: [Length, Service, PID, ...]
   uint8_t length = request[0];
@@ -356,7 +462,7 @@ void handle_obd2_request(byte *request, byte len) {
     SERIAL_PORT_MONITOR.print(F("← Request: Service 0x"));
     if (service < 0x10) SERIAL_PORT_MONITOR.print(F("0"));
     SERIAL_PORT_MONITOR.print(service, HEX);
-    if (service == 0x01) {
+    if (service == 0x01 || service == 0x09) {
       SERIAL_PORT_MONITOR.print(F(", PID 0x"));
       if (pid < 0x10) SERIAL_PORT_MONITOR.print(F("0"));
       SERIAL_PORT_MONITOR.print(pid, HEX);
@@ -367,6 +473,16 @@ void handle_obd2_request(byte *request, byte len) {
   // Handle Service 03 (Read DTCs)
   if (service == 0x03) {
     handle_dtc_request();
+    return;
+  }
+
+  // Handle Service 09 (Vehicle information) - VIN
+  if (service == 0x09) {
+    if (pid == 0x02) {
+      handle_vin_request();
+    } else if (DEBUG_MODE) {
+      SERIAL_PORT_MONITOR.println(F("  ✗ Unsupported Service 09 PID"));
+    }
     return;
   }
   

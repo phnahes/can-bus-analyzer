@@ -725,6 +725,103 @@ Routes:
 
 ---
 
+### Bench Test (Arduino) - Gateway in the Lab
+
+This section describes a simple bench/lab setup to validate the Gateway feature using Arduino + MCP2515 modules:
+
+- Two Arduinos act as the **PC interfaces** (USB CDC serial to CAN) using `tools/arduino/arduino_usb_cdc.ino`
+- One Arduino acts as a **traffic source** using `tools/arduino/arduino_msg_generator.ino`
+- One Arduino acts as a **traffic sink** using `tools/arduino/arduino_msg_receiver.ino`
+
+The idea is to create two independent CAN buses and place the PC/app gateway between them:
+
+```
+CAN BUS A (source side)                          CAN BUS B (destination side)
+
+[Arduino: msg_generator] -- CAN-A -- [Arduino: usb_cdc #1] --USB--> PC (CAN1)
+                                                           |
+                                                           |  Gateway (CAN1 -> CAN2)
+                                                           v
+[Arduino: msg_receiver ] -- CAN-B -- [Arduino: usb_cdc #2] --USB--> PC (CAN2)
+```
+
+#### Hardware required
+- 4x Arduino-compatible boards (UNO/Nano/etc)
+- 4x MCP2515 CAN modules + transceivers
+- Correct CAN wiring (CANH/CANL + common GND on each bus)
+- 120 ohm termination on each CAN bus (typically at both ends of the bus)
+
+#### Step 1: Flash the sketches
+
+1) Interface boards (2x):
+- Upload `tools/arduino/arduino_usb_cdc.ino` to **two** Arduinos (these are the CAN adapters the PC will connect to)
+
+Note about boards without `serialEvent()`:
+- In `arduino_usb_cdc.ino` there is a comment about Leonardo/Pro Micro/Esplora.
+- If your board does not call `serialEvent()`, uncomment the `lineReader->process()` lines inside `loop()` so commands are processed.
+
+2) Source board (1x):
+- Upload `tools/arduino/arduino_msg_generator.ino`
+
+3) Destination board (1x):
+- Upload `tools/arduino/arduino_msg_receiver.ino`
+
+Important: check and match these constants in each sketch to your MCP2515 module:
+- `CAN_CRYSTAL_CLOCK` (common modules are 8 MHz or 16 MHz)
+- `CAN_SPEED` (e.g. 250k/500k/1M, must match within each CAN bus)
+- `SPI_CS_PIN` and `CAN_INT_PIN` (must match your wiring)
+
+#### Step 2: Wire the two CAN buses
+
+Build two separate CAN networks:
+
+- CAN BUS A:
+  - `msg_generator.ino` Arduino <-> `arduino_usb_cdc.ino` interface Arduino
+- CAN BUS B:
+  - `msg_receiver.ino` Arduino <-> `arduino_usb_cdc.ino` interface Arduino
+
+Keep the buses physically separated (do not connect CAN-A to CAN-B directly). The Gateway in the PC/app is what bridges them.
+
+#### Step 3: Configure CAN Analyzer for two channels
+
+1) Plug the two `arduino_usb_cdc.ino` boards into the PC via USB
+2) Open **Settings** and configure 2 CAN buses (example):
+   - CAN1: select the serial device for usb_cdc #1
+   - CAN2: select the serial device for usb_cdc #2
+   - Use the same CAN baudrate you configured in the sketches
+3) Connect to the buses (Connect button)
+
+You should see live traffic on CAN1 coming from the generator (Monitor/Tracer), even before enabling the Gateway.
+
+#### Step 4: Enable the Gateway (CAN1 -> CAN2)
+
+1) Open Tools -> Gateway
+2) Add a route:
+   - From: CAN1
+   - To: CAN2
+   - Enabled: yes
+3) Enable "Enable Gateway"
+4) (Recommended) Keep loop prevention enabled
+
+#### Step 5: Validate forwarding
+
+You have two simple validations:
+
+1) On the receiver side:
+- Open Serial Monitor for the Arduino running `arduino_msg_receiver.ino`
+- You should see the forwarded frames arriving on CAN BUS B (timestamps, IDs, data)
+
+2) In CAN Analyzer UI:
+- You should see gateway indicators in the Channel column showing forwarding activity (for example, CAN1 -> CAN2 forwarding)
+
+If you see messages on CAN1 but nothing on CAN2 / receiver:
+- Verify both CAN buses are connected in the app
+- Verify baudrate and MCP2515 crystal settings match
+- Verify termination and wiring (CANH/CANL are not swapped)
+- Verify both `arduino_usb_cdc.ino` interfaces are responsive (serial device present)
+
+---
+
 ### Configuration Files
 
 Save and load gateway configurations.

@@ -155,6 +155,12 @@ class MenuBarBuilder:
         triggers_action.triggered.connect(self.parent.show_trigger_dialog)
         tools_menu.addAction(triggers_action)
         
+        # Diff Mode
+        diff_action = QAction("🔍 Diff Mode Settings...", self.parent)
+        diff_action.setShortcut(get_shortcut('diff_mode'))
+        diff_action.triggered.connect(self.parent.show_diff_dialog)
+        tools_menu.addAction(diff_action)
+        
         tools_menu.addSeparator()
         
         # Protocol Decoders submenu

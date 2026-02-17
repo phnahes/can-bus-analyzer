@@ -76,6 +76,18 @@ class StateInitializer:
         parent.gateway_config = GatewayConfig()
     
     @staticmethod
+    def init_diff_state(parent):
+        """Initialize diff mode state"""
+        from ..handlers import DiffConfig
+        parent.diff_config = DiffConfig()
+        # Load from config if available
+        if 'diff_mode' in parent.config:
+            parent.diff_config = DiffConfig.from_dict(parent.config['diff_mode'])
+        # Diff always starts OFF on app startup (even if last run had it enabled).
+        parent.diff_config.enabled = False
+        parent.logger.info("Diff mode initialized: enabled=False (startup default)")
+    
+    @staticmethod
     def init_theme_state(parent):
         """Initialize theme state"""
         from ..theme import should_use_dark_mode
@@ -93,4 +105,5 @@ class StateInitializer:
         StateInitializer.init_transmit_state(parent)
         StateInitializer.init_split_screen_state(parent)
         StateInitializer.init_gateway_state(parent)
+        StateInitializer.init_diff_state(parent)
         StateInitializer.init_theme_state(parent)

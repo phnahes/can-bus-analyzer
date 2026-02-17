@@ -65,6 +65,13 @@ class OBD2Dialog(QDialog):
         self.dtcs_found = []
         self.dtc_buffer = bytearray()  # Buffer para juntar frames multi-frame
         self.dtc_response_received = False  # Flag para rastrear se recebeu resposta de DTC
+
+        # VIN detection (Service 09 PID 02) - ISO-TP multi-frame
+        self.receiving_vin = False
+        self.vin_response_received = False
+        self.vin_buffer = bytearray()
+        self.vin_expected_len: Optional[int] = None
+        self.vin_value: Optional[str] = None
         
         # Conecta sinal para processar mensagens de forma thread-safe
         self.message_received.connect(self._process_can_message)
@@ -91,6 +98,10 @@ class OBD2Dialog(QDialog):
             # Continuation frames: [Length, data...]
             if msg.data[1] == 0x43 or (len(msg.data) > 1 and msg.data[0] in [0x04, 0x05, 0x06, 0x07]):
                 self._process_dtc_response(msg)
+
+        # VIN detection (ISO-TP): handle FF/CF frames (0x10/0x21..)
+        elif self.receiving_vin and len(msg.data) >= 2:
+            self._process_vin_response(msg)
         
         # If polling or single shot, process PID
         elif len(msg.data) >= 3 and msg.data[1] == 0x41:
@@ -193,6 +204,14 @@ class OBD2Dialog(QDialog):
             # No bus available
             self.channel_label = QLabel("<b>Channel:</b> <span style='color: red; font-weight: bold;'>Disconnected</span>")
             right_layout.addWidget(self.channel_label)
+
+        # VIN (right side, more visible)
+        right_layout.addWidget(QLabel("│"))
+        right_layout.addWidget(QLabel("<b>VIN:</b>"))
+        self.vin_value_label = QLabel("-")
+        self.vin_value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.vin_value_label.setStyleSheet("font-family: Courier; font-size: 12px; font-weight: bold; color: #222;")
+        right_layout.addWidget(self.vin_value_label)
         
         top_layout.addLayout(right_layout)
         main_layout.addLayout(top_layout)
@@ -442,6 +461,12 @@ class OBD2Dialog(QDialog):
         self.read_dtc_btn.clicked.connect(self._read_dtcs)
         self.read_dtc_btn.setToolTip("Read Diagnostic Trouble Codes (Service 03)")
         layout.addWidget(self.read_dtc_btn)
+
+        # Button: Detect VIN (Service 09 PID 02)
+        self.detect_vin_btn = QPushButton("🆔 Detect VIN")
+        self.detect_vin_btn.clicked.connect(self._detect_vin)
+        self.detect_vin_btn.setToolTip("Detect VIN (Service 09 PID 02, ISO-TP multi-frame)")
+        layout.addWidget(self.detect_vin_btn)
         
         # Botão Save Results
         save_btn = QPushButton("💾 " + t('obd2_save_results'))
@@ -768,6 +793,124 @@ class OBD2Dialog(QDialog):
         self.start_btn.setEnabled(True)
         self.single_shot_btn.setEnabled(True)
         self.read_dtc_btn.setEnabled(True)
+
+    def _detect_vin(self):
+        """Request VIN (Service 09 PID 02) and assemble ISO-TP multi-frame response."""
+        if not self.active_bus or not self.active_bus.bus:
+            QMessageBox.warning(
+                self,
+                "Not Connected",
+                "Cannot detect VIN: Not connected to CAN bus."
+            )
+            return
+
+        if self.receiving_vin:
+            return
+
+        # Reset VIN state
+        self.receiving_vin = True
+        self.vin_response_received = False
+        self.vin_buffer = bytearray()
+        self.vin_expected_len = None
+        self.vin_value = None
+        if hasattr(self, 'vin_value_label'):
+            self.vin_value_label.setText("(detecting...)")
+
+        try:
+            # Service 09 (Vehicle information), PID 02 (VIN)
+            request = can.Message(
+                arbitration_id=0x7DF,  # Broadcast request
+                data=[0x02, 0x09, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
+                is_extended_id=False
+            )
+            self.active_bus.send(request)
+            self.request_count += 1
+            self._add_raw_request(request, "Request: VIN (Service 09 PID 02)")
+            self._log_message("Requesting VIN (Service 09 PID 02)...")
+        except Exception as e:
+            self.receiving_vin = False
+            if hasattr(self, 'vin_value_label'):
+                self.vin_value_label.setText("-")
+            self._log_message(f"Error requesting VIN: {e}")
+            return
+
+        # Timeout for VIN response
+        QTimer.singleShot(1500, self._detect_vin_complete)
+
+    def _detect_vin_complete(self):
+        """Callback after VIN detection timeout."""
+        if self.vin_response_received and self.vin_value:
+            self._log_message(f"VIN detected: {self.vin_value}")
+        else:
+            self._log_message("VIN detection timed out (no complete response).")
+            if not self.vin_value:
+                if hasattr(self, 'vin_value_label'):
+                    self.vin_value_label.setText("(not available)")
+        self.receiving_vin = False
+
+    def _process_vin_response(self, msg: CANMessage):
+        """Process ISO-TP VIN response frames (0x49 0x02 0x01 + 17 ASCII VIN bytes)."""
+        if len(msg.data) < 2:
+            return
+
+        pci = msg.data[0]
+        frame_type = pci & 0xF0
+
+        # First Frame (FF): [0x10|len_hi, len_lo, payload0..5]
+        if frame_type == 0x10 and len(msg.data) >= 8:
+            total_len = ((pci & 0x0F) << 8) | msg.data[1]
+            self.vin_expected_len = total_len
+            self.vin_buffer = bytearray(msg.data[2:])  # 6 bytes payload
+            self._add_raw_message(msg, "VIN response (ISO-TP First Frame)")
+
+            # If this is indeed a VIN response, send Flow Control (FC) so ECU keeps sending.
+            # Many ECUs expect FC to the physical tester->ECU ID (0x7E0).
+            try:
+                if len(self.vin_buffer) >= 2 and self.vin_buffer[0] == 0x49 and self.vin_buffer[1] == 0x02:
+                    fc = can.Message(
+                        arbitration_id=0x7E0,
+                        data=[0x30, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00],
+                        is_extended_id=False
+                    )
+                    self.active_bus.send(fc)
+                    self._add_raw_request(fc, "Flow Control (ISO-TP) for VIN")
+            except Exception as e:
+                self._log_message(f"VIN Flow Control send failed: {e}")
+
+        # Consecutive Frame (CF): [0x2N, payload0..6]
+        elif frame_type == 0x20 and self.vin_expected_len is not None:
+            self.vin_buffer.extend(msg.data[1:])  # 7 bytes
+            self._add_raw_message(msg, "VIN response (ISO-TP Consecutive Frame)")
+
+        else:
+            # Not ISO-TP or not part of VIN sequence; ignore.
+            return
+
+        # Check completion
+        if self.vin_expected_len is not None and len(self.vin_buffer) >= self.vin_expected_len:
+            payload = bytes(self.vin_buffer[:self.vin_expected_len])
+
+            # Expected payload: 0x49 0x02 0x01 + 17 ASCII chars
+            if len(payload) >= 3 and payload[0] == 0x49 and payload[1] == 0x02:
+                vin_bytes = payload[3:3 + 17]
+                try:
+                    vin = bytes(vin_bytes).decode('ascii', errors='ignore').strip()
+                except Exception:
+                    vin = ""
+
+                if vin:
+                    self.vin_value = vin
+                    if hasattr(self, 'vin_value_label'):
+                        self.vin_value_label.setText(vin)
+                    self.vin_response_received = True
+                    self.response_count += 1
+                    self._log_message(f"VIN detected: {vin}")
+                else:
+                    if hasattr(self, 'vin_value_label'):
+                        self.vin_value_label.setText("(invalid response)")
+            else:
+                if hasattr(self, 'vin_value_label'):
+                    self.vin_value_label.setText("(unexpected response)")
     
     def _process_dtc_response(self, msg: CANMessage):
         """Processa resposta de DTC com suporte a multi-frame"""

@@ -13,7 +13,7 @@ try:
     CAN_AVAILABLE = True
 except ImportError:
     CAN_AVAILABLE = False
-    print("python-can não instalado. Modo simulação ativado.")
+    print("python-can not installed. Simulation mode activated.")
 
 
 class CANInterface:
@@ -27,7 +27,7 @@ class CANInterface:
         self.message_callback: Optional[Callable[[CANMessage], None]] = None
         
     def connect(self) -> bool:
-        """Conecta ao barramento CAN"""
+        """Connect to CAN bus"""
         try:
             if CAN_AVAILABLE:
                 # Aqui será implementada a conexão real
@@ -44,11 +44,11 @@ class CANInterface:
             return True
             
         except Exception as e:
-            print(f"Erro ao conectar: {e}")
+            print(f"Error while connecting: {e}")
             return False
     
     def disconnect(self):
-        """Desconecta do barramento CAN"""
+        """Disconnect from CAN bus"""
         self.running = False
         
         if self.receive_thread:
@@ -59,7 +59,7 @@ class CANInterface:
             self.bus = None
     
     def send_message(self, msg: CANMessage) -> bool:
-        """Envia uma mensagem CAN"""
+        """Send a CAN message"""
         try:
             if self.bus:
                 can_msg = can.Message(
@@ -75,11 +75,11 @@ class CANInterface:
                 print(f"[SIM] Enviando: ID=0x{msg.can_id:03X}, Data={msg.to_hex_string()}")
                 return True
         except Exception as e:
-            print(f"Erro ao enviar mensagem: {e}")
+            print(f"Error while sending message: {e}")
             return False
     
     def set_message_callback(self, callback: Callable[[CANMessage], None]):
-        """Define callback para mensagens recebidas"""
+        """Set callback for received messages"""
         self.message_callback = callback
     
     def _receive_loop(self):
@@ -101,7 +101,7 @@ class CANInterface:
                 else:
                     time.sleep(0.1)
             except Exception as e:
-                print(f"Erro na recepção: {e}")
+                print(f"Receive error: {e}")
                 time.sleep(0.1)
     
     def is_connected(self) -> bool:

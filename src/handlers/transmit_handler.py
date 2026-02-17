@@ -5,6 +5,7 @@ Manages CAN message transmission logic including periodic sending.
 Separated from UI code for better testability and maintainability.
 """
 
+import logging
 import threading
 from typing import List, Dict, Optional
 from ..logger import get_logger
@@ -126,7 +127,9 @@ class TransmitHandler:
             
             if success:
                 msg_type = "RTR" if message_data.get('is_rtr', False) else "Data"
-                self.logger.info(f"Sent {msg_type} 0x{arbitration_id:03X} to {target_bus or 'all'}")
+                # TX send can be very repetitive (periodic sends) -> keep it in DEBUG.
+                if self.logger.logger.isEnabledFor(logging.DEBUG):
+                    self.logger.debug(f"Sent {msg_type} 0x{arbitration_id:03X} to {target_bus or 'all'}")
             else:
                 self.logger.warning(f"Failed to send 0x{arbitration_id:03X}")
             return success

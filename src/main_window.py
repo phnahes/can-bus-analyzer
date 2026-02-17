@@ -7,6 +7,7 @@ import json
 import threading
 import queue
 import time
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict
 from collections import defaultdict
@@ -99,6 +100,10 @@ class CANAnalyzerWindow(QMainWindow):
             config_manager=self.config_manager,
             disconnect_callback=self._on_device_disconnected
         )
+        # Only monitor buses that actually connected successfully.
+        # This prevents "partial connect" (one bus failed to open) from triggering
+        # an auto-disconnect of the working bus.
+        self._expected_connected_buses: set[str] = set()
         
         self.transmit_handler = None  # Will be initialized after can_bus_manager
         
@@ -286,6 +291,11 @@ class CANAnalyzerWindow(QMainWindow):
         main_layout.addLayout(status_bar_layout)
         
         self.update_ui_translations()
+        
+        # Initialize Diff button state (disabled in Tracer mode by default)
+        if hasattr(self, 'btn_diff'):
+            self.btn_diff.setEnabled(not self.tracer_mode)
+            self.update_diff_button_state()
     
     def _create_toolbar(self) -> QHBoxLayout:
         """Create toolbar with connection and mode controls"""
@@ -337,6 +347,7 @@ class CANAnalyzerWindow(QMainWindow):
             'on_dlc_changed': self.on_dlc_changed,
             'add_message': self.add_tx_message,
             'delete_message': self.delete_tx_message,
+            'delete_selected_messages': self.delete_selected_tx_messages,
             'clear_fields': self.clear_tx_fields,
             'send_single': self.send_single,
             'send_all': self.send_all,
@@ -480,16 +491,18 @@ class CANAnalyzerWindow(QMainWindow):
     def _on_can_message_received(self, bus_name: str, msg: CANMessage):
         """Callback when a CAN message is received from any bus"""
         self.message_queue.put(msg)
-        # Debug: log receive flow (1st, 2nd, 3rd, then every 20th)
-        if not hasattr(self, '_rx_log_count'):
-            self._rx_log_count = 0
-        self._rx_log_count += 1
-        n = self._rx_log_count
-        if n <= 3 or n % 20 == 0:
-            self.logger.info(
-                f"RX queue: msg 0x{msg.can_id:03X} from '{msg.source}' "
-                f"(queue put #{n}, qsize≈{self.message_queue.qsize()})"
-            )
+        # Debug: log receive flow (1st, 2nd, 3rd, then every 20th).
+        # Guarded to avoid extra work when DEBUG is disabled.
+        if self.logger.logger.isEnabledFor(logging.DEBUG):
+            if not hasattr(self, '_rx_log_count'):
+                self._rx_log_count = 0
+            self._rx_log_count += 1
+            n = self._rx_log_count
+            if n <= 3 or n % 20 == 0:
+                self.logger.debug(
+                    f"RX queue: msg 0x{msg.can_id:03X} from '{msg.source}' "
+                    f"(queue put #{n}, qsize≈{self.message_queue.qsize()})"
+                )
         if hasattr(self, '_obd2_dialog') and self._obd2_dialog:
             self._obd2_dialog.on_can_message(bus_name, msg)
     
@@ -519,13 +532,15 @@ class CANAnalyzerWindow(QMainWindow):
         # Get current connection status
         status = can_bus_manager.get_connection_status()
         
-        # Check if any bus that should be connected is now disconnected
-        for bus_name, is_connected in status.items():
-            if not is_connected:
-                # Bus is disconnected but we thought we were connected
+        # Check only buses that were actually connected at connect-time.
+        expected = getattr(self, "_expected_connected_buses", set()) or set()
+        if not expected:
+            # Fallback: if for some reason it's unset, monitor currently connected buses.
+            expected = set(can_bus_manager.get_connected_buses())
+
+        for bus_name in sorted(expected):
+            if not status.get(bus_name, False):
                 self.logger.warning(f"Connection status check: {bus_name} is disconnected")
-                
-                # Trigger disconnect callback
                 self._on_device_disconnected(bus_name, "Connection lost (detected by monitor)")
                 break  # Only handle one at a time
     
@@ -572,6 +587,7 @@ class CANAnalyzerWindow(QMainWindow):
         self.connection_mgr.disconnect()
         self.connected = False
         self.can_bus_manager = None
+        self._expected_connected_buses = set()
         
         self.connection_status.setText("Not Connected")
         self.device_label.setText("Device: N/A")
@@ -607,6 +623,10 @@ class CANAnalyzerWindow(QMainWindow):
         self.received_messages.clear()
         self.message_counters.clear()
         self.message_last_timestamp.clear()
+        
+        # Reset diff manager if active
+        if self.receive_table_mgr.diff_manager:
+            self.receive_table_mgr.diff_manager.reset()
         
         self.recording_mgr.clear_recording()
         
@@ -1369,11 +1389,20 @@ class CANAnalyzerWindow(QMainWindow):
     
     def delete_selected_tx_messages(self):
         """Delete selected messages from transmit table"""
-        selected_rows = self.transmit_table.selectionModel().selectedRows()
-        if not selected_rows:
+        selection_model = self.transmit_table.selectionModel()
+        if not selection_model:
             return
-        
-        rows_to_delete = sorted([index.row() for index in selected_rows], reverse=True)
+
+        # selectedRows() defaults to column 0 only; if the user clicked another column,
+        # it may return empty. Use selectedIndexes() instead.
+        rows = {idx.row() for idx in selection_model.selectedIndexes()}
+        if not rows:
+            row = self.transmit_table.currentRow()
+            if row < 0:
+                return
+            rows = {row}
+
+        rows_to_delete = sorted(rows, reverse=True)
         
         for row in rows_to_delete:
             if self.transmit_handler and self.transmit_handler.is_periodic_active(row):
@@ -1423,7 +1452,7 @@ class CANAnalyzerWindow(QMainWindow):
                 if first_item:
                     self.receive_table.scrollToItem(first_item)
         except Exception as e:
-            print(f"Erro ao destacar linha {row}: {e}")
+            print(f"Error highlighting row {row}: {e}")
     
     def clear_playback_highlight(self):
         """Clear playback highlight"""
@@ -1979,14 +2008,10 @@ class CANAnalyzerWindow(QMainWindow):
                 self.can_bus_manager.set_gateway_config(self.gateway_config)
                 
                 self.update_gateway_button_state()
-                
+                # Keep gateway notifications consolidated on the bottom-right
+                # (avoid QMainWindow.statusBar() messages on bottom-left).
                 status_msg = self.gateway_mgr.get_status_message(self.gateway_config)
-                self.statusBar().showMessage(status_msg, 5000)
-                
-                if self.gateway_config.enabled:
-                    self.show_notification("Gateway enabled", 3000)
-                else:
-                    self.show_notification("Gateway disabled", 3000)
+                self.show_notification(status_msg, 3000 if self.gateway_config.enabled else 2000)
     
     def toggle_gateway_from_toolbar(self):
         """Toggle Gateway enable/disable from toolbar button"""
@@ -2003,14 +2028,10 @@ class CANAnalyzerWindow(QMainWindow):
         self.gateway_config = updated_config
         
         self.update_gateway_button_state()
-        
+
+        # Keep gateway notifications consolidated on the bottom-right.
         status_msg = self.gateway_mgr.get_toolbar_status(self.gateway_config)
-        self.statusBar().showMessage(status_msg, 5000 if self.gateway_config.enabled else 3000)
-        
-        if self.gateway_config.enabled:
-            self.show_notification("🌉 Gateway enabled", 2000)
-        else:
-            self.show_notification("Gateway disabled", 2000)
+        self.show_notification(status_msg, 2000 if self.gateway_config.enabled else 1500)
     
     def update_gateway_button_state(self):
         """Update gateway button text and style based on state"""
@@ -2022,6 +2043,121 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_gateway.setText("🌉 Gateway: OFF")
             self.btn_gateway.setStyleSheet("")
             self.btn_gateway.setChecked(False)
+    
+    def show_diff_dialog(self):
+        """Show the Diff Mode configuration dialog"""
+        from .dialogs import DiffDialog
+        
+        dialog = DiffDialog(self, self.diff_config)
+        
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+
+        # Get new configuration
+        old_enabled = bool(getattr(self.diff_config, "enabled", False))
+        new_config = dialog.get_config()
+        self.diff_config = new_config
+
+        # Apply + persist
+        self._apply_diff_config(old_enabled=old_enabled)
+        self.config['diff_mode'] = self.diff_config.to_dict()
+        self.config_manager.save(self.config)
+
+        status_msg = (
+            f"🔍 Diff configured | min_rate={self.diff_config.min_message_rate} msg/s, "
+            f"min_bytes={self.diff_config.min_bytes_changed}, "
+            f"window={self.diff_config.time_window_ms}ms"
+        ) if self.diff_config.enabled else "🔍 Diff disabled"
+        self.show_notification(status_msg, 2500)
+        return True
+    
+    def toggle_diff_mode(self):
+        """Toggle Diff mode enable/disable from toolbar button"""
+        # Diff mode only works in Monitor mode
+        if self.tracer_mode:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self,
+                "Diff Mode - Monitor Only",
+                "Diff mode is only available in Monitor mode.\n\n"
+                "It filters repeated messages to show only changes.\n"
+                "Switch to Monitor mode to use this feature."
+            )
+            self.btn_diff.setChecked(False)
+            return
+
+        old_enabled = bool(getattr(self.diff_config, "enabled", False))
+        self.diff_config.enabled = bool(self.btn_diff.isChecked())
+        self._apply_diff_config(old_enabled=old_enabled)
+        
+        # Save config
+        self.config['diff_mode'] = self.diff_config.to_dict()
+        self.config_manager.save(self.config)
+        self.show_notification("Diff Mode ON" if self.diff_config.enabled else "Diff Mode OFF", 1200)
+
+    def update_diff_button_state(self):
+        """Update diff button text and style based on state"""
+        # Avoid re-triggering toggle_diff_mode() while we update the button programmatically.
+        self.btn_diff.blockSignals(True)
+        try:
+            if self.diff_config.enabled:
+                self.btn_diff.setText("🔍 Diff: ON")
+                self.btn_diff.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold;")
+                self.btn_diff.setChecked(True)
+            else:
+                self.btn_diff.setText("🔍 Diff: OFF")
+                self.btn_diff.setStyleSheet("")
+                self.btn_diff.setChecked(False)
+        finally:
+            self.btn_diff.blockSignals(False)
+
+    def _apply_diff_config(self, old_enabled: bool = False):
+        """Apply current diff_config to UI/table manager.
+
+        Args:
+            old_enabled: Previous enabled state (used to trigger auto-snapshot on OFF->ON).
+        """
+        # Diff only supported in Monitor mode
+        if self.tracer_mode:
+            self.diff_config.enabled = False
+
+        if self.diff_config.enabled:
+            from .handlers import DiffManager
+            dm = getattr(self.receive_table_mgr, "diff_manager", None)
+            if dm is None:
+                dm = DiffManager(self.diff_config)
+                # Seed baseline from current traffic so enabling Diff doesn't spam.
+                last_by_key = {}
+                for msg in reversed(self.received_messages):
+                    key = (msg.can_id, msg.source) if self.diff_config.compare_by_channel else (msg.can_id,)
+                    if key not in last_by_key:
+                        last_by_key[key] = msg
+                dm.last_seen = dict(last_by_key)
+                dm.snapshot = dict(last_by_key)     # baseline for delta highlight
+                dm.last_displayed = dict(last_by_key)  # suppress until a real change happens
+                dm._last_displayed_ts = {k: m.timestamp for k, m in last_by_key.items()}
+                self.receive_table_mgr.diff_manager = dm
+            else:
+                dm.update_config(self.diff_config)
+
+            # Auto snapshot on activation (OFF -> ON), like cansniffer baseline capture.
+            if not old_enabled:
+                try:
+                    dm.take_snapshot()
+                    self.show_notification("📸 Diff snapshot captured (baseline)", 1500)
+                except Exception as e:
+                    self.logger.error(f"Diff snapshot failed: {e}", exc_info=True)
+        else:
+            dm = getattr(self.receive_table_mgr, "diff_manager", None)
+            if dm is not None:
+                # Sync table to last seen frames so disabling Diff immediately shows latest values.
+                last_seen = dm.get_last_seen_messages()
+                self.receive_table_mgr.diff_manager = None
+                self.receive_table_mgr.sync_monitor_table_to_last_seen(self.receive_table, last_seen, self.colors)
+            else:
+                self.receive_table_mgr.diff_manager = None
+
+        self.update_diff_button_state()
     
     def toggle_split_screen(self):
         """Toggle split-screen mode (only available in Monitor mode)"""

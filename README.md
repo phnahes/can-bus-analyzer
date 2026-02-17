@@ -136,9 +136,11 @@ python can_analyzer.py
 - Configurable transmission period
 - TX Mode: off, on, trigger
 - Trigger ID and Trigger Data for conditional transmission
+- Delete key support: select TX row(s) and press `Delete`/`Backspace` (macOS)
 
 #### **Advanced Features**
 - **Bit Field Viewer**: Detailed bit-by-bit visualization
+- **Diff Mode (Monitor)**: Reduce noise by hiding repeats and/or highlighting data deltas
 - **Software Filters**: Message filtering by ID and data
 - **Trigger-based TX**: Automatic transmission on received messages
 - **Playback**: Reproduce recorded traces
@@ -200,6 +202,7 @@ The CAN Analyzer includes **modular protocol decoders** for automatic message in
   - Automatic Polling: Configurable interval (100ms-10s)
   - Live Values: Real-time data display
   - DTC Reading: Read and decode diagnostic trouble codes
+  - VIN Detection: Request VIN (Service 09 PID 02, ISO-TP) and display it in the header
   - Raw Messages: Request/response log
   - Statistics: Success rate, response time
 
@@ -592,6 +595,7 @@ On **macOS**, the modifier is shown and works as **Command (⌘)**. Shortcuts ar
 | Tracer Mode | `Ctrl+T` |
 | Filters | `Ctrl+F` |
 | Triggers | `Ctrl+Alt+G` |
+| **Diff Mode Settings** | `Ctrl+D` |
 | **Gateway** | `Ctrl+Shift+W` |
 | Split-Screen Mode | `Ctrl+Alt+D` |
 | **FTCAN Analyzer** | `Ctrl+1` |

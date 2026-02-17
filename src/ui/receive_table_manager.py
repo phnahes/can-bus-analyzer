@@ -24,6 +24,7 @@ class ReceiveTableManager:
         """
         self.parent = parent_window
         self.message_handler = message_handler
+        self.diff_manager = None  # Will be set when diff mode is enabled
     
     def setup_table(self, table: QTableWidget, tracer_mode: bool):
         """
@@ -142,7 +143,7 @@ class ReceiveTableManager:
             colors: Color dictionary for highlighting
             highlight: Whether to highlight the message
         """
-        # Get counter key first (without updating)
+        # Keep counters/period updated regardless of Diff filtering.
         counter_key = (msg.can_id, msg.source)
         
         # Calculate period BEFORE updating timestamp
@@ -153,6 +154,18 @@ class ReceiveTableManager:
         
         # Prepare row data with pre-calculated period
         row_data = self.message_handler.prepare_monitor_row_data(msg, counter_key, period_str)
+
+        # Diff mode: decide if we display this message (but do not affect counting).
+        if self.diff_manager and getattr(self.diff_manager, "config", None) and self.diff_manager.config.enabled:
+            decision = self.diff_manager.evaluate(msg)
+            if not decision.display:
+                return
+            mode = (getattr(self.diff_manager.config, "mode", "filter") or "filter").strip().lower()
+            if mode in ("highlight", "both"):
+                # cansniffer-like: highlight delta bytes vs snapshot baseline
+                row_data['data'] = self.diff_manager.format_data_with_delta(
+                    msg, decision.changed_indices_vs_snapshot
+                )
         
         # Check if row already exists for this PID and Channel
         # Compare by PID and source channel (without gateway indicator)
@@ -254,6 +267,68 @@ class ReceiveTableManager:
             # Highlight if needed
             if highlight and row_data['should_highlight']:
                 count_item.setBackground(colors['highlight'])
+
+    def sync_monitor_table_to_last_seen(self, table: QTableWidget, last_seen: Dict, colors: Dict):
+        """
+        Refresh Monitor table to latest frames without re-counting.
+        Useful when disabling Diff, since the UI might have been suppressed.
+        """
+        for msg in last_seen.values():
+            counter_key = (msg.can_id, msg.source)
+            # Period can't be reconstructed reliably here (last timestamp == msg.timestamp), keep blank.
+            row_data = self.message_handler.prepare_monitor_row_data(msg, counter_key, period_str="")
+            # Ensure raw (non-diff) data rendering
+            row_data['data'] = " ".join([f"{b:02X}" for b in msg.data])
+
+            # Reuse the existing upsert logic by calling add_message_monitor "manually":
+            # we can't call add_message_monitor() because it would increment counters again.
+            # So we replicate the minimal update path below.
+            existing_row = -1
+            for row in range(table.rowCount()):
+                pid_item = table.item(row, 3)
+                channel_item = table.item(row, 2)
+                if pid_item and channel_item:
+                    existing_channel = channel_item.text().split()[0] if channel_item.text() else ""
+                    if pid_item.text() == row_data['pid'] and existing_channel == msg.source:
+                        existing_row = row
+                        break
+
+            if existing_row >= 0:
+                count_item = QTableWidgetItem(row_data['count'])
+                count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(existing_row, 1, count_item)
+
+                channel_item = QTableWidgetItem(row_data['channel'])
+                channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                table.setItem(existing_row, 2, channel_item)
+
+                table.setItem(existing_row, 4, QTableWidgetItem(row_data['dlc']))
+                table.setItem(existing_row, 5, QTableWidgetItem(row_data['data']))
+                table.setItem(existing_row, 6, QTableWidgetItem(row_data['period']))
+                table.setItem(existing_row, 7, QTableWidgetItem(row_data['ascii']))
+                table.setItem(existing_row, 8, QTableWidgetItem(row_data['comment']))
+            else:
+                insert_row = table.rowCount()
+                table.insertRow(insert_row)
+
+                id_item = QTableWidgetItem(str(insert_row + 1))
+                id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                count_item = QTableWidgetItem(row_data['count'])
+                count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                channel_item = QTableWidgetItem(row_data['channel'])
+                channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                dlc_item = QTableWidgetItem(row_data['dlc'])
+                dlc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
+                table.setItem(insert_row, 0, id_item)
+                table.setItem(insert_row, 1, count_item)
+                table.setItem(insert_row, 2, channel_item)
+                table.setItem(insert_row, 3, QTableWidgetItem(row_data['pid']))
+                table.setItem(insert_row, 4, dlc_item)
+                table.setItem(insert_row, 5, QTableWidgetItem(row_data['data']))
+                table.setItem(insert_row, 6, QTableWidgetItem(row_data['period']))
+                table.setItem(insert_row, 7, QTableWidgetItem(row_data['ascii']))
+                table.setItem(insert_row, 8, QTableWidgetItem(row_data['comment']))
     
     def clear_table(self, table: QTableWidget):
         """Clear table contents"""

@@ -62,6 +62,14 @@ class ToolbarBuilder:
         parent.btn_gateway.setEnabled(False)
         toolbar_layout.addWidget(parent.btn_gateway)
         
+        # Diff Mode toggle (Monitor mode only)
+        parent.btn_diff = QPushButton("🔍 Diff: OFF")
+        parent.btn_diff.setCheckable(True)
+        parent.btn_diff.setToolTip("Enable/Disable Diff Mode (Monitor only - hides repeated messages)")
+        parent.btn_diff.clicked.connect(parent.toggle_diff_mode)
+        parent.btn_diff.setEnabled(False)  # Enabled only in Monitor mode
+        toolbar_layout.addWidget(parent.btn_diff)
+        
         toolbar_layout.addStretch()
         
         # Toggle transmit panel visibility

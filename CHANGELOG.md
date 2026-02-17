@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- Diff Mode (Monitor): filter repeats and/or highlight deltas (cansniffer-like workflow)
+- OBD-II Monitor: Detect VIN (Service 09 PID 02, ISO-TP)
+- TX table: Delete/Backspace key removes selected rows
+
+### Changed
+- Diff settings persist automatically in `config.json` (Diff always starts OFF on startup)
+- Gateway notifications are consolidated in the bottom-right notification area
+- Verbose RX/TX queue/send logs moved to DEBUG
+
+### Fixed
+- Multi-CAN partial connect: one failing bus no longer disconnects the working bus
+- Various logs standardized to English for terminal output
+
 ## [1.0.0] - 2026-02-06
 
 ### 🎉 First Stable Release

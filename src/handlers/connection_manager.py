@@ -59,7 +59,7 @@ class ConnectionManager:
         Returns:
             Tuple of (success, status_message, connected_buses)
         """
-        self.logger.info("Tentando conectar ao barramento CAN")
+        self.logger.info("Attempting to connect to CAN bus")
         
         try:
             simulation_mode = self.config.get('simulation_mode', False)
@@ -119,7 +119,7 @@ class ConnectionManager:
                 return True, self._format_status_message(can_buses, connected_buses, True), connected_buses
             
         except Exception as e:
-            self.logger.error(f"Erro ao conectar: {str(e)}")
+            self.logger.error(f"Error while connecting: {str(e)}")
             return False, f"Error: {str(e)}", []
     
     def disconnect(self) -> bool:
@@ -129,7 +129,7 @@ class ConnectionManager:
         Returns:
             True if successful
         """
-        self.logger.info("Desconectando do barramento CAN")
+        self.logger.info("Disconnecting from CAN bus")
         
         try:
             if self.can_bus_manager:
@@ -140,7 +140,7 @@ class ConnectionManager:
             return True
             
         except Exception as e:
-            self.logger.error(f"Erro ao desconectar: {str(e)}")
+            self.logger.error(f"Error while disconnecting: {str(e)}")
             return False
     
     def _get_can_buses_config(self) -> List[Dict]:
@@ -164,7 +164,7 @@ class ConnectionManager:
         Returns:
             Tuple of (success, list of connected bus names)
         """
-        self.logger.info("Tentando conectar todos os barramentos CAN")
+        self.logger.info("Attempting to connect all CAN buses")
         
         try:
             # Connect all CAN buses
@@ -175,14 +175,14 @@ class ConnectionManager:
                               if self.can_bus_manager.is_bus_connected(name)]
             
             if connected_buses:
-                self.logger.info(f"Conexão real estabelecida: {', '.join(connected_buses)}")
+                self.logger.info(f"Real CAN connection established: {', '.join(connected_buses)}")
                 return True, connected_buses
             else:
-                raise Exception("Nenhum barramento CAN conseguiu conectar")
+                raise Exception("No CAN bus could be connected")
                 
         except Exception as e:
-            self.logger.error(f"Erro ao conectar aos dispositivos reais: {str(e)}")
-            self.logger.warning("Tentando modo simulação como fallback")
+            self.logger.error(f"Error connecting to real devices: {str(e)}")
+            self.logger.warning("Falling back to simulation mode")
             return False, []
     
     def _connect_simulation(self, can_buses: List[Dict], parent_widget) -> List[str]:
@@ -192,7 +192,7 @@ class ConnectionManager:
         Returns:
             List of connected bus names
         """
-        self.logger.warning("Conectando em modo simulação")
+        self.logger.warning("Connecting in simulation mode")
         
         # Connect all buses in simulation mode
         self.can_bus_manager.connect_all(simulation=True)
