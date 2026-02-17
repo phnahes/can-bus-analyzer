@@ -12,6 +12,32 @@ The script creates/activates a venv and installs dependencies if needed.
 
 **Note:** Use `requirements-dev.txt` for building (includes py2app/PyInstaller). Use `requirements.txt` only for running from source.
 
+### GitHub Actions (macOS + Linux builds)
+
+If you are on macOS and want Linux builds (or vice-versa), use GitHub Actions:
+
+- `CI Build (macOS + Linux)` workflow: manual build via `workflow_dispatch`
+- `Release Build (macOS + Linux)` workflow: automatic build when you push a tag `vX.Y.Z`
+
+#### Artifacts vs Release assets (about "zip inside zip")
+
+GitHub Actions always delivers workflow artifacts as a downloaded `.zip` file.
+
+- The artifact `.zip` is created by GitHub to bundle uploaded files.
+- Our build script also creates the distributable `CAN-Analyzer-<version>-<os>.zip`.
+
+So, when you download an artifact and unzip it, you will typically see:
+- `CAN-Analyzer-*.zip` (this is the real distributable you should share)
+
+For GitHub Releases, we upload only `CAN-Analyzer-*.zip` as the release asset, so users do not need to deal with an extra artifact wrapper.
+
+#### Run CI build without bumping version
+
+1. Go to GitHub -> Actions -> `CI Build (macOS + Linux)`
+2. Click `Run workflow`
+3. Download the artifact for your OS
+4. Use the `CAN-Analyzer-*.zip` file inside it
+
 ### Requirements
 
 - **py2app** for macOS (included in `requirements-dev.txt`)
@@ -33,6 +59,10 @@ The script creates/activates a venv and installs dependencies if needed.
 |---------|------------|----------------------------------|
 | **macOS**  | py2app     | `dist/CAN Analyzer.app`          |
 | **Linux**  | PyInstaller| `dist/CAN Analyzer/CAN Analyzer` |
+
+The build script also generates a distributable zip in the project root:
+- `CAN-Analyzer-<version>-macos.zip`
+- `CAN-Analyzer-<version>-linux.zip`
 
 ### Files
 

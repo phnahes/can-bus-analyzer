@@ -5,10 +5,77 @@ Manages receive table configuration and message display.
 Extracted from main_window.py to reduce complexity.
 """
 
-from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
+from PyQt6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView, QStyledItemDelegate, QStyle
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QTextDocument, QAbstractTextDocumentLayout, QFontMetrics
 from typing import Optional, Dict
 from ..models.can_message import CANMessage
+
+
+class _DiffDataBoldDelegate(QStyledItemDelegate):
+    """Paint Data column with per-byte bold based on a list of changed indices."""
+
+    CHANGED_INDICES_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+
+    def paint(self, painter, option, index):
+        changed = index.data(self.CHANGED_INDICES_ROLE) or []
+        if not changed:
+            super().paint(painter, option, index)
+            return
+
+        text = index.data(Qt.ItemDataRole.DisplayRole) or ""
+        tokens = [t for t in str(text).split(" ") if t != ""]
+
+        # Coerce to ints safely (Qt can sometimes give list[str] back).
+        changed_set = set()
+        for v in changed:
+            try:
+                changed_set.add(int(v))
+            except Exception:
+                continue
+
+        # Respect selection background/foreground.
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        if is_selected:
+            painter.save()
+            painter.fillRect(option.rect, option.palette.highlight())
+            painter.restore()
+            text_color = option.palette.highlightedText().color().name()
+        else:
+            text_color = option.palette.text().color().name()
+
+        def esc(s: str) -> str:
+            return (
+                s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
+            )
+
+        parts = []
+        for i, tok in enumerate(tokens):
+            safe = esc(tok)
+            parts.append(f"<b>{safe}</b>" if i in changed_set else safe)
+
+        html = f"<span style='color: {text_color};'>{'&nbsp;'.join(parts)}</span>"
+
+        doc = QTextDocument()
+        doc.setDefaultFont(option.font)
+        doc.setHtml(html)
+        doc.setTextWidth(option.rect.width())
+
+        painter.save()
+        painter.translate(option.rect.topLeft())
+        clip = option.rect.translated(-option.rect.topLeft())
+        painter.setClipRect(clip)
+        ctx = QAbstractTextDocumentLayout.PaintContext()
+        doc.documentLayout().draw(painter, ctx)
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        text = index.data(Qt.ItemDataRole.DisplayRole) or ""
+        fm = QFontMetrics(option.font)
+        return fm.size(0, str(text))
 
 
 class ReceiveTableManager:
@@ -90,6 +157,9 @@ class ReceiveTableManager:
             
             # Allow last column to expand when space is available
             header.setStretchLastSection(True)
+
+            # Diff highlighting: paint changed bytes as bold in the Data column.
+            table.setItemDelegateForColumn(5, _DiffDataBoldDelegate(table))
         
         # Restore context menu policy (don't lose the signal connections)
         table.setContextMenuPolicy(context_policy)
@@ -156,16 +226,16 @@ class ReceiveTableManager:
         row_data = self.message_handler.prepare_monitor_row_data(msg, counter_key, period_str)
 
         # Diff mode: decide if we display this message (but do not affect counting).
+        changed_indices = []
         if self.diff_manager and getattr(self.diff_manager, "config", None) and self.diff_manager.config.enabled:
             decision = self.diff_manager.evaluate(msg)
             if not decision.display:
                 return
             mode = (getattr(self.diff_manager.config, "mode", "filter") or "filter").strip().lower()
             if mode in ("highlight", "both"):
-                # cansniffer-like: highlight delta bytes vs snapshot baseline
-                row_data['data'] = self.diff_manager.format_data_with_delta(
-                    msg, decision.changed_indices_vs_snapshot
-                )
+                # Keep plain text; store indices for the delegate to render in bold.
+                changed_indices = list(decision.changed_indices_vs_snapshot or [])
+                row_data['data'] = self.diff_manager.format_data_with_delta(msg, changed_indices)
         
         # Check if row already exists for this PID and Channel
         # Compare by PID and source channel (without gateway indicator)
@@ -191,8 +261,10 @@ class ReceiveTableManager:
             channel_item = QTableWidgetItem(row_data['channel'])
             channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             table.setItem(existing_row, 2, channel_item)
-            
-            table.setItem(existing_row, 5, QTableWidgetItem(row_data['data']))
+
+            data_item = QTableWidgetItem(row_data['data'])
+            data_item.setData(_DiffDataBoldDelegate.CHANGED_INDICES_ROLE, changed_indices)
+            table.setItem(existing_row, 5, data_item)
             table.setItem(existing_row, 6, QTableWidgetItem(row_data['period']))
             table.setItem(existing_row, 7, QTableWidgetItem(row_data['ascii']))
             
@@ -253,7 +325,9 @@ class ReceiveTableManager:
             table.setItem(insert_row, 2, channel_item)
             table.setItem(insert_row, 3, QTableWidgetItem(row_data['pid']))
             table.setItem(insert_row, 4, dlc_item)
-            table.setItem(insert_row, 5, QTableWidgetItem(row_data['data']))
+            data_item = QTableWidgetItem(row_data['data'])
+            data_item.setData(_DiffDataBoldDelegate.CHANGED_INDICES_ROLE, changed_indices)
+            table.setItem(insert_row, 5, data_item)
             table.setItem(insert_row, 6, QTableWidgetItem(row_data['period']))
             table.setItem(insert_row, 7, QTableWidgetItem(row_data['ascii']))
             table.setItem(insert_row, 8, QTableWidgetItem(row_data['comment']))

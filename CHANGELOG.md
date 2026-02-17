@@ -10,17 +10,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Diff Mode (Monitor): filter repeats and/or highlight deltas (cansniffer-like workflow)
-- OBD-II Monitor: Detect VIN (Service 09 PID 02, ISO-TP)
-- TX table: Delete/Backspace key removes selected rows
 
 ### Changed
+
+### Fixed
+
+---
+
+## [1.1.2] - 2026-02-17
+
+### Fixed
+- Diff Mode: restore bold highlighting (no `[XX]` formatting in Data column)
+- CI workflow: upload only the distributable `CAN-Analyzer-*.zip` (avoid artifact containing both `dist/**` and the zip)
+- Logs/messages: remaining Portuguese strings standardized to English
+
+---
+
+## [1.1.1] - 2026-02-17
+
+### Added
+- **Diff Mode (Monitor)**: filter repeats and/or highlight deltas (cansniffer-like workflow)
+- **OBD-II Monitor**: Detect VIN (Service 09 PID 02, ISO-TP) and show it prominently in the header
+- **OBD-II Monitor**: Clear DTCs button (Service 04)
+- **TX table**: Delete/Backspace key removes selected rows
+- **Gateway docs**: bench test how-to using Arduino sketches (lab setup)
+- **Release tooling**: `extras/release.py` + `extras/release.sh` (version bump + commit + tag)
+- **CI/Release automation**: GitHub Actions workflows for macOS and Linux builds
+
+### Changed
+- Diff highlighting in the Data column uses bold rendering (no `[XX]` wrapping)
 - Diff settings persist automatically in `config.json` (Diff always starts OFF on startup)
 - Gateway notifications are consolidated in the bottom-right notification area
 - Verbose RX/TX queue/send logs moved to DEBUG
+- Arduino OBD-II ECU simulator:
+  - Service 03 DTC replies now use ISO-TP FF/FC/CF (real-vehicle style)
+  - Service 04 Clear DTC now replies with an ACK-like 0x44 response
 
 ### Fixed
 - Multi-CAN partial connect: one failing bus no longer disconnects the working bus
+- OBD-II:
+  - Raw Messages now show ECU responses consistently (not only requests)
+  - DTC parsing no longer mixes with live polling responses
+  - VIN logging no longer duplicates "VIN detected" in statistics
+  - ISO-TP Flow Control is sent to the correct physical ECU request ID (0x7E0..0x7E7)
+- UI translations: missing OBD-II button keys added (VIN / Clear DTCs)
 - Various logs standardized to English for terminal output
 
 ## [1.0.0] - 2026-02-06

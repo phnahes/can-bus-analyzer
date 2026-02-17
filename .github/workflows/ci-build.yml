@@ -2,9 +2,9 @@ name: CI Build (macOS + Linux)
 
 on:
   workflow_dispatch:
-  push:
-    branches: ["main"]
-  pull_request:
+  # NOTE:
+  # Release builds are triggered by tags in release.yml.
+  # This workflow is kept as an on-demand/manual build.
 
 jobs:
   build:
@@ -36,12 +36,11 @@ jobs:
           chmod +x extras/build.sh extras/create_icon.sh || true
           ./extras/build.sh
 
-      - name: Upload artifacts (zip + dist)
+      - name: Upload zip artifact
         uses: actions/upload-artifact@v4
         with:
           name: can-analyzer-${{ matrix.os }}
           if-no-files-found: error
           path: |
             CAN-Analyzer-*.zip
-            dist/**
 

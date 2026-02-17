@@ -206,13 +206,12 @@ class DiffManager:
         self.logger.info(f"Diff snapshot captured: keys={len(keys)}")
 
     def format_data_with_delta(self, msg: CANMessage, changed_indices: List[int]) -> str:
-        """ASCII-only formatting: changed bytes are wrapped in [..]."""
-        changed_set = set(changed_indices)
-        parts: List[str] = []
-        for i, b in enumerate(msg.data):
-            hx = f"{b:02X}"
-            parts.append(f"[{hx}]" if i in changed_set else hx)
-        return " ".join(parts)
+        """
+        Return plain hex string for UI display.
+
+        Byte-level highlighting is handled by the UI delegate using changed_indices.
+        """
+        return " ".join(f"{b:02X}" for b in msg.data)
 
     def get_last_seen_messages(self) -> Dict[Tuple, CANMessage]:
         return dict(self.last_seen)

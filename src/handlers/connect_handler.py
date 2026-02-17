@@ -143,7 +143,7 @@ class ConnectHandler:
                 daemon=True
             )
             self.parent.receive_thread.start()
-            self.logger.info("Thread de recepção iniciada (legacy mode)")
+            self.logger.info("Receive thread started (legacy mode)")
         elif self.parent.can_bus_manager:
             self.logger.info("Using CANBusManager receive threads")
         

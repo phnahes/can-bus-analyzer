@@ -887,7 +887,7 @@ class OBD2Dialog(QDialog):
             except Exception as e:
                 self._log_message(f"Error reading PID 0x{pid:02X}: {e}")
         
-        # Aguarda 1 segundo para receber respostas (as respostas são processadas pelo thread de recepção)
+        # Wait 1 second for responses (processed by the receive thread)
         QTimer.singleShot(1000, self._single_shot_complete)
     
     def _single_shot_complete(self):
