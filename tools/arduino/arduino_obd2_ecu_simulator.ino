@@ -290,31 +290,116 @@ void handle_dtc_request() {
     SERIAL_PORT_MONITOR.println(F("  → Sending 4 DTCs"));
   }
   
-  // Response format: [Length, 0x43 (Service 03 response), Num DTCs, DTC1_H, DTC1_L, DTC2_H, DTC2_L, ...]
-  byte response[8];
-  response[0] = 0x06;  // Length: 6 bytes (service + count + 4 DTCs * 2 bytes, but limited to 8 total)
-  response[1] = 0x43;  // Service 03 response (0x03 + 0x40)
-  response[2] = 0x04;  // Number of DTCs: 4
-  
-  // DTC 1: P0171 - System Too Lean (Bank 1)
-  // P = 00, 0171 = 0x0171
-  response[3] = 0x01;  // High byte: 00 (P) + 01
-  response[4] = 0x71;  // Low byte: 71
-  
-  // DTC 2: P0300 - Random/Multiple Cylinder Misfire Detected
-  // P = 00, 0300 = 0x0300
-  response[5] = 0x03;  // High byte: 00 (P) + 03
-  response[6] = 0x00;  // Low byte: 00
-  
-  // DTC 3: C0035 - Left Front Wheel Speed Sensor Circuit (chassis)
-  // C = 01, 0035 = 0x0035
-  response[7] = 0x40;  // High byte: 01 (C) + 00
-  
-  // Send first CAN frame with DTCs 1-2 and part of DTC 3
-  CAN.sendMsgBuf(OBD2_RESPONSE_ID, 0, 8, response);
-  
+  // Real vehicles typically use ISO-TP (ISO 15765-2) for multi-frame responses.
+  // Payload for Service 03 response:
+  //   0x43, count, (dtc_hi, dtc_lo) * count
+  //
+  // With 4 DTCs: 1 + 1 + 8 = 10 bytes => does not fit in a single CAN frame => ISO-TP FF + CF.
+
+  const uint8_t dtc_count = 4;
+  const uint16_t payload_len = 2 + (dtc_count * 2);  // 0x43 + count + pairs
+
+  // Build payload bytes (10 bytes)
+  byte payload[10];
+  payload[0] = 0x43;       // Service 03 response (0x03 + 0x40)
+  payload[1] = dtc_count;  // Number of DTCs
+
+  // DTC 1: P0171 (0x0171)
+  payload[2] = 0x01;
+  payload[3] = 0x71;
+
+  // DTC 2: P0300 (0x0300)
+  payload[4] = 0x03;
+  payload[5] = 0x00;
+
+  // DTC 3: C0035 (C = 01 => 0x40xx, 0x0035)
+  payload[6] = 0x40;
+  payload[7] = 0x35;
+
+  // DTC 4: B1234 (B = 10 => 0x80xx, 0x1234 => high 0x92, low 0x34)
+  payload[8] = 0x92;
+  payload[9] = 0x34;
+
+  // ISO-TP First Frame:
+  //   [0] = 0x10 | (len_hi)
+  //   [1] = len_lo
+  //   [2..7] = first 6 bytes of payload
+  byte ff[8];
+  ff[0] = 0x10 | ((payload_len >> 8) & 0x0F);
+  ff[1] = payload_len & 0xFF;
+  for (int i = 0; i < 6; i++) {
+    ff[2 + i] = payload[i];
+  }
+
+  CAN.sendMsgBuf(OBD2_RESPONSE_ID, 0, 8, ff);
+
   if (DEBUG_MODE) {
-    SERIAL_PORT_MONITOR.print(F("→ Response: ID 0x"));
+    SERIAL_PORT_MONITOR.print(F("→ ISO-TP FF (DTC): ID 0x"));
+    SERIAL_PORT_MONITOR.print(OBD2_RESPONSE_ID, HEX);
+    SERIAL_PORT_MONITOR.print(F(" ["));
+    for (int i = 0; i < 8; i++) {
+      if (ff[i] < 0x10) SERIAL_PORT_MONITOR.print(F("0"));
+      SERIAL_PORT_MONITOR.print(ff[i], HEX);
+      if (i < 7) SERIAL_PORT_MONITOR.print(F(" "));
+    }
+    SERIAL_PORT_MONITOR.println(F("]"));
+  }
+
+  // Wait for ISO-TP Flow Control (like a real ECU would).
+  uint16_t stmin_ms = 0;
+  bool got_fc = wait_for_isotp_flow_control(stmin_ms);
+  if (!got_fc && DEBUG_MODE) {
+    SERIAL_PORT_MONITOR.println(F("  ⚠️ No ISO-TP Flow Control received (continuing anyway)"));
+  }
+
+  // ISO-TP Consecutive Frame 1 (seq=1): remaining 4 bytes of payload
+  byte cf1[8];
+  cf1[0] = 0x21;  // CF seq 1
+  cf1[1] = payload[6];
+  cf1[2] = payload[7];
+  cf1[3] = payload[8];
+  cf1[4] = payload[9];
+  cf1[5] = 0x00;
+  cf1[6] = 0x00;
+  cf1[7] = 0x00;
+
+  // Respect STmin if provided
+  if (stmin_ms > 0) {
+    delay(stmin_ms);
+  } else {
+    delay(5);
+  }
+
+  CAN.sendMsgBuf(OBD2_RESPONSE_ID, 0, 8, cf1);
+
+  if (DEBUG_MODE) {
+    SERIAL_PORT_MONITOR.print(F("→ ISO-TP CF1 (DTC): ID 0x"));
+    SERIAL_PORT_MONITOR.print(OBD2_RESPONSE_ID, HEX);
+    SERIAL_PORT_MONITOR.print(F(" ["));
+    for (int i = 0; i < 8; i++) {
+      if (cf1[i] < 0x10) SERIAL_PORT_MONITOR.print(F("0"));
+      SERIAL_PORT_MONITOR.print(cf1[i], HEX);
+      if (i < 7) SERIAL_PORT_MONITOR.print(F(" "));
+    }
+    SERIAL_PORT_MONITOR.println(F("]"));
+    SERIAL_PORT_MONITOR.println(F("  ✓ DTCs sent (ISO-TP): P0171, P0300, C0035, B1234"));
+  }
+}
+
+// Handle Service 04: Clear Diagnostic Trouble Codes
+// Real ECUs may or may not reply. For bench testing we send an ACK-like response.
+static void handle_clear_dtcs_request() {
+  // Response format (common): [Len, 0x44, 0x00, ...padding]
+  byte response[8];
+  response[0] = 0x01;  // Length (just the service byte)
+  response[1] = 0x44;  // Service 04 response (0x04 + 0x40)
+  for (int i = 2; i < 8; i++) response[i] = 0x00;
+
+  CAN.sendMsgBuf(OBD2_RESPONSE_ID, 0, 8, response);
+  response_count++;
+
+  if (DEBUG_MODE) {
+    SERIAL_PORT_MONITOR.print(F("→ Response: Clear DTCs (Service 04 ACK) ID 0x"));
     SERIAL_PORT_MONITOR.print(OBD2_RESPONSE_ID, HEX);
     SERIAL_PORT_MONITOR.print(F(" ["));
     for (int i = 0; i < 8; i++) {
@@ -323,38 +408,6 @@ void handle_dtc_request() {
       if (i < 7) SERIAL_PORT_MONITOR.print(F(" "));
     }
     SERIAL_PORT_MONITOR.println(F("]"));
-  }
-  
-  // Send second frame with remaining DTCs
-  delay(5);  // Small delay between frames
-  
-  byte response2[8];
-  response2[0] = 0x04;  // Continuation
-  response2[1] = 0x35;  // DTC 3 low byte
-  
-  // DTC 4: B1234 - Example Body Code
-  // B = 10, 1234 = 0x1234
-  response2[2] = 0x92;  // High byte: 10 (B) + 12
-  response2[3] = 0x34;  // Low byte: 34
-  
-  // Fill remaining with padding
-  for (int i = 4; i < 8; i++) {
-    response2[i] = 0x00;
-  }
-  
-  CAN.sendMsgBuf(OBD2_RESPONSE_ID, 0, 8, response2);
-  
-  if (DEBUG_MODE) {
-    SERIAL_PORT_MONITOR.print(F("→ Response: ID 0x"));
-    SERIAL_PORT_MONITOR.print(OBD2_RESPONSE_ID, HEX);
-    SERIAL_PORT_MONITOR.print(F(" ["));
-    for (int i = 0; i < 8; i++) {
-      if (response2[i] < 0x10) SERIAL_PORT_MONITOR.print(F("0"));
-      SERIAL_PORT_MONITOR.print(response2[i], HEX);
-      if (i < 7) SERIAL_PORT_MONITOR.print(F(" "));
-    }
-    SERIAL_PORT_MONITOR.println(F("]"));
-    SERIAL_PORT_MONITOR.println(F("  ✓ DTCs sent: P0171, P0300, C0035, B1234"));
   }
 }
 
@@ -473,6 +526,12 @@ void handle_obd2_request(byte *request, byte len) {
   // Handle Service 03 (Read DTCs)
   if (service == 0x03) {
     handle_dtc_request();
+    return;
+  }
+
+  // Handle Service 04 (Clear DTCs)
+  if (service == 0x04) {
+    handle_clear_dtcs_request();
     return;
   }
 

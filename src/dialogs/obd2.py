@@ -65,6 +65,9 @@ class OBD2Dialog(QDialog):
         self.dtcs_found = []
         self.dtc_buffer = bytearray()  # Buffer para juntar frames multi-frame
         self.dtc_response_received = False  # Flag para rastrear se recebeu resposta de DTC
+        self.dtc_expected_len: Optional[int] = None  # ISO-TP payload length (bytes after PCI)
+        self.dtc_expected_bytes: Optional[int] = None  # DTC payload bytes (count*2) for non-ISO-TP split frames
+        self._resume_polling_after_dtcs = False
 
         # VIN detection (Service 09 PID 02) - ISO-TP multi-frame
         self.receiving_vin = False
@@ -91,13 +94,41 @@ class OBD2Dialog(QDialog):
         
         # Armazena para processamento por DTCs ou single shot
         self.received_messages.append(msg)
+
+        # Always show ECU responses in Raw Messages.
+        # Note: on_can_message() already filters to OBD-II response IDs (0x7E8-0x7EF).
+        try:
+            self._add_raw_message(msg, self._describe_obd2_response(msg))
+        except Exception:
+            # Raw table should never break functional decoding.
+            pass
         
         # If receiving DTCs, process ALL frames (first and continuation)
         if self.receiving_dtcs and len(msg.data) >= 2:
-            # Primeiro frame: [Length, 0x43, ...]
-            # Continuation frames: [Length, data...]
-            if msg.data[1] == 0x43 or (len(msg.data) > 1 and msg.data[0] in [0x04, 0x05, 0x06, 0x07]):
+            # Service 03 responses can be single-frame (0x43) or ISO-TP multi-frame (0x10/0x2N).
+            if msg.data[1] == 0x43:
                 self._process_dtc_response(msg)
+            else:
+                frame_type = msg.data[0] & 0xF0
+                # ISO-TP First Frame: payload starts at data[2]
+                if frame_type == 0x10 and len(msg.data) >= 3 and msg.data[2] == 0x43:
+                    self._process_dtc_response(msg)
+                # ISO-TP Consecutive Frames: only if we already started collecting DTC ISO-TP
+                elif frame_type == 0x20 and self.dtc_expected_len is not None:
+                    self._process_dtc_response(msg)
+                # Fallback (Arduino simulator): a second "continuation" CAN frame carrying remaining DTC bytes.
+                # Example from tools/arduino/arduino_obd2_ecu_simulator.ino:
+                #   frame1: [0x06, 0x43, 0x04, 0x01, 0x71, 0x03, 0x00, 0x40]
+                #   frame2: [0x04, 0x35, 0x92, 0x34, 0x00, 0x00, 0x00, 0x00]
+                elif (
+                    self.dtc_expected_bytes is not None
+                    and self.dtc_expected_len is None
+                    and len(self.dtc_buffer) > 0
+                    and len(self.dtc_buffer) < self.dtc_expected_bytes
+                    and msg.data[0] in (0x04, 0x05, 0x06, 0x07)
+                    and msg.data[1] not in (0x41, 0x43)
+                ):
+                    self._process_dtc_response(msg)
 
         # VIN detection (ISO-TP): handle FF/CF frames (0x10/0x21..)
         elif self.receiving_vin and len(msg.data) >= 2:
@@ -115,6 +146,71 @@ class OBD2Dialog(QDialog):
             if pid in self.selected_pids or self.polling_active:
                 self._process_response(msg, pid)
                 self.response_count += 1
+
+    def _describe_obd2_response(self, msg: CANMessage) -> str:
+        """Best-effort decode label for Raw Messages tab."""
+        data = msg.data or b""
+
+        # If we are in a specific acquisition flow, prefer a clearer label.
+        if getattr(self, "receiving_vin", False) and len(data) >= 1:
+            pci = (data[0] >> 4) & 0x0F
+            if pci == 0x1:
+                return "Response: VIN (ISO-TP First Frame)"
+            if pci == 0x2:
+                return "Response: VIN (ISO-TP Consecutive Frame)"
+            return "Response: VIN"
+
+        if getattr(self, "receiving_dtcs", False):
+            # DTC responses can be single-frame (0x43) or multi-frame (ISO-TP).
+            if len(data) >= 2 and data[1] == 0x43:
+                return "Response: Read DTCs (Service 03)"
+            if len(data) >= 1:
+                pci = (data[0] >> 4) & 0x0F
+                if pci == 0x1:
+                    return "Response: DTCs (ISO-TP First Frame)"
+                if pci == 0x2:
+                    return "Response: DTCs (ISO-TP Consecutive Frame)"
+            return "Response: DTCs"
+
+        if len(data) >= 2:
+            service = data[1]
+            # Service 01 response (0x41) with PID
+            if service == 0x41 and len(data) >= 3:
+                pid = data[2]
+                pid_info = OBD2_PIDS.get(pid, {})
+                pid_name = pid_info.get('name', f"PID 0x{pid:02X}")
+                # Include decoded value when possible (helps for quick debugging).
+                try:
+                    value_str = self._decode_pid_value(pid, data[3:])
+                    return f"Response: {pid_name} (0x{pid:02X}) = {value_str}"
+                except Exception:
+                    return f"Response: {pid_name} (0x{pid:02X})"
+
+            # Service 03 response (0x43) - DTCs
+            if service == 0x43:
+                return "Response: Read DTCs (Service 03)"
+
+            # Service 04 response (0x44) - Clear DTCs
+            if service == 0x44:
+                return "Response: Clear DTCs (Service 04)"
+
+            # Service 09 response (0x49) - Vehicle information
+            if service == 0x49 and len(data) >= 3:
+                info_type = data[2]
+                if info_type == 0x02:
+                    return "Response: VIN (Service 09 PID 02)"
+
+        # ISO-TP framing hint (covers VIN and any multi-frame responses)
+        if len(data) >= 1:
+            pci = (data[0] >> 4) & 0x0F
+            if pci == 0x1:
+                return "Response: ISO-TP First Frame"
+            if pci == 0x2:
+                return "Response: ISO-TP Consecutive Frame"
+            if pci == 0x3:
+                return "Response: ISO-TP Flow Control"
+
+        return "Response"
     
     def _setup_ui(self):
         """Configura interface"""
@@ -462,11 +558,20 @@ class OBD2Dialog(QDialog):
         self.read_dtc_btn.setToolTip("Read Diagnostic Trouble Codes (Service 03)")
         layout.addWidget(self.read_dtc_btn)
 
+        # Button: Clear DTCs (Service 04)
+        self.clear_dtc_btn = QPushButton("🧹 " + t('obd2_clear_dtcs'))
+        self.clear_dtc_btn.clicked.connect(self._clear_dtcs)
+        self.clear_dtc_btn.setToolTip("Clear Diagnostic Trouble Codes (Service 04)")
+        layout.addWidget(self.clear_dtc_btn)
+
         # Button: Detect VIN (Service 09 PID 02)
-        self.detect_vin_btn = QPushButton("🆔 Detect VIN")
+        self.detect_vin_btn = QPushButton("🆔 " + t('obd2_detect_vin'))
         self.detect_vin_btn.clicked.connect(self._detect_vin)
         self.detect_vin_btn.setToolTip("Detect VIN (Service 09 PID 02, ISO-TP multi-frame)")
         layout.addWidget(self.detect_vin_btn)
+
+        # Visual separator (like other toolbars/footers)
+        layout.addWidget(QLabel("|"))
         
         # Botão Save Results
         save_btn = QPushButton("💾 " + t('obd2_save_results'))
@@ -475,7 +580,7 @@ class OBD2Dialog(QDialog):
         layout.addWidget(save_btn)
         
         # Botão fechar
-        close_btn = QPushButton("Close")
+        close_btn = QPushButton(t('btn_close'))
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn)
         
@@ -839,9 +944,9 @@ class OBD2Dialog(QDialog):
 
     def _detect_vin_complete(self):
         """Callback after VIN detection timeout."""
-        if self.vin_response_received and self.vin_value:
-            self._log_message(f"VIN detected: {self.vin_value}")
-        else:
+        # VIN is already logged when the ISO-TP payload is fully assembled in _process_vin_response().
+        # This callback should only handle timeouts / UI cleanup.
+        if not (self.vin_response_received and self.vin_value):
             self._log_message("VIN detection timed out (no complete response).")
             if not self.vin_value:
                 if hasattr(self, 'vin_value_label'):
@@ -861,14 +966,17 @@ class OBD2Dialog(QDialog):
             total_len = ((pci & 0x0F) << 8) | msg.data[1]
             self.vin_expected_len = total_len
             self.vin_buffer = bytearray(msg.data[2:])  # 6 bytes payload
-            self._add_raw_message(msg, "VIN response (ISO-TP First Frame)")
 
             # If this is indeed a VIN response, send Flow Control (FC) so ECU keeps sending.
             # Many ECUs expect FC to the physical tester->ECU ID (0x7E0).
             try:
                 if len(self.vin_buffer) >= 2 and self.vin_buffer[0] == 0x49 and self.vin_buffer[1] == 0x02:
+                    # Map response 0x7E8..0x7EF -> physical request 0x7E0..0x7E7
+                    req_id = 0x7E0
+                    if 0x7E8 <= msg.can_id <= 0x7EF:
+                        req_id = msg.can_id - 0x8
                     fc = can.Message(
-                        arbitration_id=0x7E0,
+                        arbitration_id=req_id,
                         data=[0x30, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00],
                         is_extended_id=False
                     )
@@ -880,7 +988,6 @@ class OBD2Dialog(QDialog):
         # Consecutive Frame (CF): [0x2N, payload0..6]
         elif frame_type == 0x20 and self.vin_expected_len is not None:
             self.vin_buffer.extend(msg.data[1:])  # 7 bytes
-            self._add_raw_message(msg, "VIN response (ISO-TP Consecutive Frame)")
 
         else:
             # Not ISO-TP or not part of VIN sequence; ignore.
@@ -913,69 +1020,106 @@ class OBD2Dialog(QDialog):
                     self.vin_value_label.setText("(unexpected response)")
     
     def _process_dtc_response(self, msg: CANMessage):
-        """Processa resposta de DTC com suporte a multi-frame"""
+        """Process Service 03 DTC responses (single-frame or ISO-TP multi-frame)."""
         if len(msg.data) < 2:
             return
-        
-        # Marca que recebeu resposta
+
         self.dtc_response_received = True
-        
-        # Primeiro frame: [Length, 0x43, Num DTCs, DTC1_H, DTC1_L, ...]
-        if msg.data[1] == 0x43:
-            # Limpa buffer e inicia novo
-            self.dtc_buffer.clear()
-            
-            if len(msg.data) < 3:
-                return
-            
-            num_dtcs = msg.data[2]
-            if num_dtcs == 0:
-                return
-            
-            # Adiciona dados do primeiro frame ao buffer (a partir do byte 3)
-            self.dtc_buffer.extend(msg.data[3:])
-            
-            # Debug: mostra buffer após primeiro frame
-            # self._log_message(f"  [DEBUG] First frame buffer: {self.dtc_buffer.hex()}")
+        data = msg.data
+
+        # Single-frame response:
+        #   [len, 0x43, count, dtc_hi, dtc_lo, ...]
+        if len(data) >= 3 and data[1] == 0x43:
+            count = int(data[2])
+            self.dtc_expected_bytes = max(0, count * 2)
+
+            # Some ECUs (and our Arduino simulator) may not fit all DTC bytes in a single frame.
+            # Start/refresh the accumulation buffer with whatever arrived after the count byte.
+            self.dtc_buffer = bytearray(data[3:])
+
+            if self.dtc_expected_bytes > 0 and len(self.dtc_buffer) >= self.dtc_expected_bytes:
+                self._ingest_dtc_pairs(bytes(self.dtc_buffer[:self.dtc_expected_bytes]))
+                self.dtc_expected_bytes = None
+                self.dtc_buffer = bytearray()
+            return
+
+        # ISO-TP multi-frame:
+        #   FF: [0x10|len_hi, len_lo, payload0..5]
+        #   CF: [0x2N, payload0..6]
+        pci_type = data[0] & 0xF0
+
+        if pci_type == 0x10 and len(data) >= 8:
+            total_len = ((data[0] & 0x0F) << 8) | data[1]
+            self.dtc_expected_len = total_len
+            self.dtc_buffer = bytearray(data[2:])
+
+            # Send Flow Control (some ECUs require it).
+            try:
+                if len(self.dtc_buffer) >= 1 and self.dtc_buffer[0] == 0x43:
+                    # Map response 0x7E8..0x7EF -> physical request 0x7E0..0x7E7
+                    req_id = 0x7E0
+                    if 0x7E8 <= msg.can_id <= 0x7EF:
+                        req_id = msg.can_id - 0x8
+                    fc = can.Message(
+                        arbitration_id=req_id,
+                        data=[0x30, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00],
+                        is_extended_id=False
+                    )
+                    self.active_bus.send(fc)
+                    self._add_raw_request(fc, "Flow Control (ISO-TP) for DTCs")
+            except Exception as e:
+                self._log_message(f"DTC Flow Control send failed: {e}")
+
+        elif pci_type == 0x20 and self.dtc_expected_len is not None:
+            self.dtc_buffer.extend(data[1:])
         else:
-            # Frame de continuação - adiciona dados ao buffer (a partir do byte 1)
-            # Mas só se não for padding (00 00 00 00)
-            data_to_add = msg.data[1:]
-            # Remove padding do final
-            while len(data_to_add) > 0 and data_to_add[-1] == 0x00:
-                data_to_add = data_to_add[:-1]
-            
-            if len(data_to_add) > 0:
-                self.dtc_buffer.extend(data_to_add)
-            
-            # Debug: mostra buffer após frame de continuação
-            # self._log_message(f"  [DEBUG] After continuation buffer: {self.dtc_buffer.hex()}")
-        
-        # Processa apenas DTCs que ainda não foram encontrados
-        # Para evitar duplicatas ao receber múltiplos frames
-        temp_dtcs = []
+            # Fallback continuation (non-ISO-TP): append bytes 1..7 (trim trailing zero padding)
+            if self.dtc_expected_bytes is None or len(self.dtc_buffer) == 0:
+                return
+
+            cont = bytearray(data[1:])
+            while cont and cont[-1] == 0x00:
+                cont.pop()
+            if cont:
+                self.dtc_buffer.extend(cont)
+
+            if len(self.dtc_buffer) >= self.dtc_expected_bytes:
+                self._ingest_dtc_pairs(bytes(self.dtc_buffer[:self.dtc_expected_bytes]))
+                self.dtc_expected_bytes = None
+                self.dtc_buffer = bytearray()
+            return
+
+        if self.dtc_expected_len is not None and len(self.dtc_buffer) >= self.dtc_expected_len:
+            payload = bytes(self.dtc_buffer[:self.dtc_expected_len])
+
+            # Expected payload: [0x43, count, dtc_hi, dtc_lo, ...]
+            if len(payload) >= 2 and payload[0] == 0x43:
+                count = int(payload[1])
+                dtc_bytes = payload[2:2 + (count * 2)]
+                self._ingest_dtc_pairs(dtc_bytes)
+
+            # Reset ISO-TP DTC state
+            self.dtc_expected_len = None
+            self.dtc_buffer = bytearray()
+            self.dtc_expected_bytes = None
+
+    def _ingest_dtc_pairs(self, dtc_bytes: bytes):
+        """Decode and add DTC pairs to dtcs_found (deduped)."""
+        if not dtc_bytes:
+            return
         idx = 0
-        while idx + 1 < len(self.dtc_buffer):
-            dtc_high = self.dtc_buffer[idx]
-            dtc_low = self.dtc_buffer[idx + 1]
-            
-            # Ignora DTCs vazios (0x0000)
-            if dtc_high == 0 and dtc_low == 0:
-                idx += 2
-                continue
-            
-            # Decodifica DTC
-            dtc_code = self._decode_dtc(dtc_high, dtc_low)
-            if dtc_code not in temp_dtcs:
-                temp_dtcs.append(dtc_code)
-            
+        while idx + 1 < len(dtc_bytes):
+            dtc_high = dtc_bytes[idx]
+            dtc_low = dtc_bytes[idx + 1]
             idx += 2
-        
-        # Adiciona apenas novos DTCs
-        for dtc in temp_dtcs:
-            if dtc not in self.dtcs_found:
-                self.dtcs_found.append(dtc)
-                self._log_message(f"  • {dtc}")
+
+            if dtc_high == 0 and dtc_low == 0:
+                continue
+
+            dtc_code = self._decode_dtc(dtc_high, dtc_low)
+            if dtc_code not in self.dtcs_found:
+                self.dtcs_found.append(dtc_code)
+                self._log_message(f"  • {dtc_code}")
     
     def _read_dtcs(self):
         """Read Diagnostic Trouble Codes (Service 03)"""
@@ -986,7 +1130,12 @@ class OBD2Dialog(QDialog):
                 "Cannot read DTCs: Not connected to CAN bus."
             )
             return
-        
+
+        # Pause polling to avoid mixing PID responses with DTC collection.
+        self._resume_polling_after_dtcs = bool(getattr(self, "polling_active", False))
+        if self._resume_polling_after_dtcs:
+            self._stop_polling()
+
         self._log_message("Reading DTCs (Service 03)...")
         
         # Desabilita botões temporariamente
@@ -997,6 +1146,8 @@ class OBD2Dialog(QDialog):
         # Limpa buffer de DTCs
         self.dtcs_found = []
         self.dtc_buffer.clear()
+        self.dtc_expected_len = None
+        self.dtc_expected_bytes = None
         self.dtc_response_received = False
         self.receiving_dtcs = True
         
@@ -1024,6 +1175,8 @@ class OBD2Dialog(QDialog):
     def _read_dtcs_complete(self):
         """Callback after DTC read completes"""
         self.receiving_dtcs = False
+        self.dtc_expected_len = None
+        self.dtc_expected_bytes = None
         
         # Verifica se recebeu alguma resposta
         if not self.dtc_response_received:
@@ -1061,6 +1214,86 @@ class OBD2Dialog(QDialog):
         self.start_btn.setEnabled(True)
         self.single_shot_btn.setEnabled(True)
         self.read_dtc_btn.setEnabled(True)
+
+        # Resume polling if it was active before reading DTCs.
+        if getattr(self, "_resume_polling_after_dtcs", False):
+            self._resume_polling_after_dtcs = False
+            try:
+                self._start_polling()
+            except Exception:
+                pass
+
+    def _clear_dtcs(self):
+        """Clear Diagnostic Trouble Codes (Service 04)"""
+        if not self.active_bus or not self.active_bus.bus:
+            QMessageBox.warning(
+                self,
+                "Not Connected",
+                "Cannot clear DTCs: Not connected to CAN bus."
+            )
+            return
+
+        # Clearing DTCs resets emission readiness on many ECUs. Ask for confirmation.
+        confirm = QMessageBox.question(
+            self,
+            "Clear DTCs",
+            "This will request the ECU to clear stored Diagnostic Trouble Codes (Service 04).\n"
+            "It may also reset readiness monitors.\n\n"
+            "Do you want to continue?"
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        # Pause polling during clear to keep UI consistent and avoid flooding.
+        self._resume_polling_after_dtcs = bool(getattr(self, "polling_active", False))
+        if self._resume_polling_after_dtcs:
+            self._stop_polling()
+
+        self._log_message("Clearing DTCs (Service 04)...")
+
+        # Disable related buttons briefly to avoid spamming.
+        self.start_btn.setEnabled(False)
+        self.single_shot_btn.setEnabled(False)
+        self.read_dtc_btn.setEnabled(False)
+        if hasattr(self, "clear_dtc_btn"):
+            self.clear_dtc_btn.setEnabled(False)
+
+        try:
+            request = can.Message(
+                arbitration_id=0x7DF,  # Broadcast
+                data=[0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                is_extended_id=False
+            )
+
+            self.active_bus.send(request)
+            self._add_raw_request(request, "Request: Clear DTCs (Service 04)")
+
+            # Give the ECU a moment; responses vary by vehicle (some may not answer).
+            QTimer.singleShot(800, self._clear_dtcs_complete)
+        except Exception as e:
+            self._log_message(f"Error clearing DTCs: {e}")
+            self.start_btn.setEnabled(True)
+            self.single_shot_btn.setEnabled(True)
+            self.read_dtc_btn.setEnabled(True)
+            if hasattr(self, "clear_dtc_btn"):
+                self.clear_dtc_btn.setEnabled(True)
+
+    def _clear_dtcs_complete(self):
+        """Re-enable buttons after clear request window"""
+        self._log_message("Clear DTCs request sent. If supported, DTCs should be cleared.")
+        self.start_btn.setEnabled(True)
+        self.single_shot_btn.setEnabled(True)
+        self.read_dtc_btn.setEnabled(True)
+        if hasattr(self, "clear_dtc_btn"):
+            self.clear_dtc_btn.setEnabled(True)
+
+        # Resume polling if it was active before clearing DTCs.
+        if getattr(self, "_resume_polling_after_dtcs", False):
+            self._resume_polling_after_dtcs = False
+            try:
+                self._start_polling()
+            except Exception:
+                pass
     
     def _decode_dtc(self, high_byte: int, low_byte: int) -> str:
         """
@@ -1129,9 +1362,6 @@ class OBD2Dialog(QDialog):
             'ecu_id': ecu_id,
             'raw_data': msg.data
         }
-        
-        # Adiciona à tabela raw
-        self._add_raw_message(msg, f"Response PID 0x{pid:02X}: {value_str}")
     
     def _decode_pid_value(self, pid: int, data: bytes) -> str:
         """Decodifica valor do PID (simplificado)"""
