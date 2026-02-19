@@ -8,9 +8,73 @@ import sys
 import signal
 import atexit
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QObject, QEvent, Qt
+from PyQt6.QtWidgets import QDialog, QMainWindow
 
 from src.main_window import CANAnalyzerWindow
 from src.logger import init_logger, shutdown_logger, get_logger
+
+
+class _CloseWindowShortcutFilter(QObject):
+    """
+    Global shortcut handler:
+    - Ctrl+W (Win/Linux) / Cmd+W (macOS) closes the active dialog/window
+    - Does not close the main window (use Ctrl/Cmd+Q for exit)
+    """
+
+    def __init__(self, app: QApplication, main_window: CANAnalyzerWindow):
+        super().__init__()
+        self._app = app
+        self._main_window = main_window
+
+    def eventFilter(self, obj, event):  # type: ignore[override]
+        if event.type() != QEvent.Type.KeyPress:
+            return False
+
+        try:
+            if event.key() != Qt.Key.Key_W:
+                return False
+            mods = event.modifiers()
+            want_mod = bool(mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier))
+            bad_mods = bool(mods & (Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.ShiftModifier))
+            if not want_mod or bad_mods:
+                return False
+        except Exception:
+            return False
+
+        # Prefer modal widget (dialogs), else active window.
+        w = self._app.activeModalWidget() or self._app.activeWindow()
+        if not w:
+            return False
+
+        # Never close the main window with Ctrl/Cmd+W.
+        if w is self._main_window:
+            return False
+        if isinstance(w, QMainWindow):
+            # If in the future we open other top-level windows, do not close them by default.
+            return False
+
+        # Close dialogs cleanly, so callers waiting on exec() return.
+        if isinstance(w, QDialog):
+            try:
+                w.reject()
+            except Exception:
+                try:
+                    w.close()
+                except Exception:
+                    pass
+            return True
+
+        # Fallback for any other top-level window-like widget.
+        try:
+            top = w.window() if hasattr(w, "window") else w
+            if top is not None and top is not self._main_window:
+                top.close()
+                return True
+        except Exception:
+            pass
+
+        return False
 
 
 def main():
@@ -80,6 +144,15 @@ def main():
         window.show()
         window.raise_()  # Bring window to front
         window.activateWindow()  # Activate the window
+
+        # Ctrl+W / Cmd+W: close active dialog/window (not main window)
+        try:
+            close_filter = _CloseWindowShortcutFilter(app, window)
+            app.installEventFilter(close_filter)
+            # Keep a strong reference so it isn't GC'd
+            window._close_window_shortcut_filter = close_filter  # type: ignore[attr-defined]
+        except Exception:
+            pass
         
         # Force app activation on macOS
         if sys.platform == 'darwin':

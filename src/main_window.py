@@ -31,6 +31,7 @@ from .dialogs import (
 from .decoders.base import get_decoder_manager
 from .decoders.adapter_ftcan import FTCANProtocolDecoder
 from .decoders.adapter_obd2 import OBD2ProtocolDecoder
+from .decoders.adapter_bap import BAPProtocolDecoder
 from .logger import get_logger
 from .i18n import get_i18n, t
 from .theme import detect_dark_mode, get_adaptive_colors, should_use_dark_mode
@@ -1916,9 +1917,11 @@ class CANAnalyzerWindow(QMainWindow):
         try:
             ftcan_decoder = FTCANProtocolDecoder()
             obd2_decoder = OBD2ProtocolDecoder()
+            bap_decoder = BAPProtocolDecoder()
             
             self.decoder_manager.register_decoder(ftcan_decoder)
             self.decoder_manager.register_decoder(obd2_decoder)
+            self.decoder_manager.register_decoder(bap_decoder)
             
             decoder_config = self.config.get('protocol_decoders', {})
             if decoder_config:
@@ -1926,6 +1929,7 @@ class CANAnalyzerWindow(QMainWindow):
             else:
                 self.decoder_manager.set_decoder_enabled('FTCAN 2.0', False)
                 self.decoder_manager.set_decoder_enabled('OBD-II', False)
+                self.decoder_manager.set_decoder_enabled('VAG BAP', False)
                 self.logger.info("Protocol decoders initialized as DISABLED by default")
             
             self.logger.info(f"Protocol decoders initialized: {len(self.decoder_manager.get_all_decoders())} decoders")
@@ -1948,6 +1952,14 @@ class CANAnalyzerWindow(QMainWindow):
     def _on_ftcan_dialog_closed(self):
         """Callback when FTCAN Analyzer is closed"""
         self._ftcan_dialog = None
+
+    def show_bap_dialog(self):
+        """Show VAG BAP Analyzer dialog"""
+        self.dialog_coord.show_bap_dialog()
+
+    def _on_bap_dialog_closed(self):
+        """Callback when VAG BAP Analyzer is closed"""
+        self._bap_dialog = None
     
     def show_obd2_dialog(self):
         """Show OBD-II Monitor dialog"""

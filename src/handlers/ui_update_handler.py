@@ -44,6 +44,10 @@ class UIUpdateHandler:
                     # Forward to FTCAN dialog if open
                     if getattr(self.parent, '_ftcan_dialog', None) is not None:
                         self.parent._ftcan_dialog.add_message(msg)
+
+                    # Forward to BAP dialog if open
+                    if getattr(self.parent, '_bap_dialog', None) is not None:
+                        self.parent._bap_dialog.add_message(msg)
                     
                     # Check and fire triggers
                     if self.parent.triggers_enabled and self.parent.connected:

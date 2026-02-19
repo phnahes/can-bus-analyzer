@@ -27,6 +27,10 @@ from .adapter_ftcan import FTCANProtocolDecoder
 from .decoder_obd2 import OBD2Decoder, OBD2_PIDS
 from .adapter_obd2 import OBD2ProtocolDecoder
 
+# VAG BAP
+from .decoder_bap import BAPDecoder, BAPPlatform, BAPDetectionMode
+from .adapter_bap import BAPProtocolDecoder
+
 __all__ = [
     # Base classes
     'ProtocolDecoder',
@@ -43,4 +47,10 @@ __all__ = [
     'OBD2Decoder',
     'OBD2_PIDS',
     'OBD2ProtocolDecoder',
+
+    # VAG BAP
+    'BAPDecoder',
+    'BAPPlatform',
+    'BAPDetectionMode',
+    'BAPProtocolDecoder',
 ]

@@ -185,6 +185,12 @@ class MenuBarBuilder:
         obd2_action.setShortcut(get_shortcut('obd2_monitor'))
         obd2_action.triggered.connect(self.parent.show_obd2_dialog)
         decoders_menu.addAction(obd2_action)
+
+        # VAG BAP Analyzer
+        bap_action = QAction("VAG BAP Analyzer...", self.parent)
+        bap_action.setShortcut(get_shortcut('bap_analyzer'))
+        bap_action.triggered.connect(self.parent.show_bap_dialog)
+        decoders_menu.addAction(bap_action)
         
         tools_menu.addSeparator()
         

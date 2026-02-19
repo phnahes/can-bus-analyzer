@@ -126,6 +126,18 @@ class DecoderManager:
             if decoder.get_name() == name:
                 return decoder
         return None
+
+    def set_decoder_enabled(self, name: str, enabled: bool) -> bool:
+        """
+        Enable/disable a decoder by name.
+
+        Returns True if decoder was found, False otherwise.
+        """
+        decoder = self.get_decoder(name)
+        if not decoder:
+            return False
+        decoder.set_enabled(bool(enabled))
+        return True
     
     def get_all_decoders(self) -> List[ProtocolDecoder]:
         """Return all registered decoders"""
