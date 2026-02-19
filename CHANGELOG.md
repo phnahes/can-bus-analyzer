@@ -17,6 +17,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-02-19
+
+### Added
+- **VAG BAP Protocol Decoder**: Complete support for Volkswagen/Audi BAP (Bedien- und Anzeigeprotokoll)
+  - Multi-frame reassembly with up to 4 parallel streams per CAN ID
+  - BAP header parsing (opcode/lsg/fct) for both 11-bit and 29-bit CAN IDs
+  - Conservative (multi-frame only) and Aggressive (includes single-frame) detection modes
+  - Stream timeout management (2.0s configurable)
+  - Support for messages up to 4095 bytes
+  
+- **VAG BAP Analyzer Dialog** (Ctrl+3): Dedicated UI for BAP traffic analysis
+  - Reassembled Messages tab: Complete payloads with header fields
+  - Raw Frames tab: Individual CAN frames with progress indicators
+  - Visual grouping: Link raw frames to their reassembled packets
+  - Details panel: Complete payload view with frame linkage explanation
+  - Filters: CAN ID, LSG, Source
+  - Export/Import: Save/load captures as JSON
+  - Replay: Resend captured packets with optional timing preservation
+  - Background decoding: Worker thread prevents UI freezes
+  - Performance metrics: Lag, inflight, dropped messages
+  
+- **Global Close Shortcut**: Ctrl+W (Cmd+W on macOS) closes active dialogs/secondary windows
+- **BAP Documentation**: Comprehensive protocol documentation in `docs/decoders/BAP.md`
+  - Complete protocol structure with multi-frame examples
+  - Implementation architecture diagrams
+  - Usage guide and troubleshooting
+  - References to open-source projects (norly/revag-bap, tmbinc/kisim, MIGINC/BAP_RE, e-golf-comfort-can)
+
+---
+
 ## [1.1.2] - 2026-02-17
 
 ### Fixed

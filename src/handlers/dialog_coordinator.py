@@ -61,3 +61,25 @@ class DialogCoordinator:
         self.parent._ftcan_dialog = dialog
         dialog.finished.connect(self.parent._on_ftcan_dialog_closed)
         dialog.show()
+
+    def show_bap_dialog(self):
+        """Show VAG BAP Analyzer dialog"""
+        from ..dialogs import BAPDialog
+
+        if hasattr(self.parent, '_bap_dialog') and self.parent._bap_dialog:
+            self.parent._bap_dialog.raise_()
+            self.parent._bap_dialog.activateWindow()
+            return
+
+        dialog = BAPDialog(self.parent)
+
+        # Seed with already captured messages (helps when opening after running).
+        for msg in getattr(self.parent, "received_messages", []):
+            try:
+                dialog.add_message(msg)
+            except Exception:
+                continue
+
+        self.parent._bap_dialog = dialog
+        dialog.finished.connect(self.parent._on_bap_dialog_closed)
+        dialog.show()

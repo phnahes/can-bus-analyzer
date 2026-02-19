@@ -127,7 +127,7 @@ python can_analyzer.py
 - Reception panel with: ID, DLC, Data, Period, Count, ASCII, Comment
 - **Monitor Mode**: Groups by ID, shows Count (first column), Period (ms between messages)
 - **Tracer Mode**: Chronological list with timestamps
-- **Protocol Decoders**: Automatic decoding of FTCAN 2.0 and OBD-II messages
+- **Protocol Decoders**: Automatic decoding of FTCAN 2.0, OBD-II, and VAG BAP messages
 
 #### **Message Transmission**
 - Complete CAN message configuration
@@ -145,7 +145,7 @@ python can_analyzer.py
 - **Trigger-based TX**: Automatic transmission on received messages
 - **Playback**: Reproduce recorded traces
 - **CAN Gateway**: Bridge and filter messages between buses
-- **Protocol Decoders**: FTCAN 2.0 and OBD-II support
+- **Protocol Decoders**: FTCAN 2.0, OBD-II, and VAG BAP support
 
 ---
 
@@ -215,6 +215,43 @@ The CAN Analyzer includes **modular protocol decoders** for automatic message in
 **Tools:**
 - `tools/general/obd2_poller.py` - CLI polling tool
 - `tools/arduino/arduino_obd2_ecu_simulator.ino` - Arduino ECU simulator
+
+---
+
+### VAG BAP (Bedien- und Anzeigeprotokoll)
+
+**Description:** Volkswagen Group's bidirectional communication protocol for control units and display units.
+
+**Features:**
+- **Bidirectional Protocol**: Two-way communication between FSG (Function Control Unit) and ASG (Display Control Unit)
+- **Multi-Frame Support**: Messages up to 4095 bytes across multiple CAN frames
+- **Parallel Streams**: Up to 4 simultaneous streams per CAN ID
+- **Event-Driven**: Reduces bus load vs constant polling
+- **Platform Flexibility**: Works with both 11-bit and 29-bit CAN IDs
+- **Logical Addressing**: LSG (Logical Service Group) and FCT (Function ID) for routing
+
+**Interface — VAG BAP Analyzer** (shortcut: **Ctrl+3** or Tools → VAG BAP Analyzer):
+- **Reassembled Messages**: Complete multi-frame payloads with header parsing (opcode/lsg/fct)
+- **Raw Frames**: Individual CAN frames (start/continuation) with progress indicators
+- **Visual Grouping**: Link raw frames to their reassembled packets
+- **Detection Modes**: Conservative (multi-frame only) or Aggressive (includes single-frame)
+- **Export/Import**: Save/load captures as JSON for offline analysis
+- **Replay**: Resend captured packets with optional timing preservation
+
+**Usability:** 
+- Open the BAP Analyzer to capture and analyze BAP traffic in real-time
+- Use filters (CAN ID, LSG, Source) to focus on specific conversations
+- Export captures for offline analysis or sharing
+- Replay packets to reproduce captured behavior
+
+**Documentation:**
+- [VAG BAP Protocol & Decoder Documentation](docs/decoders/BAP.md) — Protocol structure, multi-frame reassembly, implementation details
+
+**References:**
+- [norly/revag-bap](https://github.com/norly/revag-bap) — C implementation (GPLv2)
+- [tmbinc/kisim](https://github.com/tmbinc/kisim) — Python implementation (BSD-3)
+- [MIGINC/BAP_RE](https://github.com/MIGINC/BAP_RE) — Reverse engineering documentation
+- [e-golf-comfort-can](https://github.com/thomasakarlsen/e-golf-comfort-can) — Protocol explanation
 
 ---
 
@@ -600,7 +637,9 @@ On **macOS**, the modifier is shown and works as **Command (⌘)**. Shortcuts ar
 | Split-Screen Mode | `Ctrl+Alt+D` |
 | **FTCAN Analyzer** | `Ctrl+1` |
 | **OBD-II Monitor** | `Ctrl+2` |
+| **VAG BAP Analyzer** | `Ctrl+3` |
 | **Decoder Manager** | `Ctrl+Shift+D` |
+| Close Active Dialog | `Ctrl+W` |
 | Settings | `Ctrl+,` |
 | Exit | `Ctrl+Q` |
 
@@ -624,6 +663,7 @@ On **macOS**, the modifier is shown and works as **Command (⌘)**. Shortcuts ar
 |----------|-------------|
 | [docs/decoders/FTCAN.md](docs/decoders/FTCAN.md) | **FTCAN 2.0** — Protocol, ECU 4-stream broadcast, SwitchPanel, EGT-8, decoder implementation |
 | [docs/decoders/OBD2.md](docs/decoders/OBD2.md) | **OBD-II Protocol** — Complete technical specification |
+| [docs/decoders/BAP.md](docs/decoders/BAP.md) | **VAG BAP** — Protocol structure, multi-frame reassembly, implementation details |
 
 ### Tools Documentation
 

@@ -29,6 +29,7 @@ from .decoder_manager import DecoderManagerDialog
 # Protocol-specific dialogs
 from .ftcan import FTCANDialog
 from .obd2 import OBD2Dialog
+from .bap import BAPDialog
 
 __all__ = [
     # General dialogs
@@ -45,4 +46,5 @@ __all__ = [
     # Protocol dialogs
     'FTCANDialog',
     'OBD2Dialog',
+    'BAPDialog',
 ]

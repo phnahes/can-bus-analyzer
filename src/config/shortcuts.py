@@ -53,6 +53,7 @@ def get_shortcuts() -> Dict[str, str]:
         'decoder_manager': f'{mod}+Shift+D',
         'ftcan_analyzer': f'{mod}+1',
         'obd2_monitor': f'{mod}+2',
+        'bap_analyzer': f'{mod}+3',
         # Settings Menu
         'settings': f'{mod}+,',
     }
@@ -90,6 +91,7 @@ def get_shortcut_descriptions() -> Dict[str, str]:
         'decoder_manager': 'Manage Protocol Decoders',
         'ftcan_analyzer': 'Open FTCAN 2.0 Protocol Analyzer',
         'obd2_monitor': 'Open OBD-II Monitor',
+        'bap_analyzer': 'Open VAG BAP Analyzer',
         # Settings Menu
         'settings': 'Open Settings dialog',
     }
