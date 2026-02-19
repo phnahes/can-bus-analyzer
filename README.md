@@ -1,6 +1,6 @@
 # CAN Analyzer
 
-[![Version](https://img.shields.io/badge/version-1.1.2-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 A comprehensive CAN bus analyzer with SLCAN support, protocol decoders, and real-time analysis. Built with Python and PyQt6. **Runs on macOS and Linux.**
@@ -797,7 +797,7 @@ Contributions are welcome! Here's how you can help:
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
 
-**Latest Release: v1.1.2** - Gateway Bidirectional, Visual Indicators, Device Disconnect Detection
+**Latest Release: v1.2.0** - Gateway Bidirectional, Visual Indicators, Device Disconnect Detection
 - **FTCAN 2.0 Protocol Decoder**: Automatic decoding of FuelTech devices
 - **OBD-II Protocol Decoder**: Universal automotive diagnostics support
 - **FTCAN Analyzer**: Dedicated UI for FTCAN messages with live measures
@@ -851,7 +851,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 ## Project Status
 
-**Version**: 1.1.2  
+**Version**: 1.2.0  
 **Status**: Stable  
 **Last Updated**: February 2026
 
@@ -878,7 +878,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 - **OBD-II Monitor** (interactive diagnostics UI)
 
 ### Recently Added / Updated
-- **CAN Gateway Enhancements** (v1.1.2):
+- **CAN Gateway Enhancements** (v1.2.0):
   - ✅ **Bidirectional Gateway** with automatic loop prevention
   - ✅ **Visual Indicators** (🚫 blocked, ➡️ forwarded, ✏️ modified, 🔄 loop prevented)
   - ✅ **Directional Rules** for blocking and modification
