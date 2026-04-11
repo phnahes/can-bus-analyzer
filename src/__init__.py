@@ -2,9 +2,9 @@
 CAN Analyzer - Main modules
 """
 
-__version__ = "1.2.0"
+__version__ = "1.2.1"
 # Build/release identifier (YYYY.MM); update on release
-__build__ = "2026.02"
+__build__ = "2026.04"
 # Export models from new models package
 from .models import (
     CANMessage,
