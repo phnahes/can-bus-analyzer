@@ -155,18 +155,18 @@ class FTCANDialog(QDialog):
         
         layout.addLayout(control_layout)
         
-        # Tabs (reorganized: Live Measures first as main tab)
+        # Tabs: Devices primeiro, depois medidas / mensagens / diagnóstico
         tabs = QTabWidget()
         
-        # Tab 1: Medidas em tempo real (PRINCIPAL)
+        tab_devices = self._create_devices_tab()
+        tabs.addTab(tab_devices, "Devices")
+        
         tab_measures = self._create_measures_tab()
         tabs.addTab(tab_measures, "Live Measures")
         
-        # Tab 2: Mensagens decodificadas
         tab_messages = self._create_messages_tab()
         tabs.addTab(tab_messages, "Decoded Messages")
         
-        # Tab 3: Diagnóstico
         tab_diagnostics = self._create_diagnostics_tab()
         tabs.addTab(tab_diagnostics, "Diagnostics")
         
@@ -383,10 +383,7 @@ class FTCANDialog(QDialog):
         
         layout.addLayout(top_layout, 3)  # 30% of space
         
-        # Bottom row: Broadcast Streams and Devices side by side (70% of vertical space)
-        bottom_layout = QHBoxLayout()
-        
-        # Broadcast Streams (left side)
+        # Broadcast streams (lista de dispositivos na aba Devices)
         streams_group = QGroupBox("Broadcast Streams (ECU)")
         streams_layout = QVBoxLayout()
         streams_layout.setContentsMargins(5, 5, 5, 5)
@@ -398,14 +395,12 @@ class FTCANDialog(QDialog):
         ])
         self.streams_table.setRowCount(4)  # 4 priority levels
         
-        # Set fixed row labels
         priorities = ["Critical (0x0FF)", "High (0x1FF)", "Medium (0x2FF)", "Low (0x3FF)"]
         for i, priority in enumerate(priorities):
             item = QTableWidgetItem(priority)
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.streams_table.setItem(i, 0, item)
             
-            # Initialize other columns
             for j in range(1, 4):
                 item = QTableWidgetItem("0")
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -416,34 +411,126 @@ class FTCANDialog(QDialog):
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.streams_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         
-        streams_layout.addWidget(self.streams_table, 1)  # Stretch to fill
+        streams_layout.addWidget(self.streams_table, 1)
         streams_group.setLayout(streams_layout)
-        bottom_layout.addWidget(streams_group, 1)
-        
-        # Dispositivos detectados (right side)
-        devices_group = QGroupBox("Detected Devices")
-        devices_layout = QVBoxLayout()
-        devices_layout.setContentsMargins(5, 5, 5, 5)
-        
-        self.devices_table = QTableWidget()
-        self.devices_table.setColumnCount(5)
-        self.devices_table.setHorizontalHeaderLabels([
-            "Product ID", "Product Name", "Unique ID", "Message Count", "Last Seen"
-        ])
-        
-        header = self.devices_table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.devices_table.verticalHeader().setVisible(False)
-        
-        devices_layout.addWidget(self.devices_table, 1)  # Stretch to fill
-        devices_group.setLayout(devices_layout)
-        bottom_layout.addWidget(devices_group, 1)
-        
-        layout.addLayout(bottom_layout, 7)  # 70% of space
+        layout.addWidget(streams_group, 7)
         
         widget.setLayout(layout)
         return widget
+    
+    def _create_devices_tab(self) -> QWidget:
+        """Lista dispositivos FTCAN agregados (Product ID, IDs decodificados, CAN de exemplo)."""
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(5, 5, 5, 5)
+        hint = QLabel(
+            "Dispositivos inferidos das mensagens decodificadas (mesmo Product ID = mesma unidade no bus). "
+            "Unique ID e tipo vêm do ID CAN 29-bit; Example CAN ID é o último quadro visto."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #666; font-size: 10px;")
+        layout.addWidget(hint)
+        
+        self.devices_detail_table = QTableWidget()
+        self.devices_detail_table.setColumnCount(9)
+        self.devices_detail_table.setHorizontalHeaderLabels([
+            "Product ID",
+            "Type ID",
+            "Name",
+            "Unique ID",
+            "Example CAN ID",
+            "Data fields",
+            "Message IDs",
+            "Msgs",
+            "Last seen (s)",
+        ])
+        hdr = self.devices_detail_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
+        self.devices_detail_table.verticalHeader().setVisible(False)
+        layout.addWidget(self.devices_detail_table)
+        widget.setLayout(layout)
+        return widget
+    
+    def _aggregate_ftcan_devices(self) -> List[Dict]:
+        """Agrega dispositivos por product_id (string) a partir do cache decodificado."""
+        devices: Dict[str, Dict] = {}
+        for idx, msg in enumerate(self.messages):
+            if idx not in self.decoded_cache:
+                continue
+            decoded = self.decoded_cache[idx]
+            ident = decoded.get("identification")
+            if not ident:
+                continue
+            pid = ident["product_id"]
+            if pid not in devices:
+                devices[pid] = {
+                    "product_id": pid,
+                    "product_type_id": ident["product_type_id"],
+                    "product_name": ident["product_name"],
+                    "unique_id": ident["unique_id"],
+                    "example_can_id": msg.can_id,
+                    "data_fields": set(),
+                    "message_ids": set(),
+                    "count": 0,
+                    "last_seen": msg.timestamp,
+                }
+            d = devices[pid]
+            d["count"] += 1
+            d["last_seen"] = msg.timestamp
+            d["example_can_id"] = msg.can_id
+            d["data_fields"].add(ident.get("data_field_name", "-"))
+            d["message_ids"].add(ident.get("message_id", "-"))
+        def _mid_key(m: str) -> int:
+            try:
+                return int(m.replace("0x", ""), 16)
+            except ValueError:
+                return 0
+
+        rows = []
+        for d in sorted(devices.values(), key=lambda x: x["product_id"]):
+            rows.append(
+                {
+                    "product_id": d["product_id"],
+                    "product_type_id": d["product_type_id"],
+                    "product_name": d["product_name"],
+                    "unique_id": d["unique_id"],
+                    "example_can_id": d["example_can_id"],
+                    "data_fields": ", ".join(sorted(d["data_fields"])),
+                    "message_ids": ", ".join(sorted(d["message_ids"], key=_mid_key)),
+                    "count": d["count"],
+                    "last_seen": d["last_seen"],
+                }
+            )
+        return rows
+    
+    def _update_devices_tab(self):
+        """Atualiza tabela Devices."""
+        if not hasattr(self, "devices_detail_table"):
+            return
+        rows = self._aggregate_ftcan_devices()
+        self.devices_detail_table.setUpdatesEnabled(False)
+        self.devices_detail_table.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            self.devices_detail_table.setItem(i, 0, QTableWidgetItem(r["product_id"]))
+            self.devices_detail_table.setItem(i, 1, QTableWidgetItem(str(r["product_type_id"])))
+            self.devices_detail_table.setItem(i, 2, QTableWidgetItem(r["product_name"]))
+            self.devices_detail_table.setItem(i, 3, QTableWidgetItem(str(r["unique_id"])))
+            ex = QTableWidgetItem(f"0x{r['example_can_id']:08X}")
+            ex.setToolTip("Último arbitration ID visto para este Product ID")
+            self.devices_detail_table.setItem(i, 4, ex)
+            self.devices_detail_table.setItem(i, 5, QTableWidgetItem(r["data_fields"]))
+            self.devices_detail_table.setItem(i, 6, QTableWidgetItem(r["message_ids"]))
+            self.devices_detail_table.setItem(i, 7, QTableWidgetItem(str(r["count"])))
+            self.devices_detail_table.setItem(i, 8, QTableWidgetItem(f"{r['last_seen']:.3f}"))
+        self.devices_detail_table.setUpdatesEnabled(True)
     
     def _create_footer(self) -> QWidget:
         """Create footer with controls"""
@@ -576,9 +663,10 @@ class FTCANDialog(QDialog):
         if self.update_counter % 2 == 0:
             self._update_messages_table()
         
-        # Update diagnostics only every 10 cycles (1 second) - reduced frequency
+        # Update diagnostics + Devices tab every 10 cycles (~1 s)
         if self.update_counter % 10 == 0:
             self._update_diagnostics()
+            self._update_devices_tab()
     
     def _update_messages_table(self):
         """Atualiza tabela de mensagens (usando cache, otimizado)"""
@@ -934,21 +1022,6 @@ class FTCANDialog(QDialog):
         
         self.streams_table.setUpdatesEnabled(True)
         
-        # Update devices table with batch updates
-        self.devices_table.setUpdatesEnabled(False)
-        self.devices_table.setRowCount(len(devices))
-        
-        row = 0
-        for product_id, info in sorted(devices.items()):
-            self.devices_table.setItem(row, 0, QTableWidgetItem(product_id))
-            self.devices_table.setItem(row, 1, QTableWidgetItem(info['name']))
-            self.devices_table.setItem(row, 2, QTableWidgetItem(str(info['unique_id'])))
-            self.devices_table.setItem(row, 3, QTableWidgetItem(str(info['count'])))
-            self.devices_table.setItem(row, 4, QTableWidgetItem(f"{info['last_seen']:.3f}s"))
-            row += 1
-        
-        self.devices_table.setUpdatesEnabled(True)
-        
         # Detecta problemas
         self._detect_issues()
     
@@ -1085,7 +1158,8 @@ class FTCANDialog(QDialog):
         # Clear UI
         self.messages_table.setRowCount(0)
         self.measures_table.setRowCount(0)
-        self.devices_table.setRowCount(0)
+        if hasattr(self, "devices_detail_table"):
+            self.devices_detail_table.setRowCount(0)
         self.message_details.clear()
         self.stats_label.setText("No data yet")
         self.issues_text.clear()
@@ -1218,6 +1292,8 @@ class FTCANDialog(QDialog):
             
             # Update display
             self._update_display()
+            self._update_diagnostics()
+            self._update_devices_tab()
             
             QMessageBox.information(
                 self,

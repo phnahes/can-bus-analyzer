@@ -73,3 +73,5 @@ tools/saves/
 
 # Others
 COMMIT_MESSAGE.txt
+
+.cursor
