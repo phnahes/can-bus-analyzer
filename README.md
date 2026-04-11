@@ -880,7 +880,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 ### Recently Added / Updated
 - **FTCAN / WB-O2** (v1.2.1): Devices tab in FTCAN analyzer; special IDs for WB-O2 config/association; `tools/ftcan/wbo2_nano_config_tx.py` for scale presets over CAN
 - **Packaging docs** (v1.2.2): `docs/BUILD.md` documents local build, version bump, tag push, and CI release builds
-- **CAN Gateway Enhancements** (v1.2.0):
+- **CAN Gateway Enhancements** (v1.2.2):
   - ✅ **Bidirectional Gateway** with automatic loop prevention
   - ✅ **Visual Indicators** (🚫 blocked, ➡️ forwarded, ✏️ modified, 🔄 loop prevented)
   - ✅ **Directional Rules** for blocking and modification
