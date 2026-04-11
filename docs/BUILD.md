@@ -12,6 +12,51 @@ The script creates/activates a venv and installs dependencies if needed.
 
 **Note:** Use `requirements-dev.txt` for building (includes py2app/PyInstaller). Use `requirements.txt` only for running from source.
 
+### Version bump and release
+
+The shipped version lives in `src/__init__.py`:
+
+- **`__version__`** — SemVer string shown in the app and badges (e.g. `1.2.2`).
+- **`__build__`** — release/build stamp, convention **`YYYY.MM`** (e.g. `2026.04`).
+
+**Checklist before tagging**
+
+1. **CHANGELOG.md** — Add a dated section for the new version (Keep a Changelog style). Move notes out of `[Unreleased]` as needed. The helper script below does **not** edit this file.
+2. **README.md** — The release helper updates the version badge, the “Latest Release” line, and the main “**Version**” field. If you have other lines that embed a version (for example bullets under “Recently Added / Updated”), update those by hand so historical items (e.g. gateway work tied to an older release) keep the correct version label.
+3. **Commit** feature work first; the release step expects a **clean** `git status`.
+
+**Automated bump (commit + tag)**
+
+From the repository root, with a clean working tree:
+
+```bash
+python3 extras/release.py 1.2.2
+```
+
+Optional:
+
+- **`--build 2026.04`** — set `__build__` explicitly (default is current calendar year/month).
+- **`--dry-run`** — print what would happen without changing files or git.
+- **`--no-readme`** — only bump `src/__init__.py`.
+- **`--no-tag`** — commit version bump only (no annotated tag).
+
+The script stages `src/__init__.py` and `README.md`, creates a commit `chore(release): vX.Y.Z`, and an annotated tag **`vX.Y.Z`**. If you also changed `CHANGELOG.md`, commit that **before** running the script, or amend the release commit afterward.
+
+**Publish**
+
+```bash
+git push origin main
+git push origin vX.Y.Z
+```
+
+Pushing a **`v*.*.*`** tag triggers the **Release Build (macOS + Linux)** workflow, which attaches `CAN-Analyzer-<version>-*.zip` to the GitHub Release.
+
+**Local build after release**
+
+```bash
+./extras/build.sh
+```
+
 ### GitHub Actions (macOS + Linux builds)
 
 If you are on macOS and want Linux builds (or vice-versa), use GitHub Actions:

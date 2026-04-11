@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.2] - 2026-04-11
+
+### Added
+- **Documentation**: `docs/BUILD.md` — how to run `./extras/build.sh`, bump versions (`src/__init__.py`, `CHANGELOG.md`, README markers), use `extras/release.py`, push tags, and relation to GitHub Actions release builds
+
+---
+
 ## [1.2.1] - 2026-04-11
 
 ### Added
