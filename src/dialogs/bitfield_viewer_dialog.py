@@ -55,7 +55,7 @@ class BitFieldViewerDialog(QDialog):
         header_group.setLayout(header_layout)
         layout.addWidget(header_group)
         
-        # Scroll area para os bits
+        # Scroll area for bits
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll_widget = QWidget()

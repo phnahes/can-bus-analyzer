@@ -14,7 +14,7 @@ from typing import Optional, Dict, List
 # OBD-II PIDs (Mode 01 - Current Data)
 # Based on: https://en.wikipedia.org/wiki/OBD-II_PIDs
 OBD2_PIDS = {
-    # PIDs suportados
+    # Supported PIDs
     0x00: {"name": "PIDs supported [01-20]", "bytes": 4, "unit": "", "type": "bitfield"},
     0x20: {"name": "PIDs supported [21-40]", "bytes": 4, "unit": "", "type": "bitfield"},
     0x40: {"name": "PIDs supported [41-60]", "bytes": 4, "unit": "", "type": "bitfield"},
@@ -23,12 +23,12 @@ OBD2_PIDS = {
     0xA0: {"name": "PIDs supported [A1-C0]", "bytes": 4, "unit": "", "type": "bitfield"},
     0xC0: {"name": "PIDs supported [C1-E0]", "bytes": 4, "unit": "", "type": "bitfield"},
     
-    # Status e diagnóstico
+    # Status and diagnostics
     0x01: {"name": "Monitor status since DTCs cleared", "bytes": 4, "unit": "", "type": "bitfield"},
     0x02: {"name": "DTC that caused freeze frame", "bytes": 2, "unit": "", "type": "dtc"},
     0x03: {"name": "Fuel system status", "bytes": 2, "unit": "", "type": "enum"},
     
-    # Engine básico
+    # Basic engine
     0x04: {"name": "Calculated engine load", "bytes": 1, "unit": "%", "type": "percent"},
     0x05: {"name": "Engine coolant temperature", "bytes": 1, "unit": "°C", "type": "temp_offset"},
     0x0C: {"name": "Engine RPM", "bytes": 2, "unit": "RPM", "type": "rpm"},
@@ -37,7 +37,7 @@ OBD2_PIDS = {
     0x0F: {"name": "Intake air temperature", "bytes": 1, "unit": "°C", "type": "temp_offset"},
     0x1F: {"name": "Run time since engine start", "bytes": 2, "unit": "s", "type": "uint16"},
     
-    # Ar e combustível
+    # Air and fuel
     0x10: {"name": "MAF air flow rate", "bytes": 2, "unit": "g/s", "type": "maf"},
     0x11: {"name": "Throttle position", "bytes": 1, "unit": "%", "type": "percent"},
     0x45: {"name": "Relative throttle position", "bytes": 1, "unit": "%", "type": "percent"},
@@ -48,7 +48,7 @@ OBD2_PIDS = {
     0x4B: {"name": "Accelerator pedal position F", "bytes": 1, "unit": "%", "type": "percent"},
     0x4C: {"name": "Commanded throttle actuator", "bytes": 1, "unit": "%", "type": "percent"},
     
-    # Pressões
+    # Pressures
     0x0A: {"name": "Fuel pressure (gauge)", "bytes": 1, "unit": "kPa", "type": "fuel_pressure"},
     0x0B: {"name": "Intake manifold pressure", "bytes": 1, "unit": "kPa", "type": "direct"},
     0x22: {"name": "Fuel rail pressure (relative)", "bytes": 2, "unit": "kPa", "type": "fuel_rail_rel"},
@@ -60,7 +60,7 @@ OBD2_PIDS = {
     0x46: {"name": "Ambient air temperature", "bytes": 1, "unit": "°C", "type": "temp_offset"},
     0x5C: {"name": "Engine oil temperature", "bytes": 1, "unit": "°C", "type": "temp_offset"},
     
-    # Combustível
+    # Fuel
     0x2F: {"name": "Fuel tank level input", "bytes": 1, "unit": "%", "type": "percent"},
     0x51: {"name": "Fuel type", "bytes": 1, "unit": "", "type": "fuel_type"},
     0x52: {"name": "Ethanol fuel %", "bytes": 1, "unit": "%", "type": "percent"},
@@ -91,11 +91,11 @@ OBD2_PIDS = {
     0x4D: {"name": "Time run with MIL on", "bytes": 2, "unit": "min", "type": "uint16"},
     0x4E: {"name": "Time since codes cleared", "bytes": 2, "unit": "min", "type": "uint16"},
     
-    # Sistema elétrico
+    # Electrical system
     0x42: {"name": "Control module voltage", "bytes": 2, "unit": "V", "type": "voltage"},
     0x5B: {"name": "Hybrid battery pack remaining life", "bytes": 1, "unit": "%", "type": "percent"},
     
-    # Avançado
+    # Advanced
     0x43: {"name": "Absolute load value", "bytes": 2, "unit": "%", "type": "absolute_load"},
     0x5D: {"name": "Fuel injection timing", "bytes": 2, "unit": "°", "type": "injection_timing"},
     0x61: {"name": "Driver demand torque", "bytes": 1, "unit": "%", "type": "torque"},
@@ -108,14 +108,14 @@ class OBD2Decoder:
     """Core OBD-II protocol decoder (ISO 15765-4)"""
     
     def __init__(self):
-        # IDs padrão OBD-II
+        # Standard OBD-II IDs
         self.standard_11bit_ids = {
             0x7DF: "Functional broadcast",
             0x7E0: "Engine ECU request",
             0x7E8: "Engine ECU response",
         }
         
-        # Range de IDs de resposta (0x7E8 - 0x7EF)
+        # Response ID range (0x7E8 - 0x7EF)
         self.response_id_range = range(0x7E8, 0x7F0)
         self.request_id_range = range(0x7E0, 0x7E8)
     

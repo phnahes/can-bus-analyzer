@@ -59,14 +59,14 @@ class CANBusInstance:
         self._watchdog_timeout = 10.0  # Seconds without messages before checking connection
         self._watchdog_thread: Optional[threading.Thread] = None
     
-    def connect(self) -> bool:
+    def connect(self, simulation: bool = False) -> bool:
         """Connect to the CAN bus"""
         if self.connected:
             return True
         
         try:
-            if not CAN_AVAILABLE:
-                print(f"[{self.config.name}] CAN not available, simulation mode")
+            if simulation or not CAN_AVAILABLE:
+                print(f"[{self.config.name}] {'Simulation mode' if simulation else 'CAN not available, simulation mode'}")
                 self.connected = True
                 self.running = True
                 self.thread = threading.Thread(
@@ -400,12 +400,7 @@ class CANBusManager:
         """Connect all buses. Returns dict of {bus_name: success}"""
         results = {}
         for name, bus in self.buses.items():
-            if simulation:
-                # Force simulation mode
-                bus.connect()  # Will use simulation if CAN not available
-                results[name] = True
-            else:
-                results[name] = bus.connect()
+            results[name] = bus.connect(simulation=simulation)
         return results
     
     def connect_bus(self, name: str) -> bool:

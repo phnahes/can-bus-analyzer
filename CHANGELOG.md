@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.3] - 2026-04-12
+
+### Added
+- **FTCAN Devices tab**: aggregated device list in the FTCAN analyzer (product ID, type, example CAN ID, etc.)
+- **FTCAN decoder**: `SPECIAL_MESSAGE_IDS` for WB-O2 scale config (`0x2F3` / `0x6F3`) and association traffic (`0x2EA` / `0x6EA`, `0x2F4` / `0x6F4`)
+- **`tools/ftcan/wbo2_nano_config_tx.py`**: send WB-O2 Nano analog scale presets over CAN via ECU `0x2F3`; `--interactive`, `--analyze`, `--discover`, slcan/USB support
+- **Documentation**: `docs/BUILD.md` — how to run `./extras/build.sh`, bump versions (`src/__init__.py`, `CHANGELOG.md`, README markers), use `extras/release.py`, push tags, and relation to GitHub Actions release builds
+
+### Changed
+- **FTCAN Diagnostics**: device summary moved to the Devices tab; broadcast streams use full width
+
+### Fixed
+- **Code comments**: standardized developer comments to English across the codebase for consistency
+
+---
+
 ## [1.2.2] - 2026-04-11
 
 ### Added

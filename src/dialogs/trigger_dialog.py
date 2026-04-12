@@ -64,7 +64,7 @@ class TriggerDialog(QDialog):
             'Enabled', 'RX Channel', 'Trigger ID', 'Trigger Data', 'TX Channel', 'TX ID', 'TX Data', 'Comment'
         ])
         
-        # Ajustar colunas
+        # Adjust columns
         header = self.triggers_table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         header.resizeSection(0, 70)   # Enabled
@@ -132,7 +132,7 @@ class TriggerDialog(QDialog):
         
         layout.addWidget(button_box)
         
-        # Carregar triggers existentes
+        # Load existing triggers
         self.load_triggers_to_table()
     
     def load_triggers_to_table(self):
@@ -163,7 +163,7 @@ class TriggerDialog(QDialog):
             # Trigger ID
             self.triggers_table.setItem(row, 2, QTableWidgetItem(trigger.get('trigger_id', DEFAULT_CAN_ID_STR)))
             
-            # Trigger Data (opcional)
+            # Trigger Data (optional)
             trigger_data = trigger.get('trigger_data', '')
             self.triggers_table.setItem(row, 3, QTableWidgetItem(trigger_data if trigger_data else 'Any'))
             
@@ -208,7 +208,7 @@ class TriggerDialog(QDialog):
         if not ok0:
             return
         
-        # Dialog simples para adicionar trigger
+        # Simple dialog to add trigger
         trigger_id, ok1 = QInputDialog.getText(self, "Add Trigger", "Trigger ID (hex):", text="0x280")
         if not ok1:
             return

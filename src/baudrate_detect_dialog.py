@@ -63,7 +63,7 @@ class BaudrateDetectDialog(QDialog):
         """Configura interface"""
         layout = QVBoxLayout()
         
-        # Informações
+        # Information
         info_group = QGroupBox("Detection Settings")
         info_layout = QVBoxLayout()
         
@@ -124,7 +124,7 @@ class BaudrateDetectDialog(QDialog):
         log_group.setLayout(log_layout)
         layout.addWidget(log_group)
         
-        # Resultado
+        # Result
         self.result_group = QGroupBox("Detection Result")
         result_layout = QVBoxLayout()
         
@@ -137,7 +137,7 @@ class BaudrateDetectDialog(QDialog):
         self.result_group.setVisible(False)
         layout.addWidget(self.result_group)
         
-        # Botões
+        # Buttons
         buttons_layout = QHBoxLayout()
         
         self.start_btn = QPushButton("🔍 Start Detection")
@@ -166,17 +166,17 @@ class BaudrateDetectDialog(QDialog):
     
     def _start_detection(self):
         """Start detection"""
-        # Limpa log
+        # Clear log
         self.log_text.clear()
         self.result_group.setVisible(False)
         
-        # Atualiza UI
+        # Update UI
         self.start_btn.setEnabled(False)
         self.cancel_btn.setEnabled(True)
         self.use_btn.setEnabled(False)
         self.mode_combo.setEnabled(False)
         
-        # Determina modo
+        # Determine mode
         quick = self.mode_combo.currentIndex() == 0
         max_baudrates = 3 if quick else 7
         self.progress_bar.setRange(0, max_baudrates)
@@ -188,7 +188,7 @@ class BaudrateDetectDialog(QDialog):
         self._log(f"   Mode: {'Quick' if quick else 'Full'}")
         self._log("")
         
-        # Inicia thread de detecção
+        # Start detection thread
         self.detection_thread = DetectionThread(self.channel, self.interface, quick)
         self.detection_thread.progress.connect(self._on_progress)
         self.detection_thread.finished.connect(self._on_finished)
@@ -235,7 +235,7 @@ class BaudrateDetectDialog(QDialog):
             
             self.detected_baudrate = result.baudrate
             
-            # Atualiza resultado
+            # Update result
             self.result_label.setText(
                 f"✅ Detected: {result.baudrate:,} bps\n"
                 f"Confidence: {result.confidence * 100:.1f}% "
@@ -252,7 +252,7 @@ class BaudrateDetectDialog(QDialog):
             self._log(f"   Tested: {', '.join(str(b) for b in result.tested_baudrates)}")
             self._log(f"   Detection time: {result.detection_time:.2f}s")
             
-            # Atualiza resultado
+            # Update result
             self.result_label.setText(
                 "❌ No baudrate detected\n"
                 "Make sure the CAN bus is active and has traffic"
@@ -264,7 +264,7 @@ class BaudrateDetectDialog(QDialog):
         
         self._log("=" * 50)
         
-        # Atualiza UI
+        # Update UI
         self.start_btn.setEnabled(True)
         self.cancel_btn.setEnabled(False)
         self.mode_combo.setEnabled(True)

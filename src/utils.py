@@ -66,18 +66,18 @@ def validate_hex_input(text: str, max_bytes: int = 8) -> tuple[bool, Optional[by
         (válido, bytes ou None)
     """
     try:
-        # Remover espaços e converter
+        # Remove spaces and convert
         hex_str = text.replace(" ", "").replace("0x", "")
         
-        # Verificar se é hex válido
+        # Check if hex is valid
         if not all(c in '0123456789ABCDEFabcdef' for c in hex_str):
             return False, None
         
-        # Verificar tamanho
+        # Check length
         if len(hex_str) > max_bytes * 2:
             return False, None
         
-        # Converter para bytes
+        # Convert to bytes
         data = bytes.fromhex(hex_str)
         return True, data
         
@@ -113,16 +113,16 @@ def parse_can_id(text: str) -> tuple[bool, Optional[int], bool]:
         (válido, id ou None, is_29bit)
     """
     try:
-        # Remover 0x se presente
+        # Remove 0x if present
         text = text.strip().replace("0x", "").replace("0X", "")
         
-        # Converter para int
+        # Convert to int
         can_id = int(text, 16)
         
-        # Determinar se é 29 bits baseado no valor
+        # Determine whether it is 29-bit based on value
         is_29bit = can_id > 0x7FF
         
-        # Validar range
+        # Validate range
         if is_29bit and can_id > 0x1FFFFFFF:
             return False, None, False
         if not is_29bit and can_id > 0x7FF:
@@ -145,14 +145,14 @@ def calculate_baudrate_divisor(target_baudrate: int, clock_freq: int = 16000000)
     Returns:
         (é_exato, divisor, baudrate_real)
     """
-    # Fórmula simplificada: divisor = clock_freq / (baudrate * 16)
+    # Simplified formula: divisor = clock_freq / (baudrate * 16)
     divisor_float = clock_freq / (target_baudrate * 16)
     divisor = round(divisor_float)
     
-    # Calcular baudrate real
+    # Calculate real baudrate
     real_baudrate = clock_freq / (divisor * 16)
     
-    # Verificar se é exato (margem de 1%)
+    # Check if it is exact (1% margin)
     error_percent = abs(real_baudrate - target_baudrate) / target_baudrate * 100
     is_exact = error_percent < 1.0
     

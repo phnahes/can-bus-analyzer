@@ -319,7 +319,7 @@ class SettingsDialog(QDialog):
             detected_baudrate = dialog.get_detected_baudrate()
             
             if detected_baudrate:
-                # Atualiza o combo com o baudrate detectado
+                # Update combo with the detected baudrate
                 baudrate_text = f"{detected_baudrate // 1000} Kbit/s"
                 
                 # Check if baudrate is in the list

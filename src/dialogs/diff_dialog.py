@@ -320,7 +320,7 @@ class DiffDialog(QDialog):
         """Restore default settings"""
         default_config = DiffConfig()
         self.enable_check.setChecked(default_config.enabled)
-        self.mode_combo.setCurrentText("Filter (hide repeated)")
+        self.mode_combo.setCurrentText("Highlight only")
         self.min_rate_spin.setValue(default_config.min_message_rate)
         self.min_bytes_spin.setValue(default_config.min_bytes_changed)
         self.time_window_spin.setValue(getattr(default_config, 'time_window_ms', 500))

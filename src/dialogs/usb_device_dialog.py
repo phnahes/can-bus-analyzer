@@ -35,7 +35,7 @@ class USBDeviceSelectionDialog(QDialog):
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
-        # Tabela de dispositivos
+        # Device table
         self.devices_table = QTableWidget()
         self.devices_table.setColumnCount(3)
         self.devices_table.setHorizontalHeaderLabels([
@@ -93,14 +93,14 @@ class USBDeviceSelectionDialog(QDialog):
             self.status_label.setText(t('msg_no_usb_devices_found'))
             return
         
-        # Preencher tabela
+        # Fill table
         self.devices_table.setRowCount(len(devices))
         for row, device in enumerate(devices):
-            # Nome
+            # Name
             name_item = QTableWidgetItem(device.name)
             self.devices_table.setItem(row, 0, name_item)
             
-            # Caminho
+            # Path
             path_item = QTableWidgetItem(device.path)
             self.devices_table.setItem(row, 1, path_item)
             
@@ -125,7 +125,7 @@ class USBDeviceSelectionDialog(QDialog):
         path = self.devices_table.item(row, 1).text()
         name = self.devices_table.item(row, 0).text()
         
-        # Criar objeto de dispositivo
+        # Create device object
         return USBDeviceInfo(path, name)
     
     def accept(self):
