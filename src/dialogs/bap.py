@@ -38,6 +38,7 @@ from PyQt6.QtGui import QFont, QFontMetrics
 
 from ..models import CANMessage
 from ..decoders.decoder_bap import BAPDecoder, BAPDetectionMode
+from ..storage_paths import dialog_path
 
 
 # Thread-safe cache lock for details panel
@@ -1521,7 +1522,7 @@ class BAPDialog(QDialog):
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Export VAG BAP Capture",
-            "",
+            dialog_path("bap"),
             "JSON Files (*.json);;All Files (*)",
         )
         if not filename:
@@ -1554,7 +1555,7 @@ class BAPDialog(QDialog):
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Import VAG BAP Capture",
-            "",
+            dialog_path("bap"),
             "JSON Files (*.json);;All Files (*)",
         )
         if not filename:
@@ -1736,4 +1737,3 @@ class BAPDialog(QDialog):
             self.raw_table.setItem(row, c, it)
 
         self.raw_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, record or {"msg": self._msg_to_record(msg), "decoded": decoded})
-

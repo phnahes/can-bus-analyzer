@@ -10,6 +10,8 @@ from PyQt6.QtGui import QAction
 from ..config import get_shortcut
 from ..i18n import t
 
+from .about_menu import show_about
+
 
 class MenuBarBuilder:
     """Builds the application menu bar"""
@@ -63,12 +65,12 @@ class MenuBarBuilder:
         # Monitor section
         file_menu.addAction("--- Monitor ---").setEnabled(False)
         
-        save_monitor_action = QAction("💾 Save Monitor Log...", self.parent)
+        save_monitor_action = QAction("Save Monitor Log...", self.parent)
         save_monitor_action.setShortcut(get_shortcut('save_monitor'))
         save_monitor_action.triggered.connect(self.parent.save_monitor_log)
         file_menu.addAction(save_monitor_action)
         
-        load_monitor_action = QAction("📂 Load Monitor Log...", self.parent)
+        load_monitor_action = QAction("Load Monitor Log...", self.parent)
         load_monitor_action.setShortcut(get_shortcut('load_monitor'))
         load_monitor_action.triggered.connect(self.parent.load_monitor_log)
         file_menu.addAction(load_monitor_action)
@@ -78,12 +80,12 @@ class MenuBarBuilder:
         # Tracer section
         file_menu.addAction("--- Tracer ---").setEnabled(False)
         
-        save_tracer_action = QAction("💾 Save Tracer Log...", self.parent)
+        save_tracer_action = QAction("Save Tracer Log...", self.parent)
         save_tracer_action.setShortcut(get_shortcut('save_tracer'))
         save_tracer_action.triggered.connect(self.parent.save_log)
         file_menu.addAction(save_tracer_action)
         
-        load_tracer_action = QAction("📂 Load Tracer Log...", self.parent)
+        load_tracer_action = QAction("Load Tracer Log...", self.parent)
         load_tracer_action.setShortcut(get_shortcut('load_tracer'))
         load_tracer_action.triggered.connect(self.parent.load_log)
         file_menu.addAction(load_tracer_action)
@@ -93,12 +95,12 @@ class MenuBarBuilder:
         # Transmit section
         file_menu.addAction("--- Transmit ---").setEnabled(False)
         
-        save_tx_action = QAction("💾 Save Transmit List...", self.parent)
+        save_tx_action = QAction("Save Transmit List...", self.parent)
         save_tx_action.setShortcut(get_shortcut('save_transmit'))
         save_tx_action.triggered.connect(self.parent.save_transmit_list)
         file_menu.addAction(save_tx_action)
         
-        load_tx_action = QAction("📂 Load Transmit List...", self.parent)
+        load_tx_action = QAction("Load Transmit List...", self.parent)
         load_tx_action.setShortcut(get_shortcut('load_transmit'))
         load_tx_action.triggered.connect(self.parent.load_transmit_list)
         file_menu.addAction(load_tx_action)
@@ -144,22 +146,22 @@ class MenuBarBuilder:
         tools_menu = menubar.addMenu(t('menu_tools'))
         
         # Filters
-        filters_action = QAction(f"🔍 {t('menu_filters')}...", self.parent)
+        filters_action = QAction("Filters", self.parent)
         filters_action.setShortcut(get_shortcut('filters'))
         filters_action.triggered.connect(self.parent.show_filter_dialog)
         tools_menu.addAction(filters_action)
         
-        # Triggers
-        triggers_action = QAction(f"⚡ {t('menu_triggers')}...", self.parent)
-        triggers_action.setShortcut(get_shortcut('triggers'))
-        triggers_action.triggered.connect(self.parent.show_trigger_dialog)
-        tools_menu.addAction(triggers_action)
-        
         # Diff Mode
-        diff_action = QAction("🔍 Diff Mode Settings...", self.parent)
+        diff_action = QAction("Diff Mode", self.parent)
         diff_action.setShortcut(get_shortcut('diff_mode'))
         diff_action.triggered.connect(self.parent.show_diff_dialog)
         tools_menu.addAction(diff_action)
+
+        # Triggers
+        triggers_action = QAction("Triggers", self.parent)
+        triggers_action.setShortcut(get_shortcut('triggers'))
+        triggers_action.triggered.connect(self.parent.show_trigger_dialog)
+        tools_menu.addAction(triggers_action)
         
         tools_menu.addSeparator()
         
@@ -203,7 +205,7 @@ class MenuBarBuilder:
         tools_menu.addSeparator()
         
         # Statistics
-        stats_action = QAction(f"📊 {t('menu_statistics')}", self.parent)
+        stats_action = QAction(t('menu_statistics'), self.parent)
         stats_action.triggered.connect(self.parent.show_statistics)
         tools_menu.addAction(stats_action)
     
@@ -218,8 +220,8 @@ class MenuBarBuilder:
     
     def _create_about_menu(self, menubar: QMenuBar) -> None:
         """Create About menu"""
-        about_menu = menubar.addMenu("About")
-        
-        about_app_action = QAction("About CAN Analyzer", self.parent)
-        about_app_action.triggered.connect(self.parent.show_about)
+        about_menu = menubar.addMenu(t('menu_about'))
+
+        about_app_action = QAction(t('dialog_about_title'), self.parent)
+        about_app_action.triggered.connect(lambda: show_about(self.parent))
         about_menu.addAction(about_app_action)

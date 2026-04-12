@@ -3,6 +3,7 @@ Internationalization (i18n) - Multi-language support for CAN Analyzer
 """
 
 from typing import Dict, Optional
+from .config import APP_NAME
 
 
 class I18n:
@@ -21,11 +22,11 @@ class I18n:
     TRANSLATIONS = {
         # Application (window title uses app_title + " - " + platform at runtime)
         'app_title': {
-            'en': 'CAN Analyzer',
-            'pt': 'CAN Analyzer',
-            'es': 'Analizador CAN',
-            'de': 'CAN Analyzer',
-            'fr': 'Analyseur CAN'
+            'en': APP_NAME,
+            'pt': APP_NAME,
+            'es': APP_NAME,
+            'de': APP_NAME,
+            'fr': APP_NAME
         },
         
         # Menu - File
@@ -185,11 +186,11 @@ class I18n:
             'fr': 'À propos'
         },
         'about_title': {
-            'en': 'CAN Analyzer for {platform}',
-            'pt': 'CAN Analyzer para {platform}',
-            'es': 'Analizador CAN para {platform}',
-            'de': 'CAN-Analysator für {platform}',
-            'fr': 'Analyseur CAN pour {platform}'
+            'en': f'{APP_NAME} for {{platform}}',
+            'pt': f'{APP_NAME} para {{platform}}',
+            'es': f'{APP_NAME} para {{platform}}',
+            'de': f'{APP_NAME} für {{platform}}',
+            'fr': f'{APP_NAME} pour {{platform}}'
         },
         'about_version': {
             'en': 'Version',
@@ -234,11 +235,11 @@ class I18n:
             'fr': 'Année'
         },
         'about_heading': {
-            'en': 'CAN Analyzer – {platform}',
-            'pt': 'CAN Analyzer – {platform}',
-            'es': 'CAN Analyzer – {platform}',
-            'de': 'CAN Analyzer – {platform}',
-            'fr': 'CAN Analyzer – {platform}'
+            'en': f'{APP_NAME} – {{platform}}',
+            'pt': f'{APP_NAME} – {{platform}}',
+            'es': f'{APP_NAME} – {{platform}}',
+            'de': f'{APP_NAME} – {{platform}}',
+            'fr': f'{APP_NAME} – {{platform}}'
         },
         'about_build': {
             'en': 'Build',
@@ -309,6 +310,13 @@ class I18n:
             'es': 'GNU GPLv3.0 – Proyecto de código abierto',
             'de': 'GNU GPLv3.0 – Open-Source-Projekt',
             'fr': 'GNU GPLv3.0 – Projet open source'
+        },
+        'about_repository': {
+            'en': '<a href="{repo_url}">{repo_url}/releases</a>',
+            'pt': '<a href="{repo_url}">{repo_url}/releases</a>',
+            'es': '<a href="{repo_url}">{repo_url}/releases</a>',
+            'de': '<a href="{repo_url}">{repo_url}/releases</a>',
+            'fr': '<a href="{repo_url}">{repo_url}/releases</a>'
         },
         'about_copyright': {
             'en': '© 2026 @phnahes',
@@ -871,18 +879,18 @@ class I18n:
         
         # Dialogs
         'dialog_about_title': {
-            'en': 'About CAN Analyzer',
-            'pt': 'Sobre CAN Analyzer',
-            'es': 'Acerca de CAN Analyzer',
-            'de': 'Über CAN Analyzer',
-            'fr': 'À propos de CAN Analyzer'
+            'en': f'About {APP_NAME}',
+            'pt': f'Sobre {APP_NAME}',
+            'es': f'Acerca de {APP_NAME}',
+            'de': f'Über {APP_NAME}',
+            'fr': f'À propos de {APP_NAME}'
         },
         'dialog_about_text': {
-            'en': 'CAN Analyzer for macOS\n\nVersion 1.0\n\nCAN bus analysis tool with SLCAN-based real-time analysis',
-            'pt': 'CAN Analyzer para macOS\n\nVersão 1.0\n\nFerramenta de análise de barramento CAN com análise em tempo real baseada em SLCAN',
-            'es': 'CAN Analyzer para macOS\n\nVersión 1.0\n\nHerramienta de análisis de bus CAN con análisis en tiempo real basado en SLCAN',
-            'de': 'CAN Analyzer für macOS\n\nVersion 1.0\n\nCAN-Bus-Analysetool mit SLCAN-basierter Echtzeitanalyse',
-            'fr': 'CAN Analyzer pour macOS\n\nVersion 1.0\n\nOutil d\'analyse de bus CAN avec analyse en temps réel basée sur SLCAN'
+            'en': f'{APP_NAME} for macOS\n\nVersion 1.0\n\nCAN bus analysis tool with SLCAN-based real-time analysis',
+            'pt': f'{APP_NAME} para macOS\n\nVersão 1.0\n\nFerramenta de análise de barramento CAN com análise em tempo real baseada em SLCAN',
+            'es': f'{APP_NAME} para macOS\n\nVersión 1.0\n\nHerramienta de análisis de bus CAN con análisis en tiempo real basado en SLCAN',
+            'de': f'{APP_NAME} für macOS\n\nVersion 1.0\n\nCAN-Bus-Analysetool mit SLCAN-basierter Echtzeitanalyse',
+            'fr': f'{APP_NAME} pour macOS\n\nVersion 1.0\n\nOutil d\'analyse de bus CAN avec analyse en temps réel basée sur SLCAN'
         },
         'dialog_usb_device_title': {
             'en': 'Select USB Device',
@@ -1244,6 +1252,76 @@ class I18n:
             'es': '¡Configuración guardada con éxito!',
             'de': 'Einstellungen erfolgreich gespeichert!',
             'fr': 'Paramètres enregistrés avec succès!'
+        },
+        'settings_tab_general': {
+            'en': 'General Settings',
+            'pt': 'Configurações gerais',
+            'es': 'Configuración general',
+            'de': 'Allgemeine Einstellungen',
+            'fr': 'Paramètres généraux'
+        },
+        'settings_tab_can_bus': {
+            'en': 'CAN Bus Settings',
+            'pt': 'Configurações do barramento CAN',
+            'es': 'Configuración del bus CAN',
+            'de': 'CAN-Bus-Einstellungen',
+            'fr': 'Paramètres du bus CAN'
+        },
+        'settings_section_updates': {
+            'en': 'Updates',
+            'pt': 'Atualizações',
+            'es': 'Actualizaciones',
+            'de': 'Aktualisierungen',
+            'fr': 'Mises à jour'
+        },
+        'label_check_updates_on_startup': {
+            'en': 'Check for updates on startup',
+            'pt': 'Procurar atualizações ao iniciar',
+            'es': 'Buscar actualizaciones al iniciar',
+            'de': 'Beim Start auf Updates prüfen',
+            'fr': 'Vérifier les mises à jour au démarrage'
+        },
+        'settings_updates_info': {
+            'en': 'Optionally compare this app to the latest release published on GitHub.',
+            'pt': 'Compara opcionalmente esta aplicação ao último release publicado no GitHub.',
+            'es': 'Compara opcionalmente esta aplicación con la última versión publicada en GitHub.',
+            'de': 'Vergleicht optional diese App mit dem neuesten Release auf GitHub.',
+            'fr': 'Compare facultativement cette application à la dernière version publiée sur GitHub.'
+        },
+        'tooltip_check_updates_on_startup': {
+            'en': 'Queries GitHub releases when the app starts (no personal data is sent).',
+            'pt': 'Consulta os releases no GitHub ao iniciar (nenhum dado pessoal é enviado).',
+            'es': 'Consulta los releases en GitHub al iniciar (no se envían datos personales).',
+            'de': 'Fragt GitHub-Releases beim Start ab (es werden keine personenbezogenen Daten gesendet).',
+            'fr': 'Interroge les releases GitHub au démarrage (aucune donnée personnelle n’est envoyée).'
+        },
+        'settings_section_tx_startup': {
+            'en': 'Transmit (TX) panel',
+            'pt': 'Painel de transmissão (TX)',
+            'es': 'Panel de transmisión (TX)',
+            'de': 'Übertragungsfeld (TX)',
+            'fr': 'Panneau d’émission (TX)'
+        },
+        'settings_tx_startup_info': {
+            'en': 'When the application starts, show or hide the TX section (toolbar button still toggles it).',
+            'pt': 'Ao iniciar a aplicação, mostrar ou ocultar a secção TX (o botão na barra continua a alternar).',
+            'es': 'Al iniciar la aplicación, mostrar u ocultar la sección TX (el botón de la barra sigue alternándola).',
+            'de': 'Beim Start TX-Bereich anzeigen oder ausblenden (Toolbar-Schalter funktioniert weiter).',
+            'fr': 'Au démarrage, afficher ou masquer la zone TX (le bouton de la barre d’outils bascule toujours).'
+        },
+        'settings_tx_startup_show': {
+            'en': 'Show',
+            'pt': 'Mostrar',
+            'es': 'Mostrar',
+            'de': 'Anzeigen',
+            'fr': 'Afficher'
+        },
+        'settings_tx_startup_hide': {
+            'en': 'Hide',
+            'pt': 'Ocultar',
+            'es': 'Ocultar',
+            'de': 'Ausblenden',
+            'fr': 'Masquer'
         },
         
         # Multi-CAN settings

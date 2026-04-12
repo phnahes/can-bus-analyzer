@@ -18,6 +18,7 @@ from .receive_panel_builder import ReceivePanelBuilder
 from .message_box_helper import MessageBoxHelper
 from .toolbar_builder import ToolbarBuilder
 from .status_bar_builder import StatusBarBuilder
+from .about_menu import show_about
 from . import table_helpers
 
 __all__ = [
@@ -35,5 +36,6 @@ __all__ = [
     'MessageBoxHelper',
     'ToolbarBuilder',
     'StatusBarBuilder',
+    'show_about',
     'table_helpers'
 ]

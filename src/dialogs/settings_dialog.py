@@ -6,7 +6,8 @@ import sys
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QComboBox, QCheckBox, QDialogButtonBox, QPushButton,
-    QGroupBox, QScrollArea, QWidget, QMessageBox
+    QGroupBox, QScrollArea, QWidget, QMessageBox, QFileDialog, QTabWidget,
+    QRadioButton,
 )
 from PyQt6.QtCore import Qt
 
@@ -14,6 +15,7 @@ from ..config import DEFAULT_CHANNEL
 from ..i18n import get_i18n, t
 from ..theme import get_adaptive_colors
 from ..baudrate_detect_dialog import BaudrateDetectDialog
+from ..storage_paths import get_default_saves_root_dir
 
 from .usb_device_dialog import USBDeviceSelectionDialog
 
@@ -30,7 +32,7 @@ class SettingsDialog(QDialog):
     def init_ui(self):
         self.setWindowTitle(t('menu_connection_settings'))
         self.setModal(True)
-        self.setMinimumWidth(450)
+        self.setMinimumWidth(480)
         
         layout = QVBoxLayout(self)
         
@@ -38,19 +40,12 @@ class SettingsDialog(QDialog):
         theme_pref = self.config.get('theme', 'system')
         colors = get_adaptive_colors(theme_pref)
         
-        # General Settings
-        general_group = QGroupBox("General Settings")
-        general_layout = QVBoxLayout()
+        tabs = QTabWidget()
+        layout.addWidget(tabs)
         
-        # Timestamp checkbox
-        # Simulation Mode checkbox
-        self.simulation_mode_check = QCheckBox(t('label_simulation_mode'))
-        self.simulation_mode_check.setChecked(self.config.get('simulation_mode', False))
-        self.simulation_mode_check.setToolTip(t('tooltip_simulation_mode'))
-        general_layout.addWidget(self.simulation_mode_check)
-        
-        general_group.setLayout(general_layout)
-        layout.addWidget(general_group)
+        # --- Tab: General (language, theme, saves directory) ---
+        general_tab = QWidget()
+        general_layout = QVBoxLayout(general_tab)
         
         # Language Selection
         language_group = QGroupBox(t('menu_language'))
@@ -69,7 +64,7 @@ class SettingsDialog(QDialog):
         
         language_layout.addWidget(self.language_combo)
         language_group.setLayout(language_layout)
-        layout.addWidget(language_group)
+        general_layout.addWidget(language_group)
         
         # Theme Selection
         theme_group = QGroupBox(t('theme_group'))
@@ -95,7 +90,89 @@ class SettingsDialog(QDialog):
         theme_layout.addWidget(theme_info)
         
         theme_group.setLayout(theme_layout)
-        layout.addWidget(theme_group)
+        general_layout.addWidget(theme_group)
+
+        tx_startup_group = QGroupBox(t('settings_section_tx_startup'))
+        tx_startup_layout = QVBoxLayout()
+        tx_info = QLabel(t('settings_tx_startup_info'))
+        tx_info.setStyleSheet(colors['info_text'])
+        tx_info.setWordWrap(True)
+        tx_startup_layout.addWidget(tx_info)
+
+        self.tx_startup_show_radio = QRadioButton(t('settings_tx_startup_show'))
+        self.tx_startup_hide_radio = QRadioButton(t('settings_tx_startup_hide'))
+        if self.config.get('show_tx_panel_on_startup', True):
+            self.tx_startup_show_radio.setChecked(True)
+        else:
+            self.tx_startup_hide_radio.setChecked(True)
+        tx_row = QHBoxLayout()
+        tx_row.addWidget(self.tx_startup_show_radio)
+        tx_row.addWidget(self.tx_startup_hide_radio)
+        tx_row.addStretch()
+        tx_startup_layout.addLayout(tx_row)
+        tx_startup_group.setLayout(tx_startup_layout)
+        general_layout.addWidget(tx_startup_group)
+        
+        # Save Directory
+        saves_group = QGroupBox("Save Directory")
+        saves_layout = QVBoxLayout()
+
+        saves_info = QLabel(
+            "Base directory for saved files (TX, Monitor, Traces, FTCAN, OBD2, Gateway, etc.)."
+        )
+        saves_info.setStyleSheet(colors['info_text'])
+        saves_info.setWordWrap(True)
+        saves_layout.addWidget(saves_info)
+
+        saves_row = QHBoxLayout()
+        self.saves_base_dir_input = QLineEdit(self.config.get('saves_base_dir', ''))
+        default_saves_dir = str(get_default_saves_root_dir())
+        self.saves_base_dir_input.setPlaceholderText(default_saves_dir)
+        self.saves_base_dir_input.setToolTip(
+            f"Leave empty to use default: {default_saves_dir}"
+        )
+        saves_row.addWidget(self.saves_base_dir_input, 1)
+
+        browse_saves_btn = QPushButton("Browse...")
+        browse_saves_btn.clicked.connect(self._browse_saves_base_dir)
+        saves_row.addWidget(browse_saves_btn)
+
+        default_saves_btn = QPushButton("Use Default")
+        default_saves_btn.clicked.connect(self._use_default_saves_dir)
+        saves_row.addWidget(default_saves_btn)
+
+        saves_layout.addLayout(saves_row)
+        saves_group.setLayout(saves_layout)
+        general_layout.addWidget(saves_group)
+
+        updates_group = QGroupBox(t('settings_section_updates'))
+        updates_layout = QVBoxLayout()
+        updates_info = QLabel(t('settings_updates_info'))
+        updates_info.setStyleSheet(colors['info_text'])
+        updates_info.setWordWrap(True)
+        updates_layout.addWidget(updates_info)
+
+        self.check_updates_on_startup_check = QCheckBox(t('label_check_updates_on_startup'))
+        self.check_updates_on_startup_check.setChecked(
+            self.config.get('check_updates_on_startup', True)
+        )
+        self.check_updates_on_startup_check.setToolTip(t('tooltip_check_updates_on_startup'))
+        updates_layout.addWidget(self.check_updates_on_startup_check)
+
+        updates_group.setLayout(updates_layout)
+        general_layout.addWidget(updates_group)
+        
+        general_layout.addStretch()
+        tabs.addTab(general_tab, t('settings_tab_general'))
+        
+        # --- Tab: CAN bus (simulation mode, multi-CAN) ---
+        can_tab = QWidget()
+        can_layout = QVBoxLayout(can_tab)
+        
+        self.simulation_mode_check = QCheckBox(t('label_simulation_mode'))
+        self.simulation_mode_check.setChecked(self.config.get('simulation_mode', False))
+        self.simulation_mode_check.setToolTip(t('tooltip_simulation_mode'))
+        can_layout.addWidget(self.simulation_mode_check)
         
         # Multi-CAN Configuration
         multican_group = QGroupBox(t('multican_group'))
@@ -147,7 +224,9 @@ class SettingsDialog(QDialog):
         multican_layout.addLayout(can_buttons_layout)
         
         multican_group.setLayout(multican_layout)
-        layout.addWidget(multican_group)
+        can_layout.addWidget(multican_group)
+        can_layout.addStretch()
+        tabs.addTab(can_tab, t('settings_tab_can_bus'))
         
         # Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -337,6 +416,17 @@ class SettingsDialog(QDialog):
                     f"Baudrate detected: {detected_baudrate:,} bps\n\n"
                     f"The baudrate has been updated in the configuration."
                 )
+
+    def _browse_saves_base_dir(self):
+        """Browse for saves base directory."""
+        start_dir = self.saves_base_dir_input.text().strip() or str(get_default_saves_root_dir())
+        selected = QFileDialog.getExistingDirectory(self, "Select Saves Base Directory", start_dir)
+        if selected:
+            self.saves_base_dir_input.setText(selected)
+
+    def _use_default_saves_dir(self):
+        """Reset saves directory to application default."""
+        self.saves_base_dir_input.setText("")
     
     def get_config(self):
         """Return updated configuration"""
@@ -391,6 +481,9 @@ class SettingsDialog(QDialog):
             # New fields
             'language': selected_language,
             'theme': selected_theme,
+            'saves_base_dir': self.saves_base_dir_input.text().strip(),
+            'check_updates_on_startup': self.check_updates_on_startup_check.isChecked(),
+            'show_tx_panel_on_startup': self.tx_startup_show_radio.isChecked(),
             'simulation_mode': self.simulation_mode_check.isChecked(),
             'can_buses': can_buses
         }

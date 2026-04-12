@@ -27,6 +27,13 @@ from .defaults import (
     DEFAULT_TX_MODE,
     DEFAULT_BUS_NAMES,
 )
+from .app_info import (
+    APP_NAME,
+    REPO_URL,
+    GITHUB_REPO,
+    GITHUB_RELEASES_URL,
+    GITHUB_LATEST_RELEASE_API,
+)
 
 __all__ = [
     # Shortcuts
@@ -49,4 +56,10 @@ __all__ = [
     'DEFAULT_TX_PERIOD_MS',
     'DEFAULT_TX_MODE',
     'DEFAULT_BUS_NAMES',
+    # App info
+    'APP_NAME',
+    'REPO_URL',
+    'GITHUB_REPO',
+    'GITHUB_RELEASES_URL',
+    'GITHUB_LATEST_RELEASE_API',
 ]

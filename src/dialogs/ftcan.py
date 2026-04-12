@@ -16,6 +16,7 @@ from typing import List, Dict, Optional
 from ..models import CANMessage
 from ..decoders.decoder_ftcan import FTCANDecoder, MEASURE_IDS
 from ..i18n import t
+from ..storage_paths import dialog_path
 
 
 class DecoderWorker(QObject):
@@ -1179,7 +1180,7 @@ class FTCANDialog(QDialog):
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Export FTCAN Analysis",
-            f"ftcan_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            dialog_path("ftcan", f"ftcan_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"),
             "JSON Files (*.json)"
         )
         
@@ -1229,7 +1230,7 @@ class FTCANDialog(QDialog):
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Load FTCAN Analysis",
-            "",
+            dialog_path("ftcan"),
             "JSON Files (*.json)"
         )
         

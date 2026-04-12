@@ -4,6 +4,8 @@ Builds the main toolbar with connection and mode controls
 """
 
 from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QLabel
+from ..config import APP_NAME
+from .. import __version__
 
 
 class ToolbarBuilder:
@@ -78,6 +80,11 @@ class ToolbarBuilder:
         toolbar_layout.addWidget(parent.btn_filter)
 
         toolbar_layout.addStretch()
+
+        # # App title/version (right side)
+        # parent.app_version_label = QLabel(f"{APP_NAME} v{__version__}")
+        # parent.app_version_label.setStyleSheet("color: gray;")
+        # toolbar_layout.addWidget(parent.app_version_label)
         
         # Toggle transmit panel visibility
         parent.btn_toggle_transmit = QPushButton("📤 Hide TX")
