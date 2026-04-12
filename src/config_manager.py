@@ -13,6 +13,9 @@ class ConfigManager:
     DEFAULT_CONFIG = {
         'language': 'en',
         'theme': 'system',
+        'saves_base_dir': '',
+        'check_updates_on_startup': True,
+        'show_tx_panel_on_startup': True,
         'baudrate': 500000,
         'interface': 'socketcan',
         'channel': 'can0',

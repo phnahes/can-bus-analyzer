@@ -6,6 +6,7 @@ Handles loading and saving of monitor mode logs
 from PyQt6.QtWidgets import QFileDialog
 from ..ui.message_box_helper import MessageBoxHelper
 from ..i18n import t
+from ..storage_paths import dialog_path
 
 
 class MonitorLogHandler:
@@ -25,7 +26,7 @@ class MonitorLogHandler:
         filename, _ = QFileDialog.getOpenFileName(
             self.parent,
             "Load Monitor Log",
-            "",
+            dialog_path("monitor"),
             "JSON Files (*.json);;Trace Files (*.trc);;CSV Files (*.csv);;All Files (*)"
         )
         
@@ -90,7 +91,7 @@ class MonitorLogHandler:
         filename, _ = QFileDialog.getSaveFileName(
             self.parent,
             "Save Monitor Log",
-            "",
+            dialog_path("monitor"),
             "JSON Files (*.json);;Trace Files (*.trc);;CSV Files (*.csv);;All Files (*)"
         )
         

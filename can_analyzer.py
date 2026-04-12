@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QDialog, QMainWindow
 
 from src.main_window import CANAnalyzerWindow
 from src.logger import init_logger, shutdown_logger, get_logger
+from src.config import APP_NAME
 
 
 class _CloseWindowShortcutFilter(QObject):
@@ -82,7 +83,7 @@ def main():
     # Initialize logging system
     logger = init_logger(log_dir="logs", max_bytes=10*1024*1024, backup_count=5)
     from src.utils import get_platform_display_name
-    logger.info(f"Starting CAN Analyzer ({get_platform_display_name()})")
+    logger.info(f"Starting {APP_NAME} ({get_platform_display_name()})")
     
     # Initialize configuration manager
     from src.config_manager import init_config_manager
@@ -108,7 +109,7 @@ def main():
     
     try:
         # Set application name BEFORE creating QApplication (for macOS menu)
-        QApplication.setApplicationName("CAN Analyzer")
+        QApplication.setApplicationName(APP_NAME)
         QApplication.setOrganizationName("CAN Tools")
         
         # Try to configure the bundle name on macOS (requires PyObjC)
@@ -118,8 +119,8 @@ def main():
             if bundle:
                 info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
                 if info:
-                    info['CFBundleName'] = 'CAN Analyzer'
-                    info['CFBundleDisplayName'] = 'CAN Analyzer'
+                    info['CFBundleName'] = APP_NAME
+                    info['CFBundleDisplayName'] = APP_NAME
         except ImportError:
             # PyObjC not available, continue without configuring bundle
             pass
@@ -127,7 +128,7 @@ def main():
         app = QApplication(sys.argv)
         
         # Set display name for the macOS menu
-        app.setApplicationDisplayName("CAN Analyzer")
+        app.setApplicationDisplayName(APP_NAME)
         
         # Apply theme based on user preference
         from src.theme import apply_theme_to_app

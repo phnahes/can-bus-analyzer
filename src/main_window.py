@@ -36,10 +36,11 @@ from .logger import get_logger
 from .i18n import get_i18n, t
 from .theme import detect_dark_mode, get_adaptive_colors, should_use_dark_mode
 from .utils import get_platform_display_name
+from .storage_paths import dialog_path
+from .version_checker import check_for_update
 from .can_bus_manager import CANBusManager, CANBusConfig
-from . import __version__, __build__
-
 from .config import get_shortcut, DEFAULT_CAN_ID_STR, DEFAULT_CHANNEL, DEFAULT_DLC_STR_EMPTY
+from . import __version__
 from .ui import (
     MenuBarBuilder, ReceiveTable, table_helpers, ContextMenuManager, 
     ReceiveTableManager, TransmitTableManager, TransmitPanelBuilder, 
@@ -91,6 +92,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         self.init_ui()
         self.start_ui_update()
+        self._schedule_startup_tasks()
 
     def _init_handlers(self):
         """Initialize all handlers"""
@@ -298,6 +300,8 @@ class CANAnalyzerWindow(QMainWindow):
             self.btn_diff.setEnabled(not self.tracer_mode)
             self._apply_diff_config(old_enabled=False)
             self.update_diff_button_state()
+
+        self._apply_tx_panel_startup_from_config()
     
     def _create_toolbar(self) -> QHBoxLayout:
         """Create toolbar with connection and mode controls"""
@@ -681,18 +685,28 @@ class CANAnalyzerWindow(QMainWindow):
                 self.btn_play_all.setEnabled(True)
                 self.btn_play_selected.setEnabled(True)
     
+    def _set_transmit_panel_visible(self, visible: bool, notify: bool = False):
+        """Show or hide the TX panel and sync toolbar button."""
+        self.transmit_panel_visible = visible
+        self.transmit_group.setVisible(visible)
+        if visible:
+            self.btn_toggle_transmit.setText("📤 Hide TX")
+            if notify:
+                self.show_notification(t('notif_tx_panel_visible'), 2000)
+        else:
+            self.btn_toggle_transmit.setText("📤 Show TX")
+            if notify:
+                self.show_notification(t('notif_tx_panel_hidden'), 2000)
+        self.ui_state.set_transmit_panel_visible(visible)
+
+    def _apply_tx_panel_startup_from_config(self):
+        """Apply TX panel visibility from config (startup or after settings)."""
+        show = self.config.get('show_tx_panel_on_startup', True)
+        self._set_transmit_panel_visible(show, notify=False)
+
     def toggle_transmit_panel(self):
         """Show/hide the Transmit panel"""
-        self.transmit_panel_visible = not self.transmit_panel_visible
-        
-        if self.transmit_panel_visible:
-            self.transmit_group.setVisible(True)
-            self.btn_toggle_transmit.setText("📤 Hide TX")
-            self.show_notification(t('notif_tx_panel_visible'), 2000)
-        else:
-            self.transmit_group.setVisible(False)
-            self.btn_toggle_transmit.setText("📤 Show TX")
-            self.show_notification(t('notif_tx_panel_hidden'), 2000)
+        self._set_transmit_panel_visible(not self.transmit_panel_visible, notify=True)
     
     def show_notification(self, message: str, duration: int = 3000):
         """Show temporary notification in the bottom-right corner"""
@@ -785,6 +799,45 @@ class CANAnalyzerWindow(QMainWindow):
         self.connection_monitor_timer = QTimer()
         self.connection_monitor_timer.timeout.connect(self._check_connection_status)
         self.connection_monitor_timer.start(2000)  # Check every 2 seconds
+
+    def _schedule_startup_tasks(self):
+        """Schedule non-blocking startup tasks."""
+        if self.config.get('check_updates_on_startup', True):
+            # Delay slightly to let the UI fully initialize first.
+            QTimer.singleShot(1200, self._start_update_check)
+
+    def _start_update_check(self):
+        """Start update check in background thread."""
+        thread = threading.Thread(
+            target=self._run_update_check,
+            daemon=True,
+            name="VersionCheckThread"
+        )
+        thread.start()
+
+    def _run_update_check(self):
+        """Check GitHub releases and notify if a newer version is available."""
+        try:
+            result = check_for_update(__version__, timeout_sec=2.5)
+            if not result:
+                return
+
+            if result.get("has_update"):
+                latest = result.get("latest_version", "")
+                release_url = result.get("release_url", "")
+                self.logger.info(
+                    f"Update available: current=v{__version__}, latest=v{latest}, url={release_url}"
+                )
+
+                QTimer.singleShot(
+                    0,
+                    lambda: self.show_notification(
+                        f"New version available: v{latest} (current: v{__version__})",
+                        8000,
+                    ),
+                )
+        except Exception as e:
+            self.logger.debug(f"Update check skipped: {e}")
     
     def update_ui(self):
         """Update interface with new messages"""
@@ -1131,6 +1184,14 @@ class CANAnalyzerWindow(QMainWindow):
                 self.mode_label.setText(t('status_listen_only'))
             else:
                 self.mode_label.setText(t('status_normal'))
+
+            if old_config.get('show_tx_panel_on_startup', True) != new_config.get(
+                'show_tx_panel_on_startup', True
+            ):
+                self._set_transmit_panel_visible(
+                    new_config.get('show_tx_panel_on_startup', True),
+                    notify=False,
+                )
             
             notification_msg = self.settings_mgr.get_notification_message(language_changed, theme_changed)
             duration = 5000 if (language_changed and theme_changed) else 3000
@@ -1186,39 +1247,12 @@ class CANAnalyzerWindow(QMainWindow):
         
         MessageBoxHelper.show_info(self, "Statistics", stats_text)
     
-    def show_about(self):
-        """Show application information"""
-        platform_name = get_platform_display_name()
-        about_text = f"""
-        <h2>{t('about_heading', platform=platform_name)}</h2>
-        <p><b>{t('about_version')}:</b> {__version__}</p>
-        <p><b>{t('about_build')}:</b> {__build__}</p>
-        
-        <h3>{t('about_desc_heading')}:</h3>
-        <p>{t('about_desc_text')}</p>
-        
-        <h3>{t('about_platforms_heading')}:</h3>
-        <ul>
-            <li>{t('about_platform_macos')}</li>
-            <li>{t('about_platform_linux')}</li>
-        </ul>
-        
-        <h3>{t('about_dependencies_heading')}:</h3>
-        <p>{t('about_dependencies_text')}</p>
-        
-        <h3>{t('about_license_heading')}:</h3>
-        <p>{t('about_license_text')}</p>
-        
-        <p>{t('about_copyright')}</p>
-        """
-        QMessageBox.about(self, t('dialog_about_title'), about_text)
-    
     def save_log(self):
         """Save received messages log"""
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Save Receive Log",
-            "",
+            dialog_path("traces"),
             "JSON Files (*.json);;Trace Files (*.trc);;CSV Files (*.csv);;All Files (*)"
         )
         if filename:
@@ -2377,4 +2411,3 @@ class CANAnalyzerWindow(QMainWindow):
             self.disconnect()
         
         event.accept()
-

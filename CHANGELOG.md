@@ -19,36 +19,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.3] - 2026-04-12
 
+Cumulative release: includes everything shipped under **v1.2.1** and **v1.2.2** (intermediate tags) plus the items below.
+
 ### Added
 - **FTCAN Devices tab**: aggregated device list in the FTCAN analyzer (product ID, type, example CAN ID, etc.)
 - **FTCAN decoder**: `SPECIAL_MESSAGE_IDS` for WB-O2 scale config (`0x2F3` / `0x6F3`) and association traffic (`0x2EA` / `0x6EA`, `0x2F4` / `0x6F4`)
 - **`tools/ftcan/wbo2_nano_config_tx.py`**: send WB-O2 Nano analog scale presets over CAN via ECU `0x2F3`; `--interactive`, `--analyze`, `--discover`, slcan/USB support
 - **Documentation**: `docs/BUILD.md` — how to run `./extras/build.sh`, bump versions (`src/__init__.py`, `CHANGELOG.md`, README markers), use `extras/release.py`, push tags, and relation to GitHub Actions release builds
+- **App identity** (`src/config/app_info.py`): centralized `APP_NAME` and GitHub URLs (`REPO_URL`, releases API) used by the entry point, i18n, and update checks
+- **Default save locations** (`src/storage_paths.py`): configurable base directory (`saves_base_dir` in `config.json`); default layout `~/CAN Analyzer/saves/<component>/` for traces, monitor logs, TX lists, and tool exports (BAP, Bit Field, FTCAN, Gateway, OBD-II)
+- **Settings — General tab**: language, theme, **Transmit panel on startup** (`show_tx_panel_on_startup`), **Save directory** (browse / use default), **Check for updates on startup** (`check_updates_on_startup`)
+- **Settings — CAN Bus tab**: simulation mode and multi-CAN configuration (previous “general” CAN options moved here)
+- **Update check**: optional background check against the latest GitHub release on startup (notification if a newer semver is published; no personal data sent)
+- **About dialog** (`src/ui/about_menu.py`): repository/releases link; opened from the localized **About** menu
 
 ### Changed
 - **FTCAN Diagnostics**: device summary moved to the Devices tab; broadcast streams use full width
+- **Settings dialog**: reorganized into tabs (General / CAN Bus)
+- **File menus and Tools menu**: several labels simplified (emoji prefixes removed on some entries); **Tools** order adjusted (Diff Mode before Triggers)
+- **i18n**: window title and About strings derive from `APP_NAME` where applicable; new keys for settings tabs and update/TX startup options
+- **README**: configuration, default save folders, update/TX startup, Diff/tracer behaviour, project layout
 
 ### Fixed
 - **Code comments**: standardized developer comments to English across the codebase for consistency
+- **Diff mode (Monitor)**: turning **Tracer** off no longer leaves Diff permanently disabled — if Diff was on before entering Tracer, it is restored when returning to **Monitor**
 
 ---
 
 ## [1.2.2] - 2026-04-11
 
-### Added
-- **Documentation**: `docs/BUILD.md` — how to run `./extras/build.sh`, bump versions (`src/__init__.py`, `CHANGELOG.md`, README markers), use `extras/release.py`, push tags, and relation to GitHub Actions release builds
+Intermediate tag. **Full notes:** see **[1.2.3] - 2026-04-12** (documentation: `docs/BUILD.md` packaging and release workflow).
 
 ---
 
 ## [1.2.1] - 2026-04-11
 
-### Added
-- **FTCAN Devices tab**: aggregated device list in the FTCAN analyzer (product ID, type, example CAN ID, etc.)
-- **FTCAN decoder**: `SPECIAL_MESSAGE_IDS` for WB-O2 scale config (`0x2F3` / `0x6F3`) and association traffic (`0x2EA` / `0x6EA`, `0x2F4` / `0x6F4`)
-- **`tools/ftcan/wbo2_nano_config_tx.py`**: send WB-O2 Nano analog scale presets over CAN via ECU `0x2F3`; `--interactive`, `--analyze`, `--discover`, slcan/USB support
-
-### Changed
-- **FTCAN Diagnostics**: device summary moved to the Devices tab; broadcast streams use full width
+Intermediate tag. **Full notes:** see **[1.2.3] - 2026-04-12** (FTCAN Devices tab, WB-O2 `SPECIAL_MESSAGE_IDS`, `wbo2_nano_config_tx.py`, FTCAN Diagnostics layout).
 
 ---
 

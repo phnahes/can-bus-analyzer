@@ -140,7 +140,7 @@ python can_analyzer.py
 
 #### **Advanced Features**
 - **Bit Field Viewer**: Detailed bit-by-bit visualization
-- **Diff Mode (Monitor)**: Reduce noise by hiding repeats and/or highlighting data deltas
+- **Diff Mode (Monitor)**: Reduce noise by hiding repeats and/or highlighting data deltas (Diff is suspended in Tracer mode and **restored automatically** when you switch back to Monitor if it was enabled before)
 - **Software Filters**: Message filtering by ID and data
 - **Trigger-based TX**: Automatic transmission on received messages
 - **Playback**: Reproduce recorded traces
@@ -318,6 +318,8 @@ can-bus-analyzer/
 ├── src/                        # Application source code
 │   ├── __init__.py
 │   ├── main_window.py          # Main window, reception/transmission UI, modes (orchestrator)
+│   ├── storage_paths.py        # Default save paths and QFileDialog initial paths
+│   ├── version_checker.py      # Optional GitHub release compare for update notifications
 │   ├── models.py               # Data models (CANMessage, CANFilter, TransmitMessage, etc.)
 │   ├── dialogs.py              # General dialogs: Settings, Filters, Triggers, Bit Field Viewer
 │   ├── dialogs_ftcan.py        # FTCAN Analyzer dialog (Live Measures, Decoded Messages, Diagnostics)
@@ -333,6 +335,7 @@ can-bus-analyzer/
 │   ├── theme.py                # UI theme management
 │   ├── usb_device_monitor.py   # USB/serial device detection
 │   ├── config/                 # Centralized configuration
+│   │   ├── app_info.py         # APP_NAME, GitHub repo / release URLs
 │   │   ├── shortcuts.py       # Keyboard shortcuts (platform-aware)
 │   │   └── ...
 │   ├── handlers/               # Business logic (connection, playback, filters, gateway, etc.)
@@ -348,6 +351,7 @@ can-bus-analyzer/
 │   │   └── ...
 │   ├── ui/                     # Reusable UI components
 │   │   ├── menu_bar.py         # Menu bar builder
+│   │   ├── about_menu.py       # About dialog (version, license, repository link)
 │   │   ├── table_helpers.py    # Table formatting helpers
 │   │   ├── receive_table.py    # Receive table component
 │   │   └── ...
@@ -542,8 +546,11 @@ Tips for day-to-day use and common workflows.
 ### General
 
 - **Connect before protocol tools:** For **FTCAN Analyzer**, connect to the bus first (or enable Simulation mode). FTCAN requires **1 Mbps**; if no bus is at 1 Mbps, the analyzer will show a clear message.
-- **Simulation mode:** In **Settings**, enable “Simulation Mode” to run without hardware. Useful for learning the UI, testing filters/triggers, and trying decoders.
+- **Simulation mode:** In **Settings** → **CAN Bus Settings**, enable “Simulation Mode” to run without hardware. Useful for learning the UI, testing filters/triggers, and trying decoders.
 - **Multi-CAN:** To use **Gateway** or **Split-Screen**, configure at least two CAN buses in **Settings** and connect.
+- **Save dialogs:** Save/load dialogs open under a default folder (see [Configuration](#configuration)). You can set a custom base directory in **Settings** → **General Settings** → **Save Directory**.
+- **Updates:** In **General Settings**, you can enable or disable **Check for updates on startup** (compares your app version to the latest release on GitHub; optional notification if a newer version exists).
+- **Transmit panel:** **General Settings** lets you choose whether the TX panel is shown or hidden when the app starts (the toolbar button still toggles it at any time).
 
 ### FTCAN Analyzer
 
@@ -561,7 +568,8 @@ Tips for day-to-day use and common workflows.
 
 - **Receive:** Save/Load Monitor or Tracer log (JSON, CSV, or trace format) from the File menu or toolbar.
 - **Transmit:** Save/Load the transmit list (JSON) to reuse message sets.
-- **Settings** (including multi-CAN and theme) are stored in `config.json` and persist between runs.
+- **Default folders:** Open/save dialogs start in per-feature subfolders under `~/CAN Analyzer/saves/` (or under your custom **Save Directory** in Settings). See [Configuration](#configuration).
+- **Settings** (including multi-CAN, theme, saves path, and startup options) are stored in `config.json` and persist between runs.
 
 ---
 
@@ -573,11 +581,18 @@ Settings are **automatically saved** to `config.json` in the application directo
 
 **Location:** `./config.json`
 
+**Settings dialog** is split into **General Settings** (language, theme, default save folder, update check, TX panel on startup) and **CAN Bus Settings** (simulation mode, multi-CAN).
+
+**Default save folders:** Unless you set **Save Directory** (key `saves_base_dir`), the app uses subfolders under `~/CAN Analyzer/saves/` — for example `traces/`, `monitor/`, `tx/`, and feature-specific folders for exports (Gateway, FTCAN, OBD-II, BAP, Bit Field, etc.). An empty `saves_base_dir` means “use the default root” (`~/CAN Analyzer/saves`).
+
 **Format:**
 ```json
 {
   "language": "en",
   "theme": "system",
+  "saves_base_dir": "",
+  "check_updates_on_startup": true,
+  "show_tx_panel_on_startup": true,
   "timestamp": true,
   "simulation_mode": false,
   "can_buses": [

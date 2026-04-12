@@ -16,6 +16,7 @@ from ..config import DEFAULT_BUS_NAMES, DEFAULT_CAN_ID_STR
 from ..models import GatewayConfig, GatewayBlockRule, GatewayDynamicBlock, GatewayModifyRule, GatewayRoute
 from ..i18n import get_i18n, t
 from ..theme import get_adaptive_colors
+from ..storage_paths import dialog_path
 
 from .modify_rule_dialog import ModifyRuleDialog
 
@@ -849,7 +850,7 @@ class GatewayDialog(QDialog):
         filename, _ = QFileDialog.getSaveFileName(
             self,
             t('gateway_save_config'),
-            "",
+            dialog_path("gateway"),
             "JSON Files (*.json);;All Files (*)"
         )
         
@@ -887,7 +888,7 @@ class GatewayDialog(QDialog):
         filename, _ = QFileDialog.getOpenFileName(
             self,
             t('gateway_load_config'),
-            "",
+            dialog_path("gateway"),
             "JSON Files (*.json);;All Files (*)"
         )
         

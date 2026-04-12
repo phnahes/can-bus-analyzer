@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt
 
 from ..models import CANMessage
 from ..theme import get_adaptive_colors, get_bit_style
+from ..storage_paths import dialog_path
 
 
 class BitFieldViewerDialog(QDialog):
@@ -129,7 +130,7 @@ class BitFieldViewerDialog(QDialog):
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Save Bit Labels",
-            f"bit_labels_0x{self.message.can_id:03X}.json",
+            dialog_path("bitfield", f"bit_labels_0x{self.message.can_id:03X}.json"),
             "JSON Files (*.json)"
         )
         
@@ -155,7 +156,7 @@ class BitFieldViewerDialog(QDialog):
         filename, _ = QFileDialog.getOpenFileName(
             self,
             "Load Bit Labels",
-            "",
+            dialog_path("bitfield"),
             "JSON Files (*.json)"
         )
         

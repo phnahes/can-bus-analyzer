@@ -6,6 +6,7 @@ Handles loading of message logs from various file formats
 from PyQt6.QtWidgets import QFileDialog
 from ..ui.message_box_helper import MessageBoxHelper
 from ..i18n import t
+from ..storage_paths import dialog_path
 
 
 class LoadLogHandler:
@@ -29,7 +30,7 @@ class LoadLogHandler:
         filename, _ = QFileDialog.getOpenFileName(
             self.parent,
             "Load Receive Log",
-            "",
+            dialog_path("traces"),
             "JSON Files (*.json);;Trace Files (*.trc);;CSV Files (*.csv);;All Files (*)"
         )
         

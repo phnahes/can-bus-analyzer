@@ -35,19 +35,25 @@ class TracerModeManager:
         
         if self.parent.tracer_mode:
             self.parent.btn_tracer.setText(f"📊 {t('btn_monitor')}")
-            # Disable Diff button in Tracer mode
+            # Disable Diff button in Tracer mode (diff is Monitor-only)
             if hasattr(self.parent, 'btn_diff'):
                 self.parent.btn_diff.setEnabled(False)
+                self.parent._diff_was_enabled_before_tracer = bool(
+                    self.parent.diff_config.enabled
+                )
                 if self.parent.diff_config.enabled:
-                    # Turn off diff mode when switching to Tracer
                     self.parent.diff_config.enabled = False
                     self.parent.receive_table_mgr.diff_manager = None
                     self.parent.update_diff_button_state()
         else:
             self.parent.btn_tracer.setText(f"📊 {t('btn_tracer')}")
-            # Enable Diff button in Monitor mode
+            # Enable Diff button in Monitor mode; restore diff if it was on before Tracer
             if hasattr(self.parent, 'btn_diff'):
                 self.parent.btn_diff.setEnabled(True)
+                if getattr(self.parent, '_diff_was_enabled_before_tracer', False):
+                    self.parent.diff_config.enabled = True
+                    self.parent._apply_diff_config(old_enabled=False)
+                    self.parent._diff_was_enabled_before_tracer = False
         
         # If switching TO Tracer mode, disable split-screen
         if self.parent.tracer_mode and self.parent.split_screen_mode:

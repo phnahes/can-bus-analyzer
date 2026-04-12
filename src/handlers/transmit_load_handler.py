@@ -6,6 +6,7 @@ Handles loading of transmit message lists
 from PyQt6.QtWidgets import QFileDialog
 from ..ui.message_box_helper import MessageBoxHelper
 from ..i18n import t
+from ..storage_paths import dialog_path
 
 
 class TransmitLoadHandler:
@@ -25,7 +26,7 @@ class TransmitLoadHandler:
         filename, _ = QFileDialog.getOpenFileName(
             self.parent,
             "Load Transmit List",
-            "",
+            dialog_path("tx"),
             "JSON Files (*.json);;All Files (*)"
         )
         

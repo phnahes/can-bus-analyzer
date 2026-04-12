@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QFileDialog
 from ..config import DEFAULT_CHANNEL
 from ..ui.message_box_helper import MessageBoxHelper
 from ..i18n import t
+from ..storage_paths import dialog_path
 
 
 class SaveTransmitHandler:
@@ -26,7 +27,7 @@ class SaveTransmitHandler:
         filename, _ = QFileDialog.getSaveFileName(
             self.parent,
             "Save Transmit List",
-            "",
+            dialog_path("tx"),
             "JSON Files (*.json);;All Files (*)"
         )
         

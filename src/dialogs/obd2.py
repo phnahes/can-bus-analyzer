@@ -18,6 +18,7 @@ from datetime import datetime
 from ..models import CANMessage
 from ..decoders.decoder_obd2 import OBD2_PIDS
 from ..i18n import t
+from ..storage_paths import dialog_path
 
 
 class OBD2Dialog(QDialog):
@@ -1564,7 +1565,7 @@ class OBD2Dialog(QDialog):
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Save OBD-II Results",
-            default_name,
+            dialog_path("obd2", default_name),
             "CSV Files (*.csv);;All Files (*)"
         )
         
