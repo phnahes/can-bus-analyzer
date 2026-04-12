@@ -159,12 +159,12 @@ class USBDeviceMonitor:
         self.logger.info("Starting USB device monitor")
         self.running = True
         
-        # Obter dispositivos iniciais
+        # Get initial devices
         initial_devices = self.get_available_devices()
         for device in initial_devices:
             self.known_devices[device.path] = device
         
-        # Iniciar thread de monitoramento
+        # Start monitoring thread
         self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self.monitor_thread.start()
     
@@ -184,12 +184,12 @@ class USBDeviceMonitor:
         """Loop de monitoramento de dispositivos"""
         while self.running:
             try:
-                # Obter dispositivos atuais
+                # Get current devices
                 current_devices = self.get_available_devices()
                 current_paths = {device.path for device in current_devices}
                 known_paths = set(self.known_devices.keys())
                 
-                # Detectar novos dispositivos
+                # Detect new devices
                 new_paths = current_paths - known_paths
                 for path in new_paths:
                     device = next((d for d in current_devices if d.path == path), None)
@@ -197,21 +197,21 @@ class USBDeviceMonitor:
                         self.logger.info(f"Device connected: {device}")
                         self.known_devices[path] = device
                         
-                        # Chamar callback
+                        # Call callback
                         if self.on_device_connected:
                             try:
                                 self.on_device_connected(device)
                             except Exception as e:
                                 self.logger.error(f"Error in device connected callback: {e}")
                 
-                # Detectar dispositivos removidos
+                # Detect removed devices
                 removed_paths = known_paths - current_paths
                 for path in removed_paths:
                     device = self.known_devices.pop(path, None)
                     if device:
                         self.logger.info(f"Device disconnected: {device}")
                         
-                        # Chamar callback
+                        # Call callback
                         if self.on_device_disconnected:
                             try:
                                 self.on_device_disconnected(device)
@@ -221,7 +221,7 @@ class USBDeviceMonitor:
             except Exception as e:
                 self.logger.error(f"Error in monitor loop: {e}")
             
-            # Aguardar antes da próxima verificação
+            # Wait before the next check
             time.sleep(self.poll_interval)
     
     def is_device_available(self, device_path: str) -> bool:
@@ -249,14 +249,14 @@ class USBDeviceMonitor:
         if device_path in self.known_devices:
             return self.known_devices[device_path]
         
-        # Tentar criar info para dispositivo desconhecido
+        # Try to create info for unknown device
         if os.path.exists(device_path):
             return USBDeviceInfo(device_path)
         
         return None
 
 
-# Instância global
+# Global instance
 _usb_monitor: Optional[USBDeviceMonitor] = None
 
 

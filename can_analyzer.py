@@ -107,11 +107,11 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        # Configurar nome da aplicação ANTES de criar QApplication (para menu macOS)
+        # Set application name BEFORE creating QApplication (for macOS menu)
         QApplication.setApplicationName("CAN Analyzer")
         QApplication.setOrganizationName("CAN Tools")
         
-        # Tentar configurar o nome do bundle no macOS (requer PyObjC)
+        # Try to configure the bundle name on macOS (requires PyObjC)
         try:
             from Foundation import NSBundle
             bundle = NSBundle.mainBundle()
@@ -121,12 +121,12 @@ def main():
                     info['CFBundleName'] = 'CAN Analyzer'
                     info['CFBundleDisplayName'] = 'CAN Analyzer'
         except ImportError:
-            # PyObjC não disponível, continuar sem configurar bundle
+            # PyObjC not available, continue without configuring bundle
             pass
         
         app = QApplication(sys.argv)
         
-        # Configurar display name para o menu macOS
+        # Set display name for the macOS menu
         app.setApplicationDisplayName("CAN Analyzer")
         
         # Apply theme based on user preference

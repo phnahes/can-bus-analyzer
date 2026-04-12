@@ -79,10 +79,10 @@ SPECIAL_MESSAGE_IDS = {
     # Version Info
     0x7FE: {"device": "Any", "type": "Version Request"},
     0x7FF: {"device": "Any", "type": "Version Response"},
-    # WB-O2 Nano: escala saída analógica / config (FTManager + ECU; ECU em Standard CAN Bridge)
+    # WB-O2 Nano: analog output scale/config (FTManager + ECU; ECU in Standard CAN Bridge)
     0x2F3: {"device": "ECU→WB-O2", "type": "Configuration / analog scale (request)"},
     0x6F3: {"device": "WB-O2→ECU", "type": "Configuration acknowledge (response)"},
-    # WB-O2 / ECU: observado em logs (associação / dados; não documentado publicamente)
+    # WB-O2 / ECU: observed in logs (association / data; not publicly documented)
     0x2EA: {"device": "ECU→WB-O2", "type": "Association / discovery (request, bridge)"},
     0x6EA: {"device": "WB-O2→ECU", "type": "Association / discovery (response, bridge)"},
     0x2F4: {"device": "ECU→WB-O2", "type": "Extended exchange (request, FTCAN 2.0)"},

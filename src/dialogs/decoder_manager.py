@@ -24,13 +24,13 @@ class DecoderManagerDialog(QDialog):
         
         self._setup_ui()
         self._load_decoders()
-        self._refresh_stats()  # Carrega stats iniciais
+        self._refresh_stats()  # Load initial stats
     
     def _setup_ui(self):
         """Configura interface"""
         layout = QVBoxLayout()
         
-        # Informação
+        # Information
         info_label = QLabel(
             "Manage protocol decoders to automatically decode CAN messages.\n"
             "Enable/disable decoders based on the protocols you're working with."
@@ -38,7 +38,7 @@ class DecoderManagerDialog(QDialog):
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
         
-        # Tabela de decoders
+        # Decoders table
         decoders_group = QGroupBox("Available Protocol Decoders")
         decoders_layout = QVBoxLayout()
         
@@ -61,7 +61,7 @@ class DecoderManagerDialog(QDialog):
         decoders_group.setLayout(decoders_layout)
         layout.addWidget(decoders_group)
         
-        # Estatísticas
+        # Statistics
         stats_group = QGroupBox("Decoder Statistics")
         stats_layout = QVBoxLayout()
         
@@ -73,7 +73,7 @@ class DecoderManagerDialog(QDialog):
         stats_group.setLayout(stats_layout)
         layout.addWidget(stats_group)
         
-        # Botões
+        # Buttons
         buttons_layout = QHBoxLayout()
         
         refresh_btn = QPushButton("Refresh Stats")
@@ -111,11 +111,11 @@ class DecoderManagerDialog(QDialog):
         
         self.decoders_table.setRowCount(len(decoders))
         
-        # Bloqueia sinais temporariamente
+        # Temporarily block signals
         self.decoders_table.blockSignals(True)
         
         for row, decoder in enumerate(decoders):
-            # Checkbox para enabled
+            # Checkbox for enabled
             checkbox = QCheckBox()
             checkbox.setChecked(decoder.is_enabled())
             checkbox.stateChanged.connect(lambda state, d=decoder: d.set_enabled(state == Qt.CheckState.Checked.value))
@@ -128,22 +128,22 @@ class DecoderManagerDialog(QDialog):
             
             self.decoders_table.setCellWidget(row, 0, checkbox_widget)
             
-            # Nome
+            # Name
             name_item = QTableWidgetItem(decoder.get_name())
             name_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.decoders_table.setItem(row, 1, name_item)
             
-            # Descrição
+            # Description
             desc_item = QTableWidgetItem(decoder.get_description())
             desc_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.decoders_table.setItem(row, 2, desc_item)
             
-            # Prioridade
+            # Priority
             priority_item = QTableWidgetItem(decoder.get_priority().name)
             priority_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.decoders_table.setItem(row, 3, priority_item)
             
-            # Estatísticas
+            # Statistics
             decoder_stats = stats.get(decoder.get_name(), {})
             decoded = decoder_stats.get('decoded', 0)
             total = decoder_stats.get('total', 0)
@@ -153,7 +153,7 @@ class DecoderManagerDialog(QDialog):
             stats_item = QTableWidgetItem(stats_str)
             stats_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             
-            # Cor baseada na taxa de sucesso
+            # Color based on success rate
             if success_rate >= 80:
                 stats_item.setForeground(QColor(0, 150, 0))
             elif success_rate >= 50:
@@ -163,7 +163,7 @@ class DecoderManagerDialog(QDialog):
             
             self.decoders_table.setItem(row, 4, stats_item)
         
-        # Reativa sinais
+        # Re-enable signals
         self.decoders_table.blockSignals(False)
     
     def _refresh_stats(self):
@@ -203,7 +203,7 @@ class DecoderManagerDialog(QDialog):
         for decoder in self.decoder_manager.get_all_decoders():
             decoder.set_enabled(enabled)
         
-        # Atualiza apenas os checkboxes
+        # Update only checkboxes
         for row in range(self.decoders_table.rowCount()):
             checkbox_widget = self.decoders_table.cellWidget(row, 0)
             if checkbox_widget:
@@ -215,5 +215,5 @@ class DecoderManagerDialog(QDialog):
     
     def _on_table_changed(self, item):
         """Callback quando tabela muda"""
-        # Atualiza estatísticas se necessário
+        # Update stats if needed
         pass

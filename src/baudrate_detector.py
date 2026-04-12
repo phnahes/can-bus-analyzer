@@ -26,7 +26,7 @@ class BaudrateDetectionResult:
 class BaudrateDetector:
     """Automatic CAN baudrate detector"""
     
-    # Baudrates comuns em ordem de probabilidade
+    # Common baudrates in probability order
     COMMON_BAUDRATES = [
         500000,   # 500 kbps - OBD-II (mais comum)
         1000000,  # 1 Mbps - FTCAN, CAN-FD
@@ -137,7 +137,7 @@ class BaudrateDetector:
         bus = None
         
         try:
-            # Tenta conectar com este baudrate
+            # Try connecting with this baudrate
             bus = can.interface.Bus(
                 channel=self.channel,
                 interface=self.interface,
@@ -145,7 +145,7 @@ class BaudrateDetector:
                 receive_own_messages=False
             )
             
-            # Aguarda mensagens
+            # Wait for messages
             messages_received = 0
             error_frames = 0
             start_time = time.time()
@@ -156,17 +156,17 @@ class BaudrateDetector:
                 if msg is None:
                     continue
                 
-                # Verifica se é uma mensagem válida
+                # Check if this is a valid message
                 if msg.is_error_frame:
                     error_frames += 1
                     continue
                 
-                # Mensagem válida recebida
+                # Valid message received
                 messages_received += 1
                 
-                # Se recebeu mensagens suficientes, considera sucesso
+                # If enough messages were received, consider success
                 if messages_received >= min_messages:
-                    # Calcula confiança baseado na taxa de erro
+                    # Calculate confidence based on error rate
                     total_frames = messages_received + error_frames
                     confidence = messages_received / total_frames if total_frames > 0 else 0.0
                     
@@ -176,13 +176,13 @@ class BaudrateDetector:
                         'messages_received': messages_received
                     }
             
-            # Timeout - verifica se recebeu pelo menos algumas mensagens
+            # Timeout - check if at least some messages were received
             if messages_received > 0:
                 total_frames = messages_received + error_frames
                 confidence = messages_received / total_frames if total_frames > 0 else 0.0
                 
-                # Se recebeu algumas mensagens (mesmo < min), pode ser o baudrate correto
-                # mas com tráfego baixo
+                # If some messages were received (even < min), this may be the correct baudrate
+                # but with low traffic
                 if confidence > 0.5:
                     return {
                         'success': True,
@@ -197,7 +197,7 @@ class BaudrateDetector:
             }
             
         except Exception as e:
-            # Erro ao conectar ou receber - baudrate incorreto
+            # Error connecting or receiving - incorrect baudrate
             return {
                 'success': False,
                 'confidence': 0.0,
@@ -221,7 +221,7 @@ class BaudrateDetector:
         Returns:
             Baudrate detectado ou None
         """
-        # Testa apenas os 3 mais comuns
+        # Test only the 3 most common
         quick_baudrates = [500000, 1000000, 250000]
         
         result = self.detect(

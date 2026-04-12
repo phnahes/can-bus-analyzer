@@ -50,7 +50,7 @@ class OBD2Dialog(QDialog):
         
         self._setup_ui()
         
-        # Timer para polling
+        # Polling timer
         self.poll_timer = QTimer()
         self.poll_timer.timeout.connect(self._poll_pids)
         
@@ -59,7 +59,7 @@ class OBD2Dialog(QDialog):
         self.update_timer.timeout.connect(self._update_display)
         self.update_timer.start(500)  # Atualiza a cada 500ms
         
-        # Buffer para armazenar mensagens recebidas (para DTCs e single shot)
+        # Buffer to store received messages (for DTCs and single-shot)
         self.received_messages = []
         self.receiving_dtcs = False
         self.dtcs_found = []
@@ -76,14 +76,14 @@ class OBD2Dialog(QDialog):
         self.vin_expected_len: Optional[int] = None
         self.vin_value: Optional[str] = None
         
-        # Conecta sinal para processar mensagens de forma thread-safe
+        # Connect signal to process messages in a thread-safe way
         self.message_received.connect(self._process_can_message)
     
     def on_can_message(self, bus_name: str, msg: CANMessage):
         """Recebe mensagens CAN de outra thread - emite sinal para processamento thread-safe"""
         # Check if OBD-II response (0x7E8-0x7EF)
         if 0x7E8 <= msg.can_id <= 0x7EF:
-            # Emite sinal para processar na thread principal da UI
+            # Emit signal to process on the UI main thread
             self.message_received.emit(bus_name, msg)
     
     def _process_can_message(self, bus_name: str, msg: CANMessage):
@@ -92,7 +92,7 @@ class OBD2Dialog(QDialog):
         if self.active_bus and hasattr(msg, 'source') and msg.source != self.active_bus.config.name:
             return
         
-        # Armazena para processamento por DTCs ou single shot
+        # Store for DTC or single-shot processing
         self.received_messages.append(msg)
 
         # Always show ECU responses in Raw Messages.
@@ -227,7 +227,7 @@ class OBD2Dialog(QDialog):
         left_panel = self._create_pid_selector()
         splitter.addWidget(left_panel)
         
-        # Lado direito: Tabs
+        # Right side: Tabs
         tabs = QTabWidget()
         
         # Tab 1: Valores em tempo real
@@ -387,7 +387,7 @@ class OBD2Dialog(QDialog):
         presets_group.setLayout(presets_layout)
         layout.addWidget(presets_group)
         
-        # Filtro compacto (inline)
+        # Compact filter (inline)
         filter_layout = QHBoxLayout()
         filter_layout.addWidget(QLabel("Filter:"))
         
@@ -406,7 +406,7 @@ class OBD2Dialog(QDialog):
         filter_layout.addWidget(self.category_combo)
         layout.addLayout(filter_layout)
         
-        # Lista de PIDs disponíveis
+        # Available PID list
         pids_label = QLabel("<b>Available PIDs:</b>")
         layout.addWidget(pids_label)
         
@@ -430,14 +430,14 @@ class OBD2Dialog(QDialog):
         widget = QWidget()
         layout = QVBoxLayout()
         
-        # Tabela de valores
+        # Values table
         self.values_table = QTableWidget()
         self.values_table.setColumnCount(6)
         self.values_table.setHorizontalHeaderLabels([
             "PID", "Name", "Value", "Unit", "ECU", "Last Update"
         ])
         
-        # Configuração otimizada para Name e Value
+        # Optimized configuration for Name and Value
         header = self.values_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # PID
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Name - ajustável
@@ -446,18 +446,18 @@ class OBD2Dialog(QDialog):
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # ECU
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Last Update
         
-        # Define larguras iniciais para Name e Value
+        # Set initial widths for Name and Value
         self.values_table.setColumnWidth(1, 250)  # Name - mais largo
         self.values_table.setColumnWidth(2, 120)  # Value - largo o suficiente
         
-        # Linhas mais compactas mas mantém fonte normal
+        # More compact rows while keeping normal font
         self.values_table.verticalHeader().setDefaultSectionSize(24)
         self.values_table.verticalHeader().setVisible(False)
         
         self.values_table.setAlternatingRowColors(True)
         layout.addWidget(self.values_table)
         
-        # Botão Clear
+        # Clear button
         clear_btn = QPushButton(t('obd2_clear_values'))
         clear_btn.clicked.connect(self._clear_live_values)
         clear_btn.setToolTip("Clear all values from the table")
@@ -471,14 +471,14 @@ class OBD2Dialog(QDialog):
         widget = QWidget()
         layout = QVBoxLayout()
         
-        # Tabela de mensagens
+        # Messages table
         self.raw_table = QTableWidget()
         self.raw_table.setColumnCount(5)
         self.raw_table.setHorizontalHeaderLabels([
             "Timestamp", "ID", "Type", "Data", "Decoded"
         ])
         
-        # Configuração otimizada
+        # Optimized configuration
         header = self.raw_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Timestamp
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # ID
@@ -486,14 +486,14 @@ class OBD2Dialog(QDialog):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # Data
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)  # Decoded
         
-        # Linhas mais compactas mas mantém fonte normal
+        # More compact rows while keeping normal font
         self.raw_table.verticalHeader().setDefaultSectionSize(24)
         self.raw_table.verticalHeader().setVisible(False)
         
         self.raw_table.setAlternatingRowColors(True)
         layout.addWidget(self.raw_table)
         
-        # Limitar a 500 mensagens
+        # Limit to 500 messages
         self.raw_table.setRowCount(0)
         self.max_raw_messages = 500
         
@@ -552,7 +552,7 @@ class OBD2Dialog(QDialog):
         
         layout.addStretch()
         
-        # Botão Read DTCs
+        # Read DTCs button
         self.read_dtc_btn = QPushButton("🔍 " + t('obd2_read_dtcs'))
         self.read_dtc_btn.clicked.connect(self._read_dtcs)
         self.read_dtc_btn.setToolTip("Read Diagnostic Trouble Codes (Service 03)")
@@ -573,13 +573,13 @@ class OBD2Dialog(QDialog):
         # Visual separator (like other toolbars/footers)
         layout.addWidget(QLabel("|"))
         
-        # Botão Save Results
+        # Save Results button
         save_btn = QPushButton("💾 " + t('obd2_save_results'))
         save_btn.clicked.connect(self._save_results)
         save_btn.setToolTip("Export current values to CSV file")
         layout.addWidget(save_btn)
         
-        # Botão fechar
+        # Close button
         close_btn = QPushButton(t('btn_close'))
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn)
@@ -619,7 +619,7 @@ class OBD2Dialog(QDialog):
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, pid)
             
-            # Marcar se já selecionado
+            # Mark if already selected
             if pid in self.selected_pids:
                 item.setSelected(True)
             
@@ -643,7 +643,7 @@ class OBD2Dialog(QDialog):
         
         if index in preset_map:
             self._apply_preset(preset_map[index])
-            # Reset dropdown para "-- Select Preset --"
+            # Reset dropdown to "-- Select Preset --"
             self.preset_combo.setCurrentIndex(0)
     
     def _apply_preset(self, preset: str):
@@ -692,13 +692,13 @@ class OBD2Dialog(QDialog):
         self.check_status_label.setText("🔄 Checking available PIDs...")
         self.check_status_label.setStyleSheet("color: blue;")
         
-        # Limpa lista de PIDs disponíveis
+        # Clear available PID list
         self.available_pids.clear()
         
         # PIDs de suporte: 0x00, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0
         support_pids = [0x00, 0x20, 0x40, 0x60, 0x80, 0xA0, 0xC0, 0xE0]
         
-        # Envia requisições para todos os PIDs de suporte
+        # Send requests for all supported PIDs
         for support_pid in support_pids:
             try:
                 request = can.Message(
@@ -711,7 +711,7 @@ class OBD2Dialog(QDialog):
             except Exception as e:
                 self._log_message(f"Error checking PID 0x{support_pid:02X}: {e}")
         
-        # Aguarda 2 segundos para receber todas as respostas
+        # Wait 2 seconds to receive all responses
         QTimer.singleShot(2000, self._check_available_pids_complete)
     
     def _check_available_pids_complete(self):
@@ -720,7 +720,7 @@ class OBD2Dialog(QDialog):
         self.check_pids_btn.setEnabled(True)
         
         if self.available_pids:
-            # Atualiza lista de PIDs para mostrar apenas disponíveis
+            # Update PID list to show only available ones
             self._update_pid_list_availability()
             
             count = len(self.available_pids)
@@ -737,10 +737,10 @@ class OBD2Dialog(QDialog):
         if len(msg.data) < 7:
             return
         
-        # Dados estão nos bytes 3-6 (4 bytes = 32 bits)
+        # Data is in bytes 3-6 (4 bytes = 32 bits)
         data = msg.data[3:7]
         
-        # Converte para inteiro de 32 bits
+        # Convert to 32-bit integer
         bits = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3]
         
         # Cada bit representa um PID (bit 31 = PID base+1, bit 30 = PID base+2, etc.)
@@ -759,13 +759,13 @@ class OBD2Dialog(QDialog):
             pid = item.data(Qt.ItemDataRole.UserRole)
             
             if pid in self.available_pids:
-                # PID disponível - habilita e marca
+                # PID available - enable and check
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEnabled)
                 original_text = item.text().replace(" ✓", "").replace(" ✗", "")
                 item.setText(f"{original_text} ✓")
                 item.setForeground(QColor(0, 128, 0))  # Verde
             else:
-                # PID não disponível - desabilita e marca
+                # PID unavailable - disable and check
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
                 original_text = item.text().replace(" ✓", "").replace(" ✗", "")
                 item.setText(f"{original_text} ✗")
@@ -773,7 +773,7 @@ class OBD2Dialog(QDialog):
     
     def _on_pid_selection_changed(self):
         """Callback when PID selection changes"""
-        # Atualiza selected_pids baseado na seleção atual
+        # Update selected_pids based on current selection
         self.selected_pids.clear()
         for item in self.pid_list.selectedItems():
             pid = item.data(Qt.ItemDataRole.UserRole)
@@ -781,7 +781,7 @@ class OBD2Dialog(QDialog):
         
         self.selection_label.setText(f"Selected: {len(self.selected_pids)} PIDs")
         
-        # Habilita botões se houver PIDs selecionados e estiver conectado
+        # Enable buttons if there are selected PIDs and connection is active
         has_selection = len(self.selected_pids) > 0
         is_connected = self.active_bus is not None and self.active_bus.connected
         
@@ -790,7 +790,7 @@ class OBD2Dialog(QDialog):
     
     def _update_pid_selection(self):
         """Update visual PID selection"""
-        # Bloqueia sinais temporariamente para evitar loops
+        # Temporarily block signals to avoid loops
         self.pid_list.blockSignals(True)
         
         for i in range(self.pid_list.count()):
@@ -800,7 +800,7 @@ class OBD2Dialog(QDialog):
         
         self.pid_list.blockSignals(False)
         
-        # Atualiza label e botões
+        # Update label and buttons
         self.selection_label.setText(f"Selected: {len(self.selected_pids)} PIDs")
         has_selection = len(self.selected_pids) > 0
         is_connected = self.active_bus is not None and self.active_bus.connected
@@ -809,7 +809,7 @@ class OBD2Dialog(QDialog):
     
     def _start_polling(self):
         """Inicia polling de PIDs"""
-        # Atualizar seleção baseado na lista
+        # Update selection based on the list
         self.selected_pids.clear()
         for item in self.pid_list.selectedItems():
             pid = item.data(Qt.ItemDataRole.UserRole)
@@ -836,7 +836,7 @@ class OBD2Dialog(QDialog):
         """Para polling de PIDs"""
         self.polling_active = False
         self.poll_timer.stop()
-        # Não para update_timer - deixa rodando para atualizar status de conexão
+        # Do not stop update_timer - keep it running to refresh connection status
         
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
@@ -847,7 +847,7 @@ class OBD2Dialog(QDialog):
     
     def _single_shot(self):
         """Read selected PIDs once (no continuous polling)"""
-        # Atualizar seleção baseado na lista
+        # Update selection based on the list
         self.selected_pids.clear()
         for item in self.pid_list.selectedItems():
             pid = item.data(Qt.ItemDataRole.UserRole)
@@ -861,12 +861,12 @@ class OBD2Dialog(QDialog):
         
         self._log_message("Single shot - reading selected PIDs...")
         
-        # Desabilita botões temporariamente
+        # Temporarily disable buttons
         self.start_btn.setEnabled(False)
         self.single_shot_btn.setEnabled(False)
         self.read_dtc_btn.setEnabled(False)
         
-        # Envia todas as requisições de uma vez
+        # Send all requests at once
         for pid in self.selected_pids:
             try:
                 # Envia request (Service 01 = Current Data)
@@ -879,7 +879,7 @@ class OBD2Dialog(QDialog):
                 self.active_bus.send(request)
                 self.request_count += 1
                 
-                # Adiciona à tabela raw
+                # Add to raw table
                 pid_info = OBD2_PIDS.get(pid, {})
                 pid_name = pid_info.get('name', f'PID 0x{pid:02X}')
                 self._add_raw_request(request, f"Request: {pid_name}")
@@ -894,7 +894,7 @@ class OBD2Dialog(QDialog):
         """Callback after single shot completes"""
         self._log_message(f"Single shot complete - requested {len(self.selected_pids)} PIDs")
         
-        # Re-habilita botões
+        # Re-enable buttons
         self.start_btn.setEnabled(True)
         self.single_shot_btn.setEnabled(True)
         self.read_dtc_btn.setEnabled(True)
@@ -1138,12 +1138,12 @@ class OBD2Dialog(QDialog):
 
         self._log_message("Reading DTCs (Service 03)...")
         
-        # Desabilita botões temporariamente
+        # Temporarily disable buttons
         self.start_btn.setEnabled(False)
         self.single_shot_btn.setEnabled(False)
         self.read_dtc_btn.setEnabled(False)
         
-        # Limpa buffer de DTCs
+        # Clear DTC buffer
         self.dtcs_found = []
         self.dtc_buffer.clear()
         self.dtc_expected_len = None
@@ -1162,7 +1162,7 @@ class OBD2Dialog(QDialog):
             self.active_bus.send(request)
             self._add_raw_request(request, "Request: Read DTCs (Service 03)")
             
-            # Aguarda 1 segundo para receber respostas (processadas por on_can_message)
+            # Wait 1 second for responses (processed by on_can_message)
             QTimer.singleShot(1000, self._read_dtcs_complete)
         
         except Exception as e:
@@ -1178,7 +1178,7 @@ class OBD2Dialog(QDialog):
         self.dtc_expected_len = None
         self.dtc_expected_bytes = None
         
-        # Verifica se recebeu alguma resposta
+        # Check if any response was received
         if not self.dtc_response_received:
             self._log_message("⚠️ No response from ECU (timeout)")
             QMessageBox.warning(
@@ -1191,7 +1191,7 @@ class OBD2Dialog(QDialog):
                 "• ECU does not support Service 03\n"
                 "• Communication error on CAN bus"
             )
-        # Mostra resultado em popup
+        # Show result in popup
         elif self.dtcs_found:
             self._log_message(f"Found {len(self.dtcs_found)} DTC(s)")
             QMessageBox.warning(
@@ -1202,7 +1202,7 @@ class OBD2Dialog(QDialog):
                 "\n\nCheck the Statistics tab for details."
             )
         else:
-            # Recebeu resposta mas sem DTCs
+            # Received a response but no DTCs
             self._log_message("No DTCs found - vehicle is healthy!")
             QMessageBox.information(
                 self,
@@ -1210,7 +1210,7 @@ class OBD2Dialog(QDialog):
                 "No Diagnostic Trouble Codes found.\n\nVehicle is healthy! ✅"
             )
         
-        # Re-habilita botões
+        # Re-enable buttons
         self.start_btn.setEnabled(True)
         self.single_shot_btn.setEnabled(True)
         self.read_dtc_btn.setEnabled(True)
@@ -1308,7 +1308,7 @@ class OBD2Dialog(QDialog):
         first_chars = ['P', 'C', 'B', 'U']
         first_char = first_chars[first_char_code]
         
-        # Resto do código (14 bits)
+        # Remaining code (14 bits)
         code_value = ((high_byte & 0x3F) << 8) | low_byte
         
         return f"{first_char}{code_value:04X}"
@@ -1337,12 +1337,12 @@ class OBD2Dialog(QDialog):
                 self.active_bus.send(request)
                 self.request_count += 1
                 
-                # Adiciona à tabela raw
+                # Add to raw table
                 pid_info = OBD2_PIDS.get(pid, {})
                 pid_name = pid_info.get('name', f'PID 0x{pid:02X}')
                 self._add_raw_request(request, f"Poll: {pid_name}")
                 
-                # Respostas serão processadas automaticamente por on_can_message()
+                # Responses will be processed automatically by on_can_message()
                 
             except Exception as e:
                 self._log_message(f"Error polling PID 0x{pid:02X}: {e}")
@@ -1393,7 +1393,7 @@ class OBD2Dialog(QDialog):
     
     def _update_display(self):
         """Atualiza display de valores"""
-        # Atualiza tabela de valores (apenas se houver dados ou polling ativo)
+        # Update values table (only if there is data or active polling)
         if self.pid_values and (self.polling_active or len(self.pid_values) > 0):
             self.values_table.setRowCount(len(self.pid_values))
             
@@ -1409,7 +1409,7 @@ class OBD2Dialog(QDialog):
                 # Valor
                 value_item = QTableWidgetItem(data['value'])
                 
-                # Não colorir - mantém legibilidade
+                # Do not colorize - keeps readability
                 age = time.time() - data['timestamp']
                 
                 self.values_table.setItem(row, 2, value_item)
@@ -1420,15 +1420,15 @@ class OBD2Dialog(QDialog):
                 # ECU
                 self.values_table.setItem(row, 4, QTableWidgetItem(f"0x{data['ecu_id']:03X}"))
                 
-                # Timestamp (só atualiza se polling ativo)
+                # Timestamp (updates only when polling is active)
                 if self.polling_active:
                     self.values_table.setItem(row, 5, QTableWidgetItem(f"{age:.1f}s ago"))
                 else:
-                    # Se não está em polling, mostra timestamp fixo
+                    # If polling is inactive, show a fixed timestamp
                     timestamp_str = datetime.fromtimestamp(data['timestamp']).strftime('%H:%M:%S')
                     self.values_table.setItem(row, 5, QTableWidgetItem(timestamp_str))
         
-        # Atualiza estatísticas
+        # Update statistics
         if self.request_count > 0:
             success_rate = (self.response_count / self.request_count) * 100
         else:
@@ -1440,14 +1440,14 @@ class OBD2Dialog(QDialog):
             f"Success Rate: {success_rate:.1f}%"
         )
         
-        # Atualiza status da conexão (apenas se tiver label de canal único)
+        # Update connection status (only if single-channel label exists)
         if hasattr(self, 'channel_label') and self.channel_label and self.active_bus:
             bus_name = self.active_bus.config.name if hasattr(self.active_bus, 'config') else "CAN"
             self._update_channel_status(bus_name, self.active_bus.connected)
     
     def _add_raw_message(self, msg: CANMessage, decoded: str):
         """Add raw message to table"""
-        # Limitar número de mensagens
+        # Limit number of messages
         if self.raw_table.rowCount() >= self.max_raw_messages:
             self.raw_table.removeRow(0)
         
@@ -1476,7 +1476,7 @@ class OBD2Dialog(QDialog):
     
     def _add_raw_request(self, request: can.Message, description: str):
         """Add sent request to raw table"""
-        # Limitar número de mensagens
+        # Limit number of messages
         if self.raw_table.rowCount() >= self.max_raw_messages:
             self.raw_table.removeRow(0)
         
@@ -1558,7 +1558,7 @@ class OBD2Dialog(QDialog):
             )
             return
         
-        # Nome padrão com timestamp
+        # Default name with timestamp
         default_name = f"obd2_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         
         filename, _ = QFileDialog.getSaveFileName(
@@ -1575,7 +1575,7 @@ class OBD2Dialog(QDialog):
             with open(filename, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 
-                # Cabeçalho
+                # Header
                 writer.writerow([
                     'PID',
                     'Name',
@@ -1586,7 +1586,7 @@ class OBD2Dialog(QDialog):
                     'Age (seconds)'
                 ])
                 
-                # Dados
+                # Data
                 current_time = time.time()
                 for pid in sorted(self.pid_values.keys()):
                     data = self.pid_values[pid]
@@ -1604,7 +1604,7 @@ class OBD2Dialog(QDialog):
                         f"{age:.1f}"
                     ])
                 
-                # Adiciona estatísticas no final
+                # Add statistics at the end
                 writer.writerow([])
                 writer.writerow(['Statistics'])
                 writer.writerow(['Total Requests', self.request_count])

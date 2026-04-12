@@ -155,7 +155,7 @@ class FTCANDialog(QDialog):
         
         layout.addLayout(control_layout)
         
-        # Tabs: Devices primeiro, depois medidas / mensagens / diagnóstico
+        # Tabs: Devices first, then measurements / messages / diagnostics
         tabs = QTabWidget()
         
         tab_devices = self._create_devices_tab()
@@ -274,7 +274,7 @@ class FTCANDialog(QDialog):
         
         layout.addLayout(filter_layout)
         
-        # Tabela de mensagens (maior parte do espaço)
+        # Message table (largest portion of the space)
         self.messages_table = QTableWidget()
         self.messages_table.setColumnCount(9)
         self.messages_table.setHorizontalHeaderLabels([
@@ -289,7 +289,7 @@ class FTCANDialog(QDialog):
         self.messages_table.itemSelectionChanged.connect(self._on_message_selected)
         layout.addWidget(self.messages_table, 3)  # 3 parts of space
         
-        # Detalhes da mensagem selecionada (preenche espaço disponível)
+        # Selected message details (fills available space)
         details_group = QGroupBox("Message Details")
         details_layout = QVBoxLayout()
         details_layout.setContentsMargins(2, 2, 2, 2)  # Minimal margins
@@ -315,7 +315,7 @@ class FTCANDialog(QDialog):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
         
-        # Filtro de dispositivo (compact)
+        # Device filter (compact)
         filter_layout = QHBoxLayout()
         filter_layout.addWidget(QLabel("<b>Filter:</b>"))
         
@@ -328,7 +328,7 @@ class FTCANDialog(QDialog):
         filter_layout.addStretch()
         layout.addLayout(filter_layout)
         
-        # Tabela de medidas
+        # Measurements table
         self.measures_table = QTableWidget()
         self.measures_table.setColumnCount(6)
         self.measures_table.setHorizontalHeaderLabels([
@@ -383,7 +383,7 @@ class FTCANDialog(QDialog):
         
         layout.addLayout(top_layout, 3)  # 30% of space
         
-        # Broadcast streams (lista de dispositivos na aba Devices)
+        # Broadcast streams (device list in the Devices tab)
         streams_group = QGroupBox("Broadcast Streams (ECU)")
         streams_layout = QVBoxLayout()
         streams_layout.setContentsMargins(5, 5, 5, 5)
@@ -544,7 +544,7 @@ class FTCANDialog(QDialog):
         
         layout.addStretch()
         
-        # Botões
+        # Buttons
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self._clear_data)
         layout.addWidget(clear_btn)
@@ -566,11 +566,11 @@ class FTCANDialog(QDialog):
     
     def add_message(self, msg: CANMessage):
         """Add message for analysis with intelligent priority"""
-        # Verifica se é mensagem FTCAN
+        # Check if this is an FTCAN message
         if not FTCANDecoder.is_ftcan_message(msg.can_id):
             return
         
-        # Filtra por bus selecionado (se houver múltiplos)
+        # Filter by selected bus (if multiple exist)
         if self.selected_bus and hasattr(msg, 'source') and msg.source != self.selected_bus:
             return
         
@@ -588,7 +588,7 @@ class FTCANDialog(QDialog):
             worker.add_decode_task(msg_index, msg, priority=is_priority)
             self.current_worker = (self.current_worker + 1) % self.num_workers
         
-        # Limita buffer a 2000 mensagens (dobrado para melhor histórico)
+        # Limit buffer to 2000 messages (doubled for better history)
         if len(self.messages) > 2000:
             # Remove old messages and their cache
             removed_count = len(self.messages) - 2000
@@ -670,7 +670,7 @@ class FTCANDialog(QDialog):
     
     def _update_messages_table(self):
         """Atualiza tabela de mensagens (usando cache, otimizado)"""
-        # Pega últimas 100 mensagens
+        # Get last 100 messages
         total_messages = len(self.messages)
         start_index = max(0, total_messages - 100)
         recent_messages = self.messages[start_index:]
@@ -829,11 +829,11 @@ class FTCANDialog(QDialog):
     
     def _update_measures_display(self):
         """Atualiza display de medidas (usando cache, tempo real otimizado)"""
-        # Coleta apenas as ÚLTIMAS medidas (mais recentes)
+        # Collect only the LATEST measurements (most recent)
         measures_dict = {}  # {(device, measure_name): (value, unit, raw, timestamp)}
         
         total_messages = len(self.messages)
-        # Processa apenas últimas 50 mensagens para performance
+        # Process only the last 50 messages for performance
         start_index = max(0, total_messages - 50)
         
         for idx in range(start_index, total_messages):
@@ -859,7 +859,7 @@ class FTCANDialog(QDialog):
                     msg.timestamp
                 )
         
-        # Aplica filtro antes de contar linhas
+        # Apply filter before counting rows
         current_filter = self.device_filter.currentText()
         filtered_items = []
         
@@ -871,7 +871,7 @@ class FTCANDialog(QDialog):
         # Disable updates during batch operation
         self.measures_table.setUpdatesEnabled(False)
         
-        # Atualiza tabela com itens filtrados
+        # Update table with filtered items
         current_rows = self.measures_table.rowCount()
         target_rows = len(filtered_items)
         
@@ -890,12 +890,12 @@ class FTCANDialog(QDialog):
         # Re-enable updates
         self.measures_table.setUpdatesEnabled(True)
         
-        # Atualiza filtro de dispositivos (sem recursão)
+        # Update device filter (without recursion)
         self._update_device_filter_safe()
     
     def _update_device_filter_safe(self):
         """Update device list in filter (no recursion, usando cache)"""
-        # Bloqueia sinais temporariamente para evitar recursão
+        # Temporarily block signals to avoid recursion
         self.device_filter.blockSignals(True)
         
         current = self.device_filter.currentText()
@@ -918,7 +918,7 @@ class FTCANDialog(QDialog):
         for device in sorted(devices):
             self.device_filter.addItem(device)
         
-        # Restaura seleção
+        # Restore selection
         index = self.device_filter.findText(current)
         if index >= 0:
             self.device_filter.setCurrentIndex(index)
@@ -931,7 +931,7 @@ class FTCANDialog(QDialog):
         if not self.messages:
             return
         
-        # Estatísticas gerais
+        # General statistics
         total_messages = len(self.messages)
         ftcan_messages = sum(1 for msg in self.messages if FTCANDecoder.is_ftcan_message(msg.can_id))
         
@@ -943,7 +943,7 @@ class FTCANDialog(QDialog):
             0x3FF: {'count': 0, 'measures': 0, 'last_time': 0, 'first_time': 0},
         }
         
-        # Dispositivos únicos (só processa mensagens com cache)
+        # Unique devices (processes only cached messages)
         devices = {}
         for idx, msg in enumerate(self.messages):
             # Skip if not decoded yet
@@ -985,7 +985,7 @@ class FTCANDialog(QDialog):
                 devices[product_id]['count'] += 1
                 devices[product_id]['last_seen'] = msg.timestamp
         
-        # Atualiza estatísticas
+        # Update statistics
         stats_text = f"""
 <b>Total Messages:</b> {total_messages}<br>
 <b>FTCAN Messages:</b> {ftcan_messages}<br>
@@ -1033,7 +1033,7 @@ class FTCANDialog(QDialog):
             self.issues_text.setText("No messages to analyze")
             return
         
-        # Verifica se há mensagens FTCAN
+        # Check if there are FTCAN messages
         ftcan_count = sum(1 for msg in self.messages if FTCANDecoder.is_ftcan_message(msg.can_id))
         
         if ftcan_count == 0:
@@ -1042,7 +1042,7 @@ class FTCANDialog(QDialog):
             issues.append("   - Verify CAN bus termination (120Ω resistors)")
             issues.append("   - Check if device is powered and connected")
         
-        # Verifica se há WB-O2 Nano (usando cache)
+        # Check if WB-O2 Nano is present (using cache)
         has_wbo2 = False
         for idx in range(len(self.messages)):
             if idx in self.decoded_cache:
@@ -1057,7 +1057,7 @@ class FTCANDialog(QDialog):
             issues.append("   - Device may not be associated with ECU")
             issues.append("   - Check CAN wiring (White/Red = CAN+, Yellow/Blue = CAN-)")
         
-        # Verifica segmentação incompleta (usando cache)
+        # Check for incomplete segmentation (using cache)
         total_messages = len(self.messages)
         start_index = max(0, total_messages - 100)
         incomplete_segments = 0

@@ -10,7 +10,7 @@ import sys
 from typing import List, Dict
 
 
-# PIDs comuns para monitoramento
+# Common PIDs for monitoring
 DEFAULT_PIDS = [
     0x0C,  # Engine RPM
     0x0D,  # Vehicle speed
@@ -150,7 +150,7 @@ class OBD2Poller:
                     if not self.send_request(0x01, pid):
                         continue
                     
-                    # Aguarda resposta
+                    # Wait for response
                     responses = self.wait_response(timeout=0.5)
                     
                     if responses:
@@ -168,7 +168,7 @@ class OBD2Poller:
                     # Pequeno delay entre PIDs
                     time.sleep(0.05)
                 
-                # Aguarda intervalo
+                # Wait interval
                 time.sleep(interval)
                 
         except KeyboardInterrupt:
@@ -309,14 +309,14 @@ def main():
     interval_str = input("\nIntervalo entre polls [1.0s]: ").strip() or "1.0"
     interval = float(interval_str)
     
-    # Conecta
+    # Connect
     poller = OBD2Poller(channel, interface, bitrate)
     
     if not poller.connect():
         print("❌ Falha ao conectar!")
         return
     
-    # Inicia polling
+    # Start polling
     try:
         poller.poll_pids(pids, interval)
     finally:

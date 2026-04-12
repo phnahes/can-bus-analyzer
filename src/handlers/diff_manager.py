@@ -19,12 +19,12 @@ class DiffConfig:
     """Configuration for Diff mode"""
 
     def __init__(self):
-        self.enabled: bool = False
+        self.enabled: bool = True
         # Operation mode:
         # - "filter": hide repeated frames (no highlight)
         # - "highlight": show all frames, highlight deltas vs snapshot
         # - "both": hide repeated frames and highlight deltas vs snapshot
-        self.mode: str = "filter"
+        self.mode: str = "highlight"
         # Filtering only applies when current rate is above this threshold.
         self.min_message_rate: float = 10.0  # msgs/s
         # Minimum number of bytes that must change (vs last displayed) to show.
@@ -55,8 +55,8 @@ class DiffConfig:
     def from_dict(cls, data: dict) -> 'DiffConfig':
         """Create from dictionary"""
         config = cls()
-        config.enabled = data.get('enabled', False)
-        config.mode = data.get('mode', 'filter')
+        config.enabled = data.get('enabled', True)
+        config.mode = data.get('mode', 'highlight')
         config.min_message_rate = data.get('min_message_rate', 10.0)
         config.min_bytes_changed = data.get('min_bytes_changed', 1)
         config.time_window_ms = data.get('time_window_ms', 500)

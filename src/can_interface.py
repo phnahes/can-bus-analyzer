@@ -30,7 +30,7 @@ class CANInterface:
         """Connect to CAN bus"""
         try:
             if CAN_AVAILABLE:
-                # Aqui será implementada a conexão real
+                # Real connection will be implemented here
                 # self.bus = can.interface.Bus(
                 #     channel=self.config.channel,
                 #     bustype=self.config.interface,
@@ -71,7 +71,7 @@ class CANInterface:
                 self.bus.send(can_msg)
                 return True
             else:
-                # Modo simulação
+                # Simulation mode
                 print(f"[SIM] Enviando: ID=0x{msg.can_id:03X}, Data={msg.to_hex_string()}")
                 return True
         except Exception as e:
@@ -126,7 +126,7 @@ class SimulatedCANInterface(CANInterface):
         """Simulated receive loop"""
         while self.running:
             if self.message_callback:
-                # Gerar mensagem simulada
+                # Generate simulated message
                 can_id, dlc, data = self.sample_messages[self.message_index]
                 self.message_index = (self.message_index + 1) % len(self.sample_messages)
                 

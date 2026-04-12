@@ -69,7 +69,14 @@ class ToolbarBuilder:
         parent.btn_diff.clicked.connect(parent.toggle_diff_mode)
         parent.btn_diff.setEnabled(False)  # Enabled only in Monitor mode
         toolbar_layout.addWidget(parent.btn_diff)
-        
+
+        # Filter toggle
+        parent.btn_filter = QPushButton("🔎 Filter: OFF")
+        parent.btn_filter.setCheckable(True)
+        parent.btn_filter.setToolTip("Enable/Disable Message Filters")
+        parent.btn_filter.clicked.connect(parent.toggle_filter_from_toolbar)
+        toolbar_layout.addWidget(parent.btn_filter)
+
         toolbar_layout.addStretch()
         
         # Toggle transmit panel visibility

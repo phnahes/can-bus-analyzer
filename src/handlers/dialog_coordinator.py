@@ -27,23 +27,34 @@ class DialogCoordinator:
         from ..dialogs import FTCANDialog
 
         simulation_mode = self.parent.config.get('simulation_mode', False)
-        success, buses_to_use, error_msg, error_title = self.parent.dialog_mgr.validate_ftcan_buses(
-            self.parent.can_bus_manager,
-            self.parent.connected,
-            simulation_mode
-        )
 
-        if not success:
-            if error_msg and error_title:
-                QMessageBox.warning(self.parent, error_title, error_msg)
-            return
+        # In simulation mode, skip bus validation and open the dialog directly.
+        # FTCANDialog handles an empty bus list gracefully (selected_bus = None).
+        if simulation_mode:
+            buses_to_use = []
+            if self.parent.can_bus_manager:
+                for name, bus in self.parent.can_bus_manager.buses.items():
+                    buses_to_use.append((name, bus))
+            self.logger.info(
+                f"Simulation mode: opening FTCAN dialog with {len(buses_to_use)} bus(es) (no baudrate check)"
+            )
+        else:
+            success, buses_to_use, error_msg, error_title = self.parent.dialog_mgr.validate_ftcan_buses(
+                self.parent.can_bus_manager,
+                self.parent.connected,
+                simulation_mode
+            )
+            if not success:
+                if error_msg and error_title:
+                    QMessageBox.warning(self.parent, error_title, error_msg)
+                return
 
-        # When using config buses (none actually connected at 1Mbps), auto-connect in simulation
-        any_connected = any(bus.connected for _, bus in buses_to_use)
-        if not any_connected and self.parent.can_bus_manager:
-            self.logger.info("Auto-connecting buses in simulation mode")
-            self.parent.can_bus_manager.connect_all(simulation=True)
-            self.parent.connected = True
+            # When using config buses (none actually connected at 1Mbps), auto-connect
+            any_connected = any(bus.connected for _, bus in buses_to_use)
+            if not any_connected and self.parent.can_bus_manager:
+                self.logger.info("Auto-connecting buses in simulation mode")
+                self.parent.can_bus_manager.connect_all(simulation=True)
+                self.parent.connected = True
 
         if hasattr(self.parent, '_ftcan_dialog') and self.parent._ftcan_dialog:
             self.parent._ftcan_dialog.raise_()
@@ -51,7 +62,7 @@ class DialogCoordinator:
             return
 
         bus_names = [name for name, _ in buses_to_use]
-        self.logger.info(f"Opening FTCAN Dialog with buses: {', '.join(bus_names)}")
+        self.logger.info(f"Opening FTCAN Dialog with buses: {', '.join(bus_names) or '(none - simulation)'}")
 
         dialog = FTCANDialog(self.parent, buses_1mbps=buses_to_use)
 

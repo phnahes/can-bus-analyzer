@@ -91,7 +91,7 @@ class CANAnalyzerWindow(QMainWindow):
         
         self.init_ui()
         self.start_ui_update()
-    
+
     def _init_handlers(self):
         """Initialize all handlers"""
         self.connection_mgr = ConnectionManager(
@@ -293,9 +293,10 @@ class CANAnalyzerWindow(QMainWindow):
         
         self.update_ui_translations()
         
-        # Initialize Diff button state (disabled in Tracer mode by default)
+        # Initialize Diff state: apply config so DiffManager is created if enabled by default
         if hasattr(self, 'btn_diff'):
             self.btn_diff.setEnabled(not self.tracer_mode)
+            self._apply_diff_config(old_enabled=False)
             self.update_diff_button_state()
     
     def _create_toolbar(self) -> QHBoxLayout:
@@ -525,7 +526,11 @@ class CANAnalyzerWindow(QMainWindow):
         """Periodically check if all buses are still connected"""
         if not self.connection_mgr or not self.connection_mgr.is_connected():
             return
-        
+
+        # Simulation mode: buses are always considered connected — skip watchdog.
+        if self.config.get('simulation_mode', False):
+            return
+
         can_bus_manager = self.connection_mgr.get_bus_manager()
         if not can_bus_manager:
             return
@@ -1647,8 +1652,32 @@ class CANAnalyzerWindow(QMainWindow):
         else:
             self.filter_status_label.setText("Filter: OFF")
         
+        # Sync toolbar button state
+        self.update_filter_button_state()
+        
         # Update consolidated status bar
         self.update_consolidated_status()
+
+    def toggle_filter_from_toolbar(self):
+        """Toggle message filters on/off from toolbar button"""
+        self.message_filters['enabled'] = self.btn_filter.isChecked()
+        self.apply_message_filters()
+        
+        if self.message_filters['enabled']:
+            self.show_notification("🔎 Filters: ON", 2000)
+        else:
+            self.show_notification("🔎 Filters: OFF", 2000)
+
+    def update_filter_button_state(self):
+        """Update filter button text and style based on current filter state"""
+        if self.message_filters.get('enabled', False):
+            self.btn_filter.setText("🔎 Filter: ON")
+            self.btn_filter.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold;")
+            self.btn_filter.setChecked(True)
+        else:
+            self.btn_filter.setText("🔎 Filter: OFF")
+            self.btn_filter.setStyleSheet("")
+            self.btn_filter.setChecked(False)
     
     def check_and_fire_triggers(self, msg: CANMessage):
         """Check if received message activates any trigger (delegated to FilterManager)"""

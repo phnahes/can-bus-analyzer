@@ -65,7 +65,7 @@ def simulate_wbo2_nano():
     ]
     
     for lambda_val, description in lambda_values:
-        # Converte lambda para valor raw (multiplicador 0.001)
+        # Convert lambda to raw value (multiplier 0.001)
         raw_value = int(lambda_val * 1000)
         
         # Cria medida: Cylinder 1 O2 (DataID 0x0013)
