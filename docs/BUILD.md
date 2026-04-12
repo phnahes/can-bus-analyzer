@@ -23,33 +23,58 @@ The shipped version lives in `src/__init__.py`:
 
 1. **CHANGELOG.md** — Add a dated section for the new version (Keep a Changelog style). Move notes out of `[Unreleased]` as needed. The helper script below does **not** edit this file.
 2. **README.md** — The release helper updates the version badge, the “Latest Release” line, and the main “**Version**” field. If you have other lines that embed a version (for example bullets under “Recently Added / Updated”), update those by hand so historical items (e.g. gateway work tied to an older release) keep the correct version label.
-3. **Commit** feature work first; the release step expects a **clean** `git status`.
+3. **Merge / commit** feature work first; tagging steps expect a **clean** `git status` (except `--dry-run`, which skips the clean check).
 
-**Automated bump (commit + tag)**
+**Flow A — New version (bump + `chore(release)` commit + tag)**
 
-From the repository root, with a clean working tree:
+Use when `__version__` in `src/__init__.py` must change (e.g. **1.2.3 → 1.2.4**).
+
+From the repository root, on the branch that will be released (usually `main`), with a clean tree:
 
 ```bash
-python3 extras/release.py 1.2.2
+python3 extras/release.py 1.2.4
 ```
 
-Optional:
+Optional flags:
 
 - **`--build 2026.04`** — set `__build__` explicitly (default is current calendar year/month).
 - **`--dry-run`** — print what would happen without changing files or git.
 - **`--no-readme`** — only bump `src/__init__.py`.
 - **`--no-tag`** — commit version bump only (no annotated tag).
+- **`--force`** — if **`vX.Y.Z`** already exists **locally**, delete it and create it again after the commit (useful when fixing a failed tag).
 
 The script stages `src/__init__.py` and `README.md`, creates a commit `chore(release): vX.Y.Z`, and an annotated tag **`vX.Y.Z`**. If you also changed `CHANGELOG.md`, commit that **before** running the script, or amend the release commit afterward.
 
-**Publish**
+**Flow B — Version already set (e.g. after PR merge): tag only**
+
+Use when **`src/__init__.py`** and **README** already show the release version (no extra bump commit).
+
+1. `git checkout main && git pull`
+2. Confirm `CHANGELOG.md` has `## [X.Y.Z]` and `__version__` matches.
+3. ```bash
+   python3 extras/release.py 1.2.3 --tag-only
+   ```
+   If **`v1.2.3`** already exists locally:  
+   `python3 extras/release.py 1.2.3 --tag-only --force`
+
+**Flow C — Replace remote tag `vX.Y.Z` (same version, new commit)**
+
+GitHub UI: delete the release (optional) and remove the tag, **or** force-push the tag.
+
+Locally: after `--tag-only` on the correct commit:
+
+```bash
+git push origin vX.Y.Z --force
+```
+
+**Publish (all flows)**
 
 ```bash
 git push origin main
 git push origin vX.Y.Z
 ```
 
-Pushing a **`v*.*.*`** tag triggers the **Release Build (macOS + Linux)** workflow, which attaches `CAN-Analyzer-<version>-*.zip` to the GitHub Release.
+Pushing a **`v*.*.*`** tag triggers the **Release Build (macOS + Linux)** workflow (`.github/workflows/release.yml`), which builds macOS/Linux zips and creates/updates the **GitHub Release** body from `README.md` + `CHANGELOG.md`. Listing the release in the UI is optional; the workflow uses `softprops/action-gh-release` with the tag name you pushed.
 
 **Local build after release**
 

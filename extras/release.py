@@ -9,6 +9,12 @@ Usage:
   python3 extras/release.py 1.1.1
   python3 extras/release.py 1.1.1 --build 2026.02
   python3 extras/release.py 1.1.1 --dry-run
+
+After merging a PR (version already correct in tree), tag only:
+  python3 extras/release.py 1.2.3 --tag-only
+  python3 extras/release.py 1.2.3 --tag-only --force   # replace local tag v1.2.3 if it exists
+
+Pushing tag v*.*.* triggers GitHub Actions: Release Build (macOS + Linux), which creates the GitHub Release.
 """
 
 from __future__ import annotations
@@ -60,6 +66,14 @@ def _replace_once(content: str, pattern: re.Pattern[str], repl: str, *, path: Pa
     if n != 1:
         raise SystemExit(f"Expected 1 match for {pattern.pattern} in {path}, got {n}")
     return new
+
+
+def _read_src_version() -> str:
+    content = _read_text(SRC_INIT)
+    m = re.search(r'^__version__\s*=\s*"([^"]+)"\s*$', content, re.M)
+    if not m:
+        raise SystemExit(f"Could not parse __version__ in {SRC_INIT}")
+    return m.group(1).strip()
 
 
 def _bump_src_init(version: str, build: str) -> None:
@@ -114,6 +128,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--dry-run", action="store_true", help="Show actions without changing anything.")
     parser.add_argument("--no-readme", action="store_true", help="Do not update README.md markers.")
     parser.add_argument("--no-tag", action="store_true", help="Do not create git tag.")
+    parser.add_argument(
+        "--tag-only",
+        action="store_true",
+        help="Do not bump files or commit; create annotated tag on HEAD. "
+        "Verifies src/__init__.py __version__ matches the given version.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="If the tag already exists locally, delete it before creating the new one.",
+    )
     args = parser.parse_args(argv)
 
     version = args.version.strip()
@@ -138,10 +163,56 @@ def main(argv: list[str]) -> int:
     else:
         _require_clean_worktree()
 
-    # Tag must not exist
+    if args.tag_only:
+        if args.no_tag:
+            raise SystemExit("--tag-only conflicts with --no-tag.")
+        src_ver = _read_src_version()
+        if src_ver != version:
+            raise SystemExit(
+                f"src/__init__.py __version__ is {src_ver!r}, expected {version!r}. "
+                "Bump the code or pass the matching version."
+            )
+        tag_exists = _git("rev-parse", "-q", "--verify", f"refs/tags/{tag}", check=False).returncode == 0
+        if tag_exists:
+            if not args.force:
+                raise SystemExit(
+                    f"Tag {tag} already exists. Use --force to replace it locally, "
+                    f"then: git push origin {tag} --force"
+                )
+            if args.dry_run:
+                print(f"Would run: git tag -d {tag}")
+            else:
+                _git("tag", "-d", tag)
+        if args.dry_run:
+            print(f"Would run: git tag -a {tag} -m {tag}  (on current HEAD, no new commit)")
+            print("Next (after merging to main if needed):")
+            print("  git push origin main          # or your default branch")
+            print(f"  git push origin {tag}         # first release")
+            print(f"  git push origin {tag} --force # if replacing remote tag")
+            return 0
+        _git("tag", "-a", tag, "-m", tag)
+        print(f"Annotated tag created: {tag} (points to current HEAD)")
+        print("Next:")
+        print("  git push origin <default-branch>")
+        print(f"  git push origin {tag}")
+        print(
+            f"  # Re-tagging remote: git push origin :refs/tags/{tag}  OR  git push origin {tag} --force"
+        )
+        print("Pushing v*.*.* triggers the Release Build workflow (GitHub Release + zip assets).")
+        return 0
+
+    if args.no_tag and args.force:
+        raise SystemExit("--force applies to tagging; it is unnecessary with --no-tag.")
+
+    # Tag must not exist (unless --force)
     tag_exists = _git("rev-parse", "-q", "--verify", f"refs/tags/{tag}", check=False).returncode == 0
     if tag_exists:
-        raise SystemExit(f"Tag {tag} already exists.")
+        if not args.force:
+            raise SystemExit(
+                f"Tag {tag} already exists. Delete it (git tag -d {tag}) or pass --force."
+            )
+        if not args.dry_run:
+            _git("tag", "-d", tag)
 
     # Apply bumps
     if args.dry_run:
@@ -160,6 +231,7 @@ def main(argv: list[str]) -> int:
         print(f"Would run: git commit -m {commit_msg!r}")
         if not args.no_tag:
             print(f"Would run: git tag -a {tag} -m {tag}")
+        print(f"Next: git push origin <branch> && git push origin {tag}")
         return 0
 
     # Stage and commit
@@ -170,7 +242,11 @@ def main(argv: list[str]) -> int:
 
     # Refuse empty commits
     if _git("diff", "--cached", "--quiet", check=False).returncode == 0:
-        raise SystemExit("No changes staged for commit (version markers already set?).")
+        raise SystemExit(
+            "No changes staged for commit (version markers already match?). "
+            "If the tree is already released, use: python3 extras/release.py "
+            f"{version} --tag-only [--force]"
+        )
 
     _git("commit", "-m", commit_msg)
 
@@ -179,7 +255,10 @@ def main(argv: list[str]) -> int:
 
     print(f"Release commit created and tagged: {tag}")
     print("Next:")
-    print("  ./extras/build.sh")
+    print("  git push origin <default-branch>")
+    print(f"  git push origin {tag}")
+    print("  (optional local smoke build: ./extras/build.sh)")
+    print("Pushing the tag triggers CI: Release Build → GitHub Release with zips.")
     return 0
 
 
