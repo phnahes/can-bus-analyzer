@@ -1951,6 +1951,83 @@ class I18n:
             'de': 'DTCs löschen',
             'fr': 'Effacer les DTCs'
         },
+        'obd2_dtc_protocol': {
+            'en': 'DTC protocol',
+            'pt': 'Protocolo DTC',
+            'es': 'Protocolo DTC',
+            'de': 'DTC-Protokoll',
+            'fr': 'Protocole DTC'
+        },
+        'obd2_dtc_protocol_obd': {
+            'en': 'OBD-II broadcast (0x7DF)',
+            'pt': 'OBD-II broadcast (0x7DF)',
+            'es': 'OBD-II broadcast (0x7DF)',
+            'de': 'OBD-II Broadcast (0x7DF)',
+            'fr': 'OBD-II broadcast (0x7DF)'
+        },
+        'obd2_dtc_protocol_vag': {
+            'en': 'VAG UDS (single module)',
+            'pt': 'VAG UDS (módulo individual)',
+            'es': 'VAG UDS (módulo individual)',
+            'de': 'VAG UDS (einzelnes Steuergerät)',
+            'fr': 'VAG UDS (module individuel)'
+        },
+        'obd2_vag_module': {
+            'en': 'VAG module',
+            'pt': 'Módulo VAG',
+            'es': 'Módulo VAG',
+            'de': 'VAG-Steuergerät',
+            'fr': 'Module VAG'
+        },
+        'obd2_vag_detect_ecus': {
+            'en': 'Detect ECUs',
+            'pt': 'Detectar ECUs',
+            'es': 'Detectar ECUs',
+            'de': 'SGs suchen',
+            'fr': 'Détecter ECUs'
+        },
+        'obd2_vag_scan_prompt': {
+            'en': 'Run “Detect ECUs” to scan the bus',
+            'pt': 'Use “Detectar ECUs” para varrer o barramento',
+            'es': 'Use “Detectar ECUs” para escanear el bus',
+            'de': '„SGs suchen“ zum Scannen des Busses',
+            'fr': 'Utilisez « Détecter ECUs » pour scanner le bus'
+        },
+        'obd2_vag_scanning': {
+            'en': 'Scanning UDS modules…',
+            'pt': 'Varrendo módulos UDS…',
+            'es': 'Escaneando módulos UDS…',
+            'de': 'UDS-Steuergeräte werden gesucht…',
+            'fr': 'Analyse des modules UDS…'
+        },
+        'obd2_vag_scan_done': {
+            'en': 'Found {n} module(s) on the bus',
+            'pt': '{n} módulo(s) encontrado(s) no barramento',
+            'es': '{n} módulo(s) encontrado(s) en el bus',
+            'de': '{n} Steuergerät(e) am Bus gefunden',
+            'fr': '{n} module(s) trouvé(s) sur le bus'
+        },
+        'obd2_polling_group': {
+            'en': 'Live polling',
+            'pt': 'Polling ao vivo',
+            'es': 'Polling en vivo',
+            'de': 'Live-Polling',
+            'fr': 'Polling en direct'
+        },
+        'obd2_diagnostics_group': {
+            'en': 'Diagnostics (DTCs)',
+            'pt': 'Diagnóstico (DTCs)',
+            'es': 'Diagnóstico (DTCs)',
+            'de': 'Diagnose (DTCs)',
+            'fr': 'Diagnostic (DTCs)'
+        },
+        'obd2_interval': {
+            'en': 'Interval',
+            'pt': 'Intervalo',
+            'es': 'Intervalo',
+            'de': 'Intervall',
+            'fr': 'Intervalle'
+        },
         'obd2_detect_vin': {
             'en': 'Detect VIN',
             'pt': 'Detectar VIN',
