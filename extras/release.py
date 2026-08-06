@@ -3,6 +3,7 @@
 Release helper:
   - bumps version/build in src/__init__.py
   - updates common version markers in README.md
+  - renames [Unreleased] → [X.Y.Z] - date in CHANGELOG.md and inserts a fresh [Unreleased] block
   - creates a release commit and an annotated git tag (vX.Y.Z) pointing to that commit
 
 Usage:
@@ -31,6 +32,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_INIT = PROJECT_ROOT / "src" / "__init__.py"
 README = PROJECT_ROOT / "README.md"
+CHANGELOG = PROJECT_ROOT / "CHANGELOG.md"
+
+_UNRELEASED_HEADER_RE = re.compile(r"^##\s+\[Unreleased\]", re.IGNORECASE)
 
 
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
@@ -87,6 +91,50 @@ def _bump_src_init(version: str, build: str) -> None:
     _write_text(SRC_INIT, content)
 
 
+def _bump_changelog(version: str, date: str) -> bool:
+    """Rename [Unreleased] → [X.Y.Z] - date and insert a fresh empty [Unreleased] block.
+
+    Returns True if CHANGELOG.md was modified, False if it was skipped (file absent or
+    no [Unreleased] header found).
+    """
+    if not CHANGELOG.exists():
+        print(f"  [changelog] {CHANGELOG.name} not found — skipped.")
+        return False
+
+    lines = CHANGELOG.read_text(encoding="utf-8").splitlines(keepends=True)
+
+    idx = next(
+        (i for i, ln in enumerate(lines) if _UNRELEASED_HEADER_RE.match(ln.strip())),
+        None,
+    )
+    if idx is None:
+        print(f"  [changelog] No '## [Unreleased]' header found — skipped.")
+        return False
+
+    new_header = f"## [{version}] - {date}\n"
+    fresh_unreleased = (
+        "## [Unreleased]\n"
+        "\n"
+        "### Added\n"
+        "\n"
+        "### Changed\n"
+        "\n"
+        "### Fixed\n"
+        "\n"
+        "---\n"
+        "\n"
+    )
+
+    # Replace the [Unreleased] line with the versioned header
+    lines[idx] = new_header
+    # Insert the fresh [Unreleased] block before the versioned section
+    lines[idx:idx] = list(fresh_unreleased.splitlines(keepends=True))
+
+    CHANGELOG.write_text("".join(lines), encoding="utf-8")
+    print(f"  [changelog] ## [Unreleased] → ## [{version}] - {date}  (fresh block added above)")
+    return True
+
+
 def _bump_readme(version: str) -> None:
     content = _read_text(README)
 
@@ -127,6 +175,7 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--dry-run", action="store_true", help="Show actions without changing anything.")
     parser.add_argument("--no-readme", action="store_true", help="Do not update README.md markers.")
+    parser.add_argument("--no-changelog", action="store_true", help="Do not rename [Unreleased] in CHANGELOG.md.")
     parser.add_argument("--no-tag", action="store_true", help="Do not create git tag.")
     parser.add_argument(
         "--tag-only",
@@ -214,20 +263,32 @@ def main(argv: list[str]) -> int:
         if not args.dry_run:
             _git("tag", "-d", tag)
 
+    # Derive release date (YYYY-MM-DD) for CHANGELOG header
+    release_date = _dt.date.today().isoformat()
+
     # Apply bumps
     if args.dry_run:
         print(f"Would bump src/__init__.py to version={version} build={build}")
         if not args.no_readme:
             print(f"Would update README.md markers to version={version}")
+        if not args.no_changelog:
+            print(f"Would rename [Unreleased] → [{version}] - {release_date} in CHANGELOG.md")
     else:
         _bump_src_init(version, build)
         if not args.no_readme:
             _bump_readme(version)
+        if not args.no_changelog:
+            _bump_changelog(version, release_date)
 
     commit_msg = f"chore(release): {tag}"
 
     if args.dry_run:
-        print(f"Would run: git add {SRC_INIT.relative_to(PROJECT_ROOT)}" + ("" if args.no_readme else f" {README.relative_to(PROJECT_ROOT)}"))
+        staged = str(SRC_INIT.relative_to(PROJECT_ROOT))
+        if not args.no_readme:
+            staged += f" {README.relative_to(PROJECT_ROOT)}"
+        if not args.no_changelog:
+            staged += f" {CHANGELOG.relative_to(PROJECT_ROOT)}"
+        print(f"Would run: git add {staged}")
         print(f"Would run: git commit -m {commit_msg!r}")
         if not args.no_tag:
             print(f"Would run: git tag -a {tag} -m {tag}")
@@ -238,6 +299,8 @@ def main(argv: list[str]) -> int:
     paths = [str(SRC_INIT.relative_to(PROJECT_ROOT))]
     if not args.no_readme:
         paths.append(str(README.relative_to(PROJECT_ROOT)))
+    if not args.no_changelog and CHANGELOG.exists():
+        paths.append(str(CHANGELOG.relative_to(PROJECT_ROOT)))
     _git("add", *paths)
 
     # Refuse empty commits
