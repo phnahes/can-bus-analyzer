@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QGroupBox, QCheckBox, QSpinBox,
     QHeaderView, QTabWidget, QWidget, QListWidget, QListWidgetItem,
-    QSplitter, QTextEdit, QComboBox, QMessageBox, QFileDialog
+    QSplitter, QTextEdit, QComboBox, QMessageBox, QFileDialog, QFrame,
+    QSizePolicy,
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QMetaObject, Q_ARG
 from PyQt6.QtGui import QFont, QColor
@@ -19,6 +20,23 @@ from ..models import CANMessage
 from ..decoders.decoder_obd2 import OBD2_PIDS
 from ..i18n import t
 from ..storage_paths import dialog_path
+from ..vag_uds import (
+    DTC_STATUS_MASKS_GUI,
+    DtcRecord,
+    IsotpReassembler,
+    MODULES,
+    VagModule,
+    VAG_TX_BASE,
+    VAG_RX_OFFSET,
+    build_flow_control_frame,
+    build_single_frame,
+    describe_negative,
+    format_dtc_record_line,
+    is_response_pending,
+    module_at_logical_addr,
+    parse_isotp_single,
+    parse_read_dtc_response,
+)
 
 
 class OBD2Dialog(QDialog):
@@ -30,7 +48,7 @@ class OBD2Dialog(QDialog):
     def __init__(self, parent=None, can_bus_manager=None):
         super().__init__(parent)
         self.setWindowTitle(t('obd2_monitor_title'))
-        self.resize(1200, 700)  # Mais compacto
+        self.resize(1200, 760)
         
         self.can_bus_manager = can_bus_manager
         self.selected_pids: Set[int] = set()
@@ -39,6 +57,7 @@ class OBD2Dialog(QDialog):
         self.poll_interval = 1.0  # segundos
         self.available_pids: Set[int] = set()  # PIDs suportados pelo ECU
         self.checking_pids = False  # Flag for verification in progress
+        self._poll_ui_locked = False  # Temporary lock (single-shot, etc.)
         
         # Statistics
         self.request_count = 0
@@ -76,33 +95,95 @@ class OBD2Dialog(QDialog):
         self.vin_buffer = bytearray()
         self.vin_expected_len: Optional[int] = None
         self.vin_value: Optional[str] = None
+
+        # VAG UDS per-module DTC session (Airbag, Painel, etc.)
+        self.receiving_vag_uds = False
+        self.vag_module: Optional[VagModule] = None
+        self.vag_operation: Optional[str] = None  # 'read' | 'clear'
+        self.vag_masks_queue: List[int] = []
+        self.vag_dtcs_found: List[str] = []
+        self.vag_dtc_by_raw: Dict[bytes, DtcRecord] = {}
+        self.vag_isotp_stalls = 0
+        self.vag_rx_queue: List[CANMessage] = []
+        self.vag_current_mask: Optional[int] = None
+        self.vag_mask_retries_left = 0
+        self.vag_response_received = False
+        self.vag_isotp = IsotpReassembler()
+        self.vag_step_timer = QTimer(self)
+        self.vag_step_timer.setSingleShot(True)
+        self.vag_step_timer.timeout.connect(self._vag_on_step_timeout)
+        self.vag_clear_phase: Optional[str] = None  # 'wait_54' | 'verify'
+        self.vag_clear_attempts = 0
+        self.vag_clear_max_attempts = 3
+
+        self.receiving_vag_scan = False
+        self.vag_scan_addrs: List[int] = []
+        self.vag_scan_found: List[VagModule] = []
+        self.vag_scan_expect_rx: Optional[int] = None
+        self.vag_scan_current_addr: Optional[int] = None
+        self.vag_scan_timer = QTimer(self)
+        self.vag_scan_timer.setSingleShot(True)
+        self.vag_scan_timer.timeout.connect(self._vag_scan_on_probe_timeout)
         
         # Connect signal to process messages in a thread-safe way
         self.message_received.connect(self._process_can_message)
     
     def on_can_message(self, bus_name: str, msg: CANMessage):
         """Recebe mensagens CAN de outra thread - emite sinal para processamento thread-safe"""
-        # Check if OBD-II response (0x7E8-0x7EF)
         if 0x7E8 <= msg.can_id <= 0x7EF:
-            # Emit signal to process on the UI main thread
+            self.message_received.emit(bus_name, msg)
+            return
+        if self.receiving_vag_uds and self.vag_module and msg.can_id == self.vag_module.rx_id:
+            self.message_received.emit(bus_name, msg)
+            return
+        if (
+            self.receiving_vag_scan
+            and self.vag_scan_expect_rx is not None
+            and msg.can_id == self.vag_scan_expect_rx
+        ):
             self.message_received.emit(bus_name, msg)
     
     def _process_can_message(self, bus_name: str, msg: CANMessage):
         """Processa mensagens CAN na thread principal da UI (thread-safe)"""
         # Filter by selected bus (if multiple)
-        if self.active_bus and hasattr(msg, 'source') and msg.source != self.active_bus.config.name:
-            return
+        if self.active_bus:
+            expected = self.active_bus.config.name
+            from_active = True
+            if hasattr(msg, "source") and msg.source:
+                from_active = msg.source == expected
+            elif bus_name:
+                from_active = bus_name == expected
+            if not from_active and not self.receiving_vag_uds and not self.receiving_vag_scan:
+                return
+            if not from_active and (self.receiving_vag_uds or self.receiving_vag_scan):
+                self._log_message(
+                    f"VAG: aviso — resposta 0x{msg.can_id:03X} em '{getattr(msg, 'source', bus_name)}', "
+                    f"bus ativo '{expected}'"
+                )
         
         # Store for DTC or single-shot processing
         self.received_messages.append(msg)
 
         # Always show ECU responses in Raw Messages.
-        # Note: on_can_message() already filters to OBD-II response IDs (0x7E8-0x7EF).
-        try:
-            self._add_raw_message(msg, self._describe_obd2_response(msg))
-        except Exception:
-            # Raw table should never break functional decoding.
-            pass
+        is_obd_response = 0x7E8 <= msg.can_id <= 0x7EF
+        is_vag_response = (
+            self.receiving_vag_uds
+            and self.vag_module is not None
+            and msg.can_id == self.vag_module.rx_id
+        )
+        if is_obd_response or is_vag_response:
+            try:
+                self._add_raw_message(msg, self._describe_obd2_response(msg))
+            except Exception:
+                pass
+        
+        if self.receiving_vag_uds and is_vag_response:
+            self._process_vag_uds_response(msg)
+            return
+
+        if self.receiving_vag_scan and self.vag_scan_expect_rx == msg.can_id:
+            self._vag_scan_on_response(msg)
+            return
         
         # If receiving DTCs, process ALL frames (first and continuation)
         if self.receiving_dtcs and len(msg.data) >= 2:
@@ -161,6 +242,9 @@ class OBD2Dialog(QDialog):
                 return "Response: VIN (ISO-TP Consecutive Frame)"
             return "Response: VIN"
 
+        if getattr(self, "receiving_vag_uds", False):
+            return "Response: VAG UDS"
+
         if getattr(self, "receiving_dtcs", False):
             # DTC responses can be single-frame (0x43) or multi-frame (ISO-TP).
             if len(data) >= 2 and data[1] == 0x43:
@@ -216,6 +300,7 @@ class OBD2Dialog(QDialog):
     def _setup_ui(self):
         """Configura interface"""
         layout = QVBoxLayout()
+        layout.setSpacing(6)
         
         # Header
         header = self._create_header()
@@ -250,92 +335,90 @@ class OBD2Dialog(QDialog):
         # Define larguras iniciais
         splitter.setSizes([350, 850])  # 350px para PIDs, 850px para valores
         
-        layout.addWidget(splitter)
+        layout.addWidget(splitter, stretch=1)
         
-        # Footer with controls
+        # Footer with controls (fixed height strip)
         footer = self._create_footer()
-        layout.addWidget(footer)
+        layout.addWidget(footer, stretch=0)
         
         self.setLayout(layout)
+        self._on_dtc_protocol_changed()
+        self._refresh_polling_buttons()
     
     def _create_header(self) -> QWidget:
-        """Create header with information"""
-        group = QGroupBox("OBD-II Protocol Information")
-        main_layout = QVBoxLayout()
-        
-        # Top row: info on left, status/bus on right
-        top_layout = QHBoxLayout()
-        
-        # Left side: Protocol title
-        title_label = QLabel("<b style='font-size: 14px;'>On-Board Diagnostics II</b>")
-        top_layout.addWidget(title_label)
-        
-        top_layout.addStretch()
-        
-        # Right side: Channel selector with status
-        right_layout = QHBoxLayout()
-        
-        # Channel selection with integrated status
+        """Single-line status bar: protocol, bus, VIN, stats."""
+        frame = QFrame()
+        frame.setFrameShape(QFrame.Shape.StyledPanel)
+        frame.setMaximumHeight(34)
+        frame.setStyleSheet(
+            "QFrame { border: 1px solid #c8c8c8; border-radius: 3px; background: #fafafa; }"
+        )
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(6, 1, 6, 1)
+        row.setSpacing(6)
+
+        title_label = QLabel("<b>OBD-II</b>")
+        title_label.setStyleSheet("font-size: 11px; border: none; background: transparent;")
+        row.addWidget(title_label)
+
+        self.protocol_info_label = QLabel("0x7DF → 0x7E8–0x7EF")
+        self.protocol_info_label.setStyleSheet(
+            "color: #555; font-size: 10px; font-family: Menlo, Consolas, monospace;"
+            " border: none; background: transparent;"
+        )
+        row.addWidget(self.protocol_info_label)
+
+        row.addStretch()
+
+        compact_lbl = "font-size: 10px; border: none; background: transparent;"
         if self.can_bus_manager and len(self.can_bus_manager.buses) > 1:
-            # Multiple buses - show dropdown
-            right_layout.addWidget(QLabel("<b>Channel:</b>"))
+            ch = QLabel("<b>Ch:</b>")
+            ch.setStyleSheet(compact_lbl)
+            row.addWidget(ch)
             self.bus_combo = QComboBox()
-            self.bus_combo.setMinimumWidth(180)
+            self.bus_combo.setMinimumWidth(130)
+            self.bus_combo.setMaximumHeight(22)
+            self.bus_combo.setStyleSheet("font-size: 10px;")
             for bus_name, bus in self.can_bus_manager.buses.items():
                 if bus.connected:
-                    self.bus_combo.addItem(f"{bus_name} - Connected")
+                    self.bus_combo.addItem(f"{bus_name} · OK")
                 else:
-                    self.bus_combo.addItem(f"{bus_name} - Simulation")
+                    self.bus_combo.addItem(f"{bus_name} · Sim")
             self.bus_combo.currentIndexChanged.connect(self._change_active_bus)
-            right_layout.addWidget(self.bus_combo)
-            # Store reference for status updates
+            row.addWidget(self.bus_combo)
             self.channel_label = None
         elif self.can_bus_manager and len(self.can_bus_manager.buses) == 1:
-            # Single bus - show as label with colored status
             bus_name = list(self.can_bus_manager.buses.keys())[0]
             bus = list(self.can_bus_manager.buses.values())[0]
             self.channel_label = QLabel()
+            self.channel_label.setStyleSheet(compact_lbl)
             self._update_channel_status(bus_name, bus.connected)
-            right_layout.addWidget(self.channel_label)
+            row.addWidget(self.channel_label)
         else:
-            # No bus available
-            self.channel_label = QLabel("<b>Channel:</b> <span style='color: red; font-weight: bold;'>Disconnected</span>")
-            right_layout.addWidget(self.channel_label)
+            self.channel_label = QLabel(
+                "<b>Ch:</b> <span style='color: red;'>—</span>"
+            )
+            self.channel_label.setStyleSheet(compact_lbl)
+            row.addWidget(self.channel_label)
 
-        # VIN (right side, more visible)
-        right_layout.addWidget(QLabel("│"))
-        right_layout.addWidget(QLabel("<b>VIN:</b>"))
+        vin_l = QLabel("<b>VIN</b>")
+        vin_l.setStyleSheet(compact_lbl)
+        row.addWidget(vin_l)
         self.vin_value_label = QLabel("-")
         self.vin_value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.vin_value_label.setStyleSheet("font-family: Courier; font-size: 12px; font-weight: bold; color: #222;")
-        right_layout.addWidget(self.vin_value_label)
-        
-        top_layout.addLayout(right_layout)
-        main_layout.addLayout(top_layout)
-        
-        # Add separator line
-        line = QLabel()
-        line.setFrameStyle(QLabel.Shape.HLine | QLabel.Shadow.Sunken)
-        main_layout.addWidget(line)
-        
-        # Protocol information
-        info_text = QLabel(
-            "• Protocol: ISO 15765-4 (CAN)<br>"
-            "• Type: Request/Response (polling)<br>"
-            "• Request ID: 0x7DF (broadcast)<br>"
-            "• Response IDs: 0x7E8-0x7EF"
+        self.vin_value_label.setStyleSheet(
+            "font-family: Menlo, Consolas, monospace; font-size: 10px; font-weight: bold;"
+            " color: #222; border: none; background: transparent;"
         )
-        info_text.setWordWrap(True)
-        info_text.setStyleSheet("color: #555; font-size: 11px;")
-        main_layout.addWidget(info_text)
-        
-        # Statistics
-        self.stats_label = QLabel("Requests: 0 | Responses: 0 | Success Rate: 0.0%")
-        self.stats_label.setStyleSheet("color: gray; font-size: 10px;")
-        main_layout.addWidget(self.stats_label)
-        
-        group.setLayout(main_layout)
-        return group
+        row.addWidget(self.vin_value_label)
+
+        self.stats_label = QLabel("Req 0 · Rsp 0 · 0%")
+        self.stats_label.setStyleSheet(
+            "color: #888; font-size: 9px; border: none; background: transparent;"
+        )
+        row.addWidget(self.stats_label)
+
+        return frame
     
     def _create_pid_selector(self) -> QWidget:
         """Create PID selection panel"""
@@ -515,77 +598,169 @@ class OBD2Dialog(QDialog):
         return widget
     
     def _create_footer(self) -> QWidget:
-        """Create footer with controls"""
+        """
+        Footer layout:
+        ┌─ Live polling ──────────────┐  ┌─ Diagnostics (DTCs) ─────────────────────────────────────────┐
+        │ ▶ Start │ ⏸ Stop │ Single  │  │ Protocol: [▼]  Module: [▼]  [Detect ECUs]                    │
+        │ Interval: [1000 ms]         │  │ TX/RX hint                [Read DTCs] [Clear DTCs] [Det.VIN] │
+        └─────────────────────────────┘  └──────────────────────────────────────────────────────────────┘
+                                                                              [Save Results]  [Close]
+        """
         widget = QWidget()
-        layout = QHBoxLayout()
-        
-        # Controles de polling
-        poll_group = QGroupBox("Polling Control")
-        poll_layout = QHBoxLayout()
-        
-        self.start_btn = QPushButton("▶ " + t('obd2_start_polling'))
+        widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        root = QVBoxLayout(widget)
+        root.setContentsMargins(0, 2, 0, 4)
+        root.setSpacing(0)
+
+        # ── Top strip: polling + diagnostics ────────────────────────
+        top = QHBoxLayout()
+        top.setSpacing(8)
+        top.setContentsMargins(0, 0, 0, 0)
+
+        # ── Live polling ──────────────────────────────────────────
+        poll_group = QGroupBox(t("obd2_polling_group"))
+        poll_group.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Maximum)
+        poll_group.setMinimumWidth(340)
+        pl = QVBoxLayout()
+        pl.setSpacing(3)
+        pl.setContentsMargins(8, 4, 8, 5)
+
+        poll_btns = QHBoxLayout()
+        poll_btns.setSpacing(4)
+        self.start_btn = QPushButton("▶ " + t("obd2_start_polling"))
         self.start_btn.clicked.connect(self._start_polling)
         self.start_btn.setEnabled(False)
-        poll_layout.addWidget(self.start_btn)
-        
-        self.stop_btn = QPushButton("⏸ " + t('obd2_stop_polling'))
+        poll_btns.addWidget(self.start_btn)
+
+        self.stop_btn = QPushButton("⏸ " + t("obd2_stop_polling"))
         self.stop_btn.clicked.connect(self._stop_polling)
         self.stop_btn.setEnabled(False)
-        poll_layout.addWidget(self.stop_btn)
-        
-        self.single_shot_btn = QPushButton(t('obd2_single_shot'))
+        poll_btns.addWidget(self.stop_btn)
+
+        self.single_shot_btn = QPushButton(t("obd2_single_shot"))
         self.single_shot_btn.clicked.connect(self._single_shot)
         self.single_shot_btn.setEnabled(False)
-        self.single_shot_btn.setToolTip("Read selected PIDs once (no continuous polling)")
-        poll_layout.addWidget(self.single_shot_btn)
-        
-        poll_layout.addWidget(QLabel("Interval:"))
+        self.single_shot_btn.setToolTip("Read selected PIDs once")
+        poll_btns.addWidget(self.single_shot_btn)
+        pl.addLayout(poll_btns)
+
+        ivl = QHBoxLayout()
+        ivl.setSpacing(4)
+        ivl.addWidget(QLabel(t("obd2_interval") + ":"))
         self.interval_spin = QSpinBox()
         self.interval_spin.setRange(100, 10000)
         self.interval_spin.setValue(1000)
         self.interval_spin.setSuffix(" ms")
         self.interval_spin.setSingleStep(100)
+        self.interval_spin.setFixedWidth(90)
+        self.interval_spin.setMaximumHeight(24)
         self.interval_spin.valueChanged.connect(self._update_poll_interval)
-        poll_layout.addWidget(self.interval_spin)
-        
-        poll_group.setLayout(poll_layout)
-        layout.addWidget(poll_group)
-        
-        layout.addStretch()
-        
-        # Read DTCs button
-        self.read_dtc_btn = QPushButton("🔍 " + t('obd2_read_dtcs'))
+        ivl.addWidget(self.interval_spin)
+        ivl.addStretch()
+        pl.addLayout(ivl)
+        poll_group.setLayout(pl)
+        top.addWidget(poll_group)
+
+        # ── Diagnostics ────────────────────────────────────────────
+        diag_group = QGroupBox(t("obd2_diagnostics_group"))
+        diag_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        dl = QVBoxLayout()
+        dl.setSpacing(4)
+        dl.setContentsMargins(8, 4, 8, 5)
+
+        # Row 1: protocol selector + (VAG) module + detect button
+        r1 = QHBoxLayout()
+        r1.setSpacing(6)
+
+        lbl_proto = QLabel(t("obd2_dtc_protocol") + ":")
+        lbl_proto.setStyleSheet("font-weight: bold;")
+        r1.addWidget(lbl_proto)
+
+        self.dtc_protocol_combo = QComboBox()
+        self.dtc_protocol_combo.addItem(t("obd2_dtc_protocol_obd"), "obd")
+        self.dtc_protocol_combo.addItem(t("obd2_dtc_protocol_vag"), "vag")
+        self.dtc_protocol_combo.setFixedWidth(185)
+        self.dtc_protocol_combo.setMaximumHeight(24)
+        self.dtc_protocol_combo.setToolTip(
+            "OBD-II: broadcast 0x7DF — motor / emissões\n"
+            "VAG UDS: módulo individual (Airbag, Kombi, ABS…)"
+        )
+        self.dtc_protocol_combo.currentIndexChanged.connect(self._on_dtc_protocol_changed)
+        r1.addWidget(self.dtc_protocol_combo)
+
+        self.vag_module_label = QLabel(t("obd2_vag_module") + ":")
+        self.vag_module_label.setVisible(False)
+        r1.addWidget(self.vag_module_label)
+
+        self.vag_module_combo = QComboBox()
+        self.vag_module_combo.setMinimumWidth(200)
+        self.vag_module_combo.setMaximumHeight(24)
+        self.vag_module_combo.setVisible(False)
+        self.vag_module_combo.setToolTip("Endereço lógico VAG. Use Detectar ECUs para atualizar.")
+        self._vag_populate_module_combo(list(MODULES.values()))
+        self.vag_module_combo.currentIndexChanged.connect(self._on_dtc_protocol_changed)
+        r1.addWidget(self.vag_module_combo, stretch=1)
+
+        self.vag_detect_ecus_btn = QPushButton("🔍 " + t("obd2_vag_detect_ecus"))
+        self.vag_detect_ecus_btn.setMaximumHeight(24)
+        self.vag_detect_ecus_btn.setVisible(False)
+        self.vag_detect_ecus_btn.setToolTip("Varre 0x01–0x7F via TesterPresent e atualiza a lista")
+        self.vag_detect_ecus_btn.clicked.connect(self._vag_detect_ecus)
+        r1.addWidget(self.vag_detect_ecus_btn)
+
+        r1.addStretch()
+        dl.addLayout(r1)
+
+        # Row 2: TX/RX info (VAG) + action buttons
+        r2 = QHBoxLayout()
+        r2.setSpacing(6)
+
+        self.vag_target_label = QLabel("")
+        self.vag_target_label.setStyleSheet(
+            "color: #555; font-size: 10px; font-family: Menlo, Consolas, monospace;"
+        )
+        self.vag_target_label.setVisible(False)
+        r2.addWidget(self.vag_target_label)
+        r2.addStretch()
+
+        self.read_dtc_btn = QPushButton("📋 " + t("obd2_read_dtcs"))
         self.read_dtc_btn.clicked.connect(self._read_dtcs)
-        self.read_dtc_btn.setToolTip("Read Diagnostic Trouble Codes (Service 03)")
-        layout.addWidget(self.read_dtc_btn)
+        self.read_dtc_btn.setToolTip("Ler DTCs (Service 03 / UDS 19 02)")
+        r2.addWidget(self.read_dtc_btn)
 
-        # Button: Clear DTCs (Service 04)
-        self.clear_dtc_btn = QPushButton("🧹 " + t('obd2_clear_dtcs'))
+        self.clear_dtc_btn = QPushButton("🗑 " + t("obd2_clear_dtcs"))
         self.clear_dtc_btn.clicked.connect(self._clear_dtcs)
-        self.clear_dtc_btn.setToolTip("Clear Diagnostic Trouble Codes (Service 04)")
-        layout.addWidget(self.clear_dtc_btn)
+        self.clear_dtc_btn.setToolTip("Apagar DTCs (Service 04 / UDS 14 FF FF FF)")
+        r2.addWidget(self.clear_dtc_btn)
 
-        # Button: Detect VIN (Service 09 PID 02)
-        self.detect_vin_btn = QPushButton("🆔 " + t('obd2_detect_vin'))
+        self.detect_vin_btn = QPushButton("🔑 " + t("obd2_detect_vin"))
         self.detect_vin_btn.clicked.connect(self._detect_vin)
-        self.detect_vin_btn.setToolTip("Detect VIN (Service 09 PID 02, ISO-TP multi-frame)")
-        layout.addWidget(self.detect_vin_btn)
+        self.detect_vin_btn.setToolTip("Detectar VIN (Service 09 PID 02)")
+        r2.addWidget(self.detect_vin_btn)
 
-        # Visual separator (like other toolbars/footers)
-        layout.addWidget(QLabel("|"))
-        
-        # Save Results button
-        save_btn = QPushButton("💾 " + t('obd2_save_results'))
+        dl.addLayout(r2)
+        diag_group.setLayout(dl)
+        top.addWidget(diag_group)
+        root.addLayout(top)
+
+        # ── Bottom strip: save / close (right-aligned) ──────────────
+        bottom = QHBoxLayout()
+        bottom.setContentsMargins(0, 4, 0, 0)
+        bottom.setSpacing(6)
+        bottom.addStretch()
+
+        save_btn = QPushButton(t("obd2_save_results"))
         save_btn.clicked.connect(self._save_results)
-        save_btn.setToolTip("Export current values to CSV file")
-        layout.addWidget(save_btn)
-        
-        # Close button
-        close_btn = QPushButton(t('btn_close'))
+        save_btn.setToolTip("Exportar valores para CSV")
+        save_btn.setMinimumWidth(110)
+        bottom.addWidget(save_btn)
+
+        close_btn = QPushButton(t("btn_close"))
         close_btn.clicked.connect(self.close)
-        layout.addWidget(close_btn)
-        
-        widget.setLayout(layout)
+        close_btn.setMinimumWidth(80)
+        bottom.addWidget(close_btn)
+
+        root.addLayout(bottom)
         return widget
     
     def _populate_pid_list(self, filter_category: str = "All PIDs"):
@@ -772,41 +947,56 @@ class OBD2Dialog(QDialog):
                 item.setText(f"{original_text} ✗")
                 item.setForeground(QColor(128, 128, 128))  # Cinza
     
+    def _bus_ready(self) -> bool:
+        """True when the active bus can send (same criterion as Read DTCs)."""
+        return bool(self.active_bus and getattr(self.active_bus, "bus", None))
+
+    def _diagnostics_busy(self) -> bool:
+        return bool(
+            getattr(self, "receiving_dtcs", False)
+            or getattr(self, "receiving_vag_uds", False)
+            or getattr(self, "receiving_vin", False)
+            or getattr(self, "checking_pids", False)
+            or getattr(self, "_poll_ui_locked", False)
+        )
+
+    def _refresh_polling_buttons(self) -> None:
+        """Keep Live Polling buttons in sync with selection / bus / session state."""
+        if not hasattr(self, "start_btn"):
+            return
+        has_selection = len(self.selected_pids) > 0
+        ready = self._bus_ready()
+        busy = self._diagnostics_busy()
+        can_poll = has_selection and ready and not busy and not self.polling_active
+
+        self.start_btn.setEnabled(can_poll)
+        self.single_shot_btn.setEnabled(can_poll)
+        if hasattr(self, "stop_btn"):
+            self.stop_btn.setEnabled(self.polling_active and not busy)
+
     def _on_pid_selection_changed(self):
         """Callback when PID selection changes"""
-        # Update selected_pids based on current selection
         self.selected_pids.clear()
         for item in self.pid_list.selectedItems():
             pid = item.data(Qt.ItemDataRole.UserRole)
             self.selected_pids.add(pid)
-        
+
         self.selection_label.setText(f"Selected: {len(self.selected_pids)} PIDs")
-        
-        # Enable buttons if there are selected PIDs and connection is active
-        has_selection = len(self.selected_pids) > 0
-        is_connected = self.active_bus is not None and self.active_bus.connected
-        
-        self.start_btn.setEnabled(has_selection and is_connected and not self.polling_active)
-        self.single_shot_btn.setEnabled(has_selection and is_connected and not self.polling_active)
-    
+        self._refresh_polling_buttons()
+
     def _update_pid_selection(self):
         """Update visual PID selection"""
-        # Temporarily block signals to avoid loops
         self.pid_list.blockSignals(True)
-        
+
         for i in range(self.pid_list.count()):
             item = self.pid_list.item(i)
             pid = item.data(Qt.ItemDataRole.UserRole)
             item.setSelected(pid in self.selected_pids)
-        
+
         self.pid_list.blockSignals(False)
-        
-        # Update label and buttons
+
         self.selection_label.setText(f"Selected: {len(self.selected_pids)} PIDs")
-        has_selection = len(self.selected_pids) > 0
-        is_connected = self.active_bus is not None and self.active_bus.connected
-        self.start_btn.setEnabled(has_selection and is_connected and not self.polling_active)
-        self.single_shot_btn.setEnabled(has_selection and is_connected and not self.polling_active)
+        self._refresh_polling_buttons()
     
     def _start_polling(self):
         """Inicia polling de PIDs"""
@@ -821,12 +1011,9 @@ class OBD2Dialog(QDialog):
         
         self.polling_active = True
         self.poll_timer.start(int(self.poll_interval * 1000))
-        
-        self.start_btn.setEnabled(False)
-        self.stop_btn.setEnabled(True)
-        self.single_shot_btn.setEnabled(False)
         self.pid_list.setEnabled(False)
-        
+        self._refresh_polling_buttons()
+
         # Statistics
         self.request_count = 0
         self.response_count = 0
@@ -838,11 +1025,8 @@ class OBD2Dialog(QDialog):
         self.polling_active = False
         self.poll_timer.stop()
         # Do not stop update_timer - keep it running to refresh connection status
-        
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
-        self.single_shot_btn.setEnabled(True)
         self.pid_list.setEnabled(True)
+        self._refresh_polling_buttons()
         
         self._log_message("⏸ Polling stopped")
     
@@ -862,9 +1046,8 @@ class OBD2Dialog(QDialog):
         
         self._log_message("Single shot - reading selected PIDs...")
         
-        # Temporarily disable buttons
-        self.start_btn.setEnabled(False)
-        self.single_shot_btn.setEnabled(False)
+        self._poll_ui_locked = True
+        self._refresh_polling_buttons()
         self.read_dtc_btn.setEnabled(False)
         
         # Send all requests at once
@@ -894,11 +1077,9 @@ class OBD2Dialog(QDialog):
     def _single_shot_complete(self):
         """Callback after single shot completes"""
         self._log_message(f"Single shot complete - requested {len(self.selected_pids)} PIDs")
-        
-        # Re-enable buttons
-        self.start_btn.setEnabled(True)
-        self.single_shot_btn.setEnabled(True)
+        self._poll_ui_locked = False
         self.read_dtc_btn.setEnabled(True)
+        self._refresh_polling_buttons()
 
     def _detect_vin(self):
         """Request VIN (Service 09 PID 02) and assemble ISO-TP multi-frame response."""
@@ -921,6 +1102,7 @@ class OBD2Dialog(QDialog):
         self.vin_value = None
         if hasattr(self, 'vin_value_label'):
             self.vin_value_label.setText("(detecting...)")
+        self._refresh_polling_buttons()
 
         try:
             # Service 09 (Vehicle information), PID 02 (VIN)
@@ -953,6 +1135,7 @@ class OBD2Dialog(QDialog):
                 if hasattr(self, 'vin_value_label'):
                     self.vin_value_label.setText("(not available)")
         self.receiving_vin = False
+        self._refresh_polling_buttons()
 
     def _process_vin_response(self, msg: CANMessage):
         """Process ISO-TP VIN response frames (0x49 0x02 0x01 + 17 ASCII VIN bytes)."""
@@ -1121,9 +1304,577 @@ class OBD2Dialog(QDialog):
             if dtc_code not in self.dtcs_found:
                 self.dtcs_found.append(dtc_code)
                 self._log_message(f"  • {dtc_code}")
+
+    def _is_vag_dtc_protocol(self) -> bool:
+        if not hasattr(self, "dtc_protocol_combo"):
+            return False
+        return self.dtc_protocol_combo.currentData() == "vag"
+
+    def _selected_vag_module(self) -> Optional[VagModule]:
+        if not hasattr(self, "vag_module_combo"):
+            return None
+        mod = self.vag_module_combo.currentData()
+        return mod if isinstance(mod, VagModule) else None
+
+    def _vag_populate_module_combo(self, modules: List[VagModule]) -> None:
+        if not hasattr(self, "vag_module_combo"):
+            return
+        prev = self._selected_vag_module()
+        prev_addr = prev.logical_addr if prev else None
+        self.vag_module_combo.blockSignals(True)
+        self.vag_module_combo.clear()
+        if not modules:
+            for mod in MODULES.values():
+                label = f"0x{mod.logical_addr:02X}  {mod.name}  · TX 0x{mod.tx_id:03X}"
+                self.vag_module_combo.addItem(label, mod)
+        else:
+            priority = {0x15: 0, 0x14: 1, 0x13: 2, 0x10: 3, 0x19: 4, 0x0E: 5}
+            for mod in sorted(
+                modules,
+                key=lambda m: (priority.get(m.logical_addr, 100), m.logical_addr),
+            ):
+                label = f"0x{mod.logical_addr:02X}  {mod.name}  · TX 0x{mod.tx_id:03X}"
+                self.vag_module_combo.addItem(label, mod)
+        pick = prev_addr if prev_addr is not None else 0x14
+        for i in range(self.vag_module_combo.count()):
+            m = self.vag_module_combo.itemData(i)
+            if isinstance(m, VagModule) and m.logical_addr == pick:
+                self.vag_module_combo.setCurrentIndex(i)
+                break
+        self.vag_module_combo.blockSignals(False)
+
+    def _vag_set_scan_ui_busy(self, busy: bool) -> None:
+        if hasattr(self, "vag_detect_ecus_btn"):
+            self.vag_detect_ecus_btn.setEnabled(not busy)
+        self._set_dtc_buttons_enabled(not busy)
+        if hasattr(self, "vag_module_combo"):
+            self.vag_module_combo.setEnabled(not busy)
+
+    def _vag_detect_ecus(self) -> None:
+        if not self.active_bus or not self.active_bus.bus:
+            QMessageBox.warning(
+                self,
+                "Not Connected",
+                "Conecte ao CAN antes de detectar ECUs VAG.",
+            )
+            return
+        if self.receiving_vag_uds or self.receiving_vag_scan:
+            return
+        if self.polling_active:
+            self._stop_polling()
+        self.receiving_vag_scan = True
+        self.vag_scan_found = []
+        self.vag_scan_addrs = list(range(0x01, 0x80))
+        self._vag_set_scan_ui_busy(True)
+        self._log_message(t("obd2_vag_scanning"))
+        self._vag_scan_probe_next()
+
+    def _vag_scan_probe_next(self) -> None:
+        if not self.receiving_vag_scan:
+            return
+        if not self.vag_scan_addrs:
+            self._vag_scan_finish()
+            return
+        addr = self.vag_scan_addrs.pop(0)
+        self.vag_scan_current_addr = addr
+        tx_id = VAG_TX_BASE + addr
+        self.vag_scan_expect_rx = tx_id + VAG_RX_OFFSET
+        if self.active_bus and self.active_bus.bus:
+            self.active_bus.send(
+                can.Message(
+                    arbitration_id=tx_id,
+                    data=build_single_frame(bytes([0x3E, 0x00])),
+                    is_extended_id=False,
+                )
+            )
+        self.vag_scan_timer.start(80)
+
+    def _vag_scan_on_response(self, msg: CANMessage) -> None:
+        if not self.receiving_vag_scan or self.vag_scan_current_addr is None:
+            return
+        payload = parse_isotp_single(bytes(msg.data or b""))
+        if payload is None:
+            return
+        self.vag_scan_timer.stop()
+        mod = module_at_logical_addr(self.vag_scan_current_addr)
+        if not any(m.logical_addr == mod.logical_addr for m in self.vag_scan_found):
+            self.vag_scan_found.append(mod)
+        self._vag_scan_probe_next()
+
+    def _vag_scan_on_probe_timeout(self) -> None:
+        if not self.receiving_vag_scan:
+            return
+        self._vag_scan_probe_next()
+
+    def _vag_scan_finish(self) -> None:
+        self.receiving_vag_scan = False
+        self.vag_scan_expect_rx = None
+        self.vag_scan_current_addr = None
+        self.vag_scan_timer.stop()
+        self._vag_populate_module_combo(self.vag_scan_found)
+        self._vag_set_scan_ui_busy(False)
+        self._refresh_polling_buttons()
+        n = len(self.vag_scan_found)
+        self._log_message(t("obd2_vag_scan_done").format(n=n))
+        if n == 0:
+            QMessageBox.information(
+                self,
+                t("obd2_vag_detect_ecus"),
+                "Nenhum módulo respondeu (0x01–0x7F).\n"
+                "Verifique ignição, 500 kbps e conexão ao OBD.",
+            )
+
+    def _on_dtc_protocol_changed(self, _index: int = 0) -> None:
+        is_vag = self._is_vag_dtc_protocol()
+        mod = self._selected_vag_module() if is_vag else None
+
+        for attr in ("vag_module_label", "vag_module_combo", "vag_detect_ecus_btn"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                w.setVisible(is_vag)
+        if hasattr(self, "vag_detect_ecus_btn"):
+            self.vag_detect_ecus_btn.setEnabled(is_vag and not self.receiving_vag_scan)
+        if hasattr(self, "vag_target_label"):
+            if is_vag and mod:
+                self.vag_target_label.setText(
+                    f"TX 0x{mod.tx_id:03X} → RX 0x{mod.rx_id:03X}  ·  UDS 19 02 / 14 FF FF FF"
+                )
+                self.vag_target_label.setVisible(True)
+            elif is_vag:
+                self.vag_target_label.setText(t("obd2_vag_scan_prompt"))
+                self.vag_target_label.setVisible(True)
+            else:
+                self.vag_target_label.clear()
+                self.vag_target_label.setVisible(False)
+
+        if hasattr(self, "protocol_info_label"):
+            if is_vag and mod:
+                self.protocol_info_label.setText(
+                    f"VAG · 0x{mod.tx_id:03X}→0x{mod.rx_id:03X}"
+                )
+            else:
+                self.protocol_info_label.setText("0x7DF → 0x7E8–0x7EF")
+
+        if hasattr(self, "detect_vin_btn"):
+            # VIN is OBD-II Service 09; keep available, but clearer in OBD mode
+            self.detect_vin_btn.setVisible(True)
+
+        if is_vag:
+            self.read_dtc_btn.setToolTip(
+                "Ler DTCs do módulo VAG selecionado (UDS 19 02)"
+            )
+            self.clear_dtc_btn.setToolTip(
+                "Apagar DTCs só neste módulo (UDS 14 FF FF FF)"
+            )
+        else:
+            self.read_dtc_btn.setToolTip(
+                "Ler DTCs via broadcast OBD-II (Service 03 → 0x7DF)"
+            )
+            self.clear_dtc_btn.setToolTip(
+                "Apagar DTCs via broadcast OBD-II (Service 04 → 0x7DF)"
+            )
+
+    def _vag_reset_session_state(self) -> None:
+        self.vag_step_timer.stop()
+        self.receiving_vag_uds = False
+        self.vag_operation = None
+        self.vag_clear_phase = None
+        self.vag_clear_attempts = 0
+        self.vag_masks_queue = []
+        self.vag_rx_queue = []
+        self.vag_isotp.reset()
+
+    def _vag_is_reading_dtc_masks(self) -> bool:
+        if self.vag_operation == "read":
+            return True
+        return (
+            self.vag_operation == "clear"
+            and self.vag_clear_phase == "verify"
+        )
+
+    def _vag_send_flow_control(self) -> None:
+        if not self.active_bus or not self.vag_module:
+            return
+        # ISO-TP FC PCI — NOT a UDS Single Frame (see VAG-LeituraDTCPainel.json: 30000055…)
+        fc = can.Message(
+            arbitration_id=self.vag_module.tx_id,
+            data=build_flow_control_frame(block_size=0, st_min=0),
+            is_extended_id=False,
+        )
+        self.active_bus.send(fc)
+        self._add_raw_request(fc, "Flow Control (ISO-TP) VAG")
+
+    def _vag_send_uds(self, uds: bytes, label: str) -> None:
+        if not self.active_bus or not self.vag_module:
+            return
+        request = can.Message(
+            arbitration_id=self.vag_module.tx_id,
+            data=build_single_frame(uds),
+            is_extended_id=False,
+        )
+        self.active_bus.send(request)
+        self._add_raw_request(request, label)
+
+    def _vag_arm_step_timeout(self, ms: int = 5000) -> None:
+        self.vag_step_timer.start(ms)
+
+    def _vag_on_step_timeout(self) -> None:
+        if not self.receiving_vag_uds:
+            return
+        if (
+            self._vag_is_reading_dtc_masks()
+            and self.vag_isotp.is_multiframe_pending
+        ):
+            self.vag_isotp_stalls += 1
+            if self.vag_isotp_stalls < 8:
+                self._log_message("VAG: aguardando frame ISO-TP (CF)…")
+                self._vag_arm_step_timeout(800)
+                return
+            self._log_message("VAG: ISO-TP incompleto — repetindo máscara")
+            self.vag_isotp.reset()
+            self.vag_isotp_stalls = 0
+            self.vag_rx_queue.clear()
+            if (
+                self.vag_current_mask is not None
+                and self.vag_mask_retries_left > 0
+            ):
+                self.vag_mask_retries_left = 0
+                self._vag_resend_current_read_mask()
+                return
+            self._log_message("VAG: ISO-TP incompleto — próxima máscara")
+        if self._vag_is_reading_dtc_masks() and self.vag_masks_queue:
+            self._log_message("VAG: timeout — próxima máscara DTC")
+            self._vag_send_next_read_mask()
+            return
+        if self.vag_operation == "read":
+            self._vag_read_complete()
+        elif self.vag_operation == "clear":
+            if self.vag_clear_phase == "verify":
+                self._vag_on_clear_verify_done()
+            else:
+                self._vag_clear_complete(
+                    success=False,
+                    message="Sem resposta do módulo (timeout).",
+                )
+
+    def _vag_store_dtc_records(self, records: List[DtcRecord]) -> None:
+        for rec in records:
+            if rec.raw in self.vag_dtc_by_raw:
+                continue
+            self.vag_dtc_by_raw[rec.raw] = rec
+            line = format_dtc_record_line(rec)
+            self.vag_dtcs_found.append(line)
+            self._log_message(f"  • {line}")
+
+    def _process_vag_uds_response(self, msg: CANMessage) -> None:
+        self.vag_rx_queue.append(msg)
+        self._vag_drain_isotp_queue()
+
+    def _vag_drain_isotp_queue(self) -> None:
+        if not self.vag_module:
+            return
+        rx = self.vag_module.rx_id
+        while True:
+            idx = next(
+                (i for i, m in enumerate(self.vag_rx_queue) if m.can_id == rx),
+                None,
+            )
+            if idx is None:
+                break
+            queued = self.vag_rx_queue.pop(idx)
+            data = bytes(queued.data or b"")
+            if self.vag_isotp.needs_flow_control(data):
+                self._vag_send_flow_control()
+            payload = self.vag_isotp.feed(data)
+            if payload is None:
+                if self._vag_is_reading_dtc_masks() and self.vag_isotp.is_multiframe_pending:
+                    self._vag_arm_step_timeout()
+                continue
+            self._vag_handle_uds_payload(payload)
+            if is_response_pending(payload):
+                continue
+            break
+
+    def _vag_handle_uds_payload(self, payload: bytes) -> None:
+        if is_response_pending(payload):
+            self._log_message("VAG: ECU ocupada (7F … 78), aguardando…")
+            self.vag_isotp.reset()
+            self.vag_rx_queue.clear()
+            self._vag_arm_step_timeout()
+            return
+
+        self.vag_response_received = True
+        self.vag_step_timer.stop()
+        self.vag_isotp_stalls = 0
+
+        if self._vag_is_reading_dtc_masks():
+            if payload[0] == 0x59 and len(payload) >= 2 and payload[1] == 0x02:
+                dtc_bytes = len(payload) - 3
+                if dtc_bytes > 0 and dtc_bytes % 4 != 0:
+                    self._log_message(
+                        f"VAG: resposta 59 02 truncada ({len(payload)} B) — "
+                        f"hex={payload.hex()}"
+                    )
+                    if (
+                        self.vag_current_mask is not None
+                        and self.vag_mask_retries_left > 0
+                    ):
+                        self.vag_mask_retries_left = 0
+                        self.vag_masks_queue.insert(0, self.vag_current_mask)
+                _avail, records = parse_read_dtc_response(payload)
+                self._vag_store_dtc_records(records)
+                self.vag_rx_queue.clear()
+                self._vag_send_next_read_mask()
+            elif payload[0] == 0x7F:
+                self._log_message(f"VAG read: {describe_negative(payload)}")
+                self.vag_rx_queue.clear()
+                self._vag_send_next_read_mask()
+            else:
+                self._log_message(f"VAG read: resposta inesperada {payload.hex()}")
+                self.vag_rx_queue.clear()
+                self._vag_send_next_read_mask()
+        elif self.vag_operation == "clear":
+            if payload[0] == 0x54:
+                self.vag_clear_attempts += 1
+                self._log_message(
+                    f"VAG: resposta 54 ({self.vag_clear_attempts}/"
+                    f"{self.vag_clear_max_attempts}) — verificando DTCs…"
+                )
+                self._vag_start_clear_verify_read()
+            elif payload[0] == 0x7F:
+                self._vag_clear_complete(
+                    success=False,
+                    message=describe_negative(payload),
+                )
+            else:
+                self._vag_clear_complete(
+                    success=False,
+                    message=f"Resposta inesperada: {payload.hex()}",
+                )
+
+    def _vag_start_clear_verify_read(self) -> None:
+        self.vag_clear_phase = "verify"
+        self.vag_dtc_by_raw = {}
+        self.vag_dtcs_found = []
+        self.vag_isotp.reset()
+        self.vag_isotp_stalls = 0
+        self.vag_rx_queue.clear()
+        self.vag_masks_queue = [mask for mask, _label in DTC_STATUS_MASKS_GUI]
+        self._vag_send_next_read_mask()
+
+    def _vag_on_clear_verify_done(self) -> None:
+        remaining = len(self.vag_dtc_by_raw)
+        if remaining == 0:
+            if self.vag_clear_attempts > 1:
+                msg = (
+                    f"DTCs apagadas ({self.vag_clear_attempts}× 14 FF FF FF, "
+                    "verificação OK)."
+                )
+            else:
+                msg = "DTCs apagadas (resposta 54, verificação OK)."
+            self._vag_clear_complete(success=True, message=msg)
+            return
+
+        if self.vag_clear_attempts < self.vag_clear_max_attempts:
+            self._log_message(
+                f"VAG: ainda {remaining} DTC(s) — repetindo 14 FF FF FF…"
+            )
+            self.vag_clear_phase = "wait_54"
+            self.vag_dtc_by_raw = {}
+            self.vag_dtcs_found = []
+            self.vag_isotp.reset()
+            self.vag_rx_queue.clear()
+            self._vag_send_uds(
+                bytes([0x14, 0xFF, 0xFF, 0xFF]),
+                "Request: VAG Clear DTCs retry (14 FF FF FF)",
+            )
+            self._vag_arm_step_timeout(10000)
+            return
+
+        lines = [
+            format_dtc_record_line(rec)
+            for rec in sorted(
+                self.vag_dtc_by_raw.values(),
+                key=lambda r: r.raw,
+            )
+        ]
+        preview = "\n".join(f"• {line}" for line in lines[:8])
+        self._vag_clear_complete(
+            success=False,
+            message=(
+                f"Ainda {remaining} DTC(s) após {self.vag_clear_max_attempts} "
+                f"tentativas de apagar:\n\n{preview}"
+            ),
+        )
+
+    def _vag_send_next_read_mask(self) -> None:
+        if not self.vag_masks_queue:
+            if self.vag_operation == "clear" and self.vag_clear_phase == "verify":
+                self._vag_on_clear_verify_done()
+            else:
+                self._vag_read_complete()
+            return
+        mask = self.vag_masks_queue.pop(0)
+        self.vag_current_mask = mask
+        self.vag_mask_retries_left = 1
+        self.vag_isotp.reset()
+        self.vag_isotp_stalls = 0
+        self.vag_rx_queue.clear()
+        self._vag_send_uds(
+            bytes([0x19, 0x02, mask]),
+            f"Request: VAG Read DTC (19 02 {mask:02X})",
+        )
+        self._vag_arm_step_timeout()
+
+    def _vag_resend_current_read_mask(self) -> None:
+        if self.vag_current_mask is None:
+            self._vag_send_next_read_mask()
+            return
+        self.vag_isotp.reset()
+        self.vag_isotp_stalls = 0
+        self.vag_rx_queue.clear()
+        mask = self.vag_current_mask
+        self._vag_send_uds(
+            bytes([0x19, 0x02, mask]),
+            f"Request: VAG Read DTC retry (19 02 {mask:02X})",
+        )
+        self._vag_arm_step_timeout()
+
+    def _vag_begin_session(self, operation: str) -> bool:
+        if not self.active_bus or not self.active_bus.bus:
+            QMessageBox.warning(
+                self,
+                "Not Connected",
+                "Cannot access ECU: not connected to CAN bus.",
+            )
+            return False
+        mod = self._selected_vag_module()
+        if mod is None:
+            QMessageBox.warning(
+                self,
+                "VAG UDS",
+                f"{t('obd2_vag_scan_prompt')}",
+            )
+            return False
+
+        self._resume_polling_after_dtcs = bool(getattr(self, "polling_active", False))
+        if self._resume_polling_after_dtcs:
+            self._stop_polling()
+
+        self.vag_module = mod
+        self.vag_operation = operation
+        self.vag_dtcs_found = []
+        self.vag_dtc_by_raw = {}
+        self.vag_isotp_stalls = 0
+        self.vag_rx_queue = []
+        self.vag_response_received = False
+        self.vag_isotp.reset()
+        self.receiving_vag_uds = True
+        self._set_dtc_buttons_enabled(False)
+        self._refresh_polling_buttons()
+        return True
+
+    def _set_dtc_buttons_enabled(self, enabled: bool) -> None:
+        self.read_dtc_btn.setEnabled(enabled)
+        if hasattr(self, "clear_dtc_btn"):
+            self.clear_dtc_btn.setEnabled(enabled)
+        if hasattr(self, "detect_vin_btn"):
+            self.detect_vin_btn.setEnabled(enabled)
+
+    def _vag_finish_session_reenable_buttons(self) -> None:
+        self._vag_reset_session_state()
+        self._set_dtc_buttons_enabled(True)
+        self._refresh_polling_buttons()
+        if getattr(self, "_resume_polling_after_dtcs", False):
+            self._resume_polling_after_dtcs = False
+            try:
+                self._start_polling()
+            except Exception:
+                pass
+
+    def _vag_read_dtcs(self) -> None:
+        if not self._vag_begin_session("read"):
+            return
+        mod = self.vag_module
+        assert mod is not None
+        self._log_message(
+            f"VAG: lendo DTCs — {mod.name} (TX 0x{mod.tx_id:03X}, RX 0x{mod.rx_id:03X})"
+        )
+        self.vag_isotp_stalls = 0
+        self.vag_masks_queue = [mask for mask, _label in DTC_STATUS_MASKS_GUI]
+        self._vag_send_next_read_mask()
+
+    def _vag_read_complete(self) -> None:
+        mod = self.vag_module
+        title = mod.name if mod else "VAG"
+        if not self.vag_response_received:
+            QMessageBox.warning(
+                self,
+                "No Response",
+                f"No response from {title}.\n\n"
+                "Check ignition, gateway routing, and 500 kbps bitrate.",
+            )
+        elif self.vag_dtc_by_raw:
+            lines = [
+                format_dtc_record_line(rec)
+                for rec in sorted(
+                    self.vag_dtc_by_raw.values(),
+                    key=lambda r: r.raw,
+                )
+            ]
+            QMessageBox.warning(
+                self,
+                "DTCs Found",
+                f"{title} — {len(lines)} DTC(s):\n\n"
+                + "\n".join(f"• {d}" for d in lines),
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "No DTCs",
+                f"{title}: no DTCs reported (UDS 19 02).",
+            )
+        self._vag_finish_session_reenable_buttons()
+
+    def _vag_clear_dtcs(self) -> None:
+        mod = self._selected_vag_module()
+        if mod is None:
+            return
+        confirm = QMessageBox.question(
+            self,
+            "Clear DTCs",
+            f"Clear all DTCs on {mod.name}?\n\n"
+            f"UDS 14 FF FF FF → TX 0x{mod.tx_id:03X}\n"
+            "This only affects this control unit, not the whole vehicle.",
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        if not self._vag_begin_session("clear"):
+            return
+        self.vag_clear_phase = "wait_54"
+        self.vag_clear_attempts = 0
+        self.vag_clear_max_attempts = 3
+        self._log_message(f"VAG: apagando DTCs — {mod.name}")
+        self._vag_send_uds(
+            bytes([0x14, 0xFF, 0xFF, 0xFF]),
+            "Request: VAG Clear DTCs (14 FF FF FF)",
+        )
+        self._vag_arm_step_timeout(10000)
+
+    def _vag_clear_complete(self, success: bool, message: str) -> None:
+        mod = self.vag_module
+        title = mod.name if mod else "VAG"
+        if success:
+            QMessageBox.information(self, "Clear DTCs", f"{title}: {message}")
+        else:
+            QMessageBox.warning(self, "Clear DTCs", f"{title}: {message}")
+        self._vag_finish_session_reenable_buttons()
     
     def _read_dtcs(self):
         """Read Diagnostic Trouble Codes (Service 03)"""
+        if self._is_vag_dtc_protocol():
+            self._vag_read_dtcs()
+            return
         if not self.active_bus or not self.active_bus.bus:
             QMessageBox.warning(
                 self,
@@ -1139,11 +1890,6 @@ class OBD2Dialog(QDialog):
 
         self._log_message("Reading DTCs (Service 03)...")
         
-        # Temporarily disable buttons
-        self.start_btn.setEnabled(False)
-        self.single_shot_btn.setEnabled(False)
-        self.read_dtc_btn.setEnabled(False)
-        
         # Clear DTC buffer
         self.dtcs_found = []
         self.dtc_buffer.clear()
@@ -1151,6 +1897,8 @@ class OBD2Dialog(QDialog):
         self.dtc_expected_bytes = None
         self.dtc_response_received = False
         self.receiving_dtcs = True
+        self._set_dtc_buttons_enabled(False)
+        self._refresh_polling_buttons()
         
         try:
             # Envia request (Service 03 = Show stored DTCs)
@@ -1169,9 +1917,8 @@ class OBD2Dialog(QDialog):
         except Exception as e:
             self._log_message(f"Error reading DTCs: {e}")
             self.receiving_dtcs = False
-            self.start_btn.setEnabled(True)
-            self.single_shot_btn.setEnabled(True)
-            self.read_dtc_btn.setEnabled(True)
+            self._set_dtc_buttons_enabled(True)
+            self._refresh_polling_buttons()
     
     def _read_dtcs_complete(self):
         """Callback after DTC read completes"""
@@ -1211,10 +1958,8 @@ class OBD2Dialog(QDialog):
                 "No Diagnostic Trouble Codes found.\n\nVehicle is healthy! ✅"
             )
         
-        # Re-enable buttons
-        self.start_btn.setEnabled(True)
-        self.single_shot_btn.setEnabled(True)
-        self.read_dtc_btn.setEnabled(True)
+        self._set_dtc_buttons_enabled(True)
+        self._refresh_polling_buttons()
 
         # Resume polling if it was active before reading DTCs.
         if getattr(self, "_resume_polling_after_dtcs", False):
@@ -1226,6 +1971,9 @@ class OBD2Dialog(QDialog):
 
     def _clear_dtcs(self):
         """Clear Diagnostic Trouble Codes (Service 04)"""
+        if self._is_vag_dtc_protocol():
+            self._vag_clear_dtcs()
+            return
         if not self.active_bus or not self.active_bus.bus:
             QMessageBox.warning(
                 self,
@@ -1251,13 +1999,9 @@ class OBD2Dialog(QDialog):
             self._stop_polling()
 
         self._log_message("Clearing DTCs (Service 04)...")
-
-        # Disable related buttons briefly to avoid spamming.
-        self.start_btn.setEnabled(False)
-        self.single_shot_btn.setEnabled(False)
-        self.read_dtc_btn.setEnabled(False)
-        if hasattr(self, "clear_dtc_btn"):
-            self.clear_dtc_btn.setEnabled(False)
+        self._poll_ui_locked = True
+        self._set_dtc_buttons_enabled(False)
+        self._refresh_polling_buttons()
 
         try:
             request = can.Message(
@@ -1273,20 +2017,16 @@ class OBD2Dialog(QDialog):
             QTimer.singleShot(800, self._clear_dtcs_complete)
         except Exception as e:
             self._log_message(f"Error clearing DTCs: {e}")
-            self.start_btn.setEnabled(True)
-            self.single_shot_btn.setEnabled(True)
-            self.read_dtc_btn.setEnabled(True)
-            if hasattr(self, "clear_dtc_btn"):
-                self.clear_dtc_btn.setEnabled(True)
+            self._poll_ui_locked = False
+            self._set_dtc_buttons_enabled(True)
+            self._refresh_polling_buttons()
 
     def _clear_dtcs_complete(self):
         """Re-enable buttons after clear request window"""
         self._log_message("Clear DTCs request sent. If supported, DTCs should be cleared.")
-        self.start_btn.setEnabled(True)
-        self.single_shot_btn.setEnabled(True)
-        self.read_dtc_btn.setEnabled(True)
-        if hasattr(self, "clear_dtc_btn"):
-            self.clear_dtc_btn.setEnabled(True)
+        self._poll_ui_locked = False
+        self._set_dtc_buttons_enabled(True)
+        self._refresh_polling_buttons()
 
         # Resume polling if it was active before clearing DTCs.
         if getattr(self, "_resume_polling_after_dtcs", False):
@@ -1436,15 +2176,16 @@ class OBD2Dialog(QDialog):
             success_rate = 0
         
         self.stats_label.setText(
-            f"Requests: {self.request_count} | "
-            f"Responses: {self.response_count} | "
-            f"Success Rate: {success_rate:.1f}%"
+            f"Req {self.request_count} · Rsp {self.response_count} · {success_rate:.0f}%"
         )
         
         # Update connection status (only if single-channel label exists)
         if hasattr(self, 'channel_label') and self.channel_label and self.active_bus:
             bus_name = self.active_bus.config.name if hasattr(self.active_bus, 'config') else "CAN"
             self._update_channel_status(bus_name, self.active_bus.connected)
+
+        # Keep polling buttons consistent with bus / selection / busy state
+        self._refresh_polling_buttons()
     
     def _add_raw_message(self, msg: CANMessage, decoded: str):
         """Add raw message to table"""
@@ -1520,10 +2261,10 @@ class OBD2Dialog(QDialog):
     def _update_channel_status(self, bus_name: str, connected: bool):
         """Update channel status label with colored status"""
         if connected:
-            status_html = "<span style='color: green; font-weight: bold;'>Connected</span>"
+            status_html = "<span style='color: #1a7f1a; font-weight: bold;'>OK</span>"
         else:
-            status_html = "<span style='color: #0066cc; font-weight: bold;'>Simulation</span>"
-        self.channel_label.setText(f"<b>Channel:</b> {bus_name} - {status_html}")
+            status_html = "<span style='color: #0066cc;'>Sim</span>"
+        self.channel_label.setText(f"<b>Ch:</b> {bus_name} {status_html}")
     
     def _change_active_bus(self, index: int):
         """Change active bus"""
@@ -1539,7 +2280,7 @@ class OBD2Dialog(QDialog):
         self.can_bus_manager = can_bus_manager
         if can_bus_manager and can_bus_manager.buses:
             self.active_bus = list(can_bus_manager.buses.values())[0]
-        self.start_btn.setEnabled(len(self.selected_pids) > 0 and self.active_bus is not None)
+        self._refresh_polling_buttons()
     
     def _clear_live_values(self):
         """Limpa todos os valores da tabela Live Values"""
