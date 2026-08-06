@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+---
+
+## [1.2.4] - 2026-08-06
+
+### Added
 - **VAG UDS diagnostics** (`src/vag_uds.py`): ISO-TP on `0x700` + logical address; read/clear DTCs (UDS `0x19` / `0x14`); module presets (ABS, instrument cluster, airbag); ECU scan and ISO-TP reassembly shared by GUI and CLI
 - **VAG event → SAE/ISO map** (`src/vag_dtc_sae_map.py`): lookup from 24-bit VAG DTC bytes to ODIS-style SAE codes
 - **`tools/general/vw/read_dtc.py`**: CLI to read/clear DTCs and scan modules over CAN (slcan/USB auto-detect)
