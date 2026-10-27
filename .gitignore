@@ -71,7 +71,17 @@ docs/ARTICLE_CAN_ANALYZER_EN.md
 # Saved logs/sessions (can be large; use for local testing only)
 tools/saves/
 
+# VW MQB BAP test captures (AID / layout / ESC JSON + inject session logs)
+tools/general/vw/mqb_bap_tests/**
+!tools/general/vw/mqb_bap_tests/INDEX.txt
+!tools/general/vw/mqb_bap_tests/**/MANIFEST.txt
+
 # Others
 COMMIT_MESSAGE.txt
 
 .cursor
+
+tools/general/vw/bap_aid_inject.py
+tools/general/vw/bap_diff.py
+tools/general/vw/bap_notify.py
+tools/general/vw/mqb_bap_tests/
