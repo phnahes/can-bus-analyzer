@@ -392,6 +392,36 @@ The application includes **automatic device detection** on all supported OSes:
 | **macOS**  | `/dev/cu.usbserial*`, `/dev/cu.usbmodem*` | — |
 | **Linux**  | `/dev/ttyUSB0`, `/dev/ttyACM0`           | `can0`, `vcan0` |
 
+### SocketCAN on Linux (interface state)
+
+SocketCAN bit timing belongs to the kernel, not to the application: python-can
+silently ignores `bitrate` for this backend. On macOS/SLCAN the bitrate and
+listen-only flag *are* sent to the adapter, so the setting works as shown in
+the UI.
+
+On Linux the app therefore:
+
+- lists the real interfaces (`ip -j -d link show type can`) when you press
+  **Scan Devices**, including their state and current bitrates;
+- **checks** the link on connect and, if it is down, shows the exact command:
+  ```bash
+  sudo ip link set dev can2 up type can bitrate 500000
+  ```
+  with a copy button and an opt-in **Bring up now** (runs through `pkexec`, so
+  you get the normal desktop authorization prompt — the app never runs sudo
+  silently);
+- with **Bring interface up on connect** enabled per bus, it configures and
+  brings the link up for you;
+- reports the bitrate the kernel is really using in the status bar
+  (`500k→1000k` when they differ).
+
+CAN FD (for adapters running candleLight/CANnectivity firmware) is configured
+on the link, and is not supported by the app yet:
+
+```bash
+sudo ip link set dev can0 up type can bitrate 500000 dbitrate 5000000 fd on
+```
+
 ### Connection Settings
 
 Configure in **Settings** dialog (Ctrl+,):
@@ -581,7 +611,14 @@ Settings are **automatically saved** to `config.json` in the application directo
 
 **Location:** `./config.json`
 
-**Settings dialog** is split into **General Settings** (language, theme, default save folder, update check, TX panel on startup) and **CAN Bus Settings** (simulation mode, multi-CAN).
+**Settings dialog** is split into **General Settings** (language, theme, default save folder, update check, TX panel on startup) and **CAN Bus Settings** (simulation mode, multi-CAN, performance limits).
+
+**Performance limits** (CAN Bus tab) exist because a bus can be faster than the screen:
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `max_tracer_rows` | `20000` | Tracer rows kept on screen. Oldest rows are dropped when the limit is reached; `0` = unlimited. Saving/exporting still uses every received frame. |
+| `rx_queue_size` | `50000` | Frames buffered while the UI catches up. When full, new frames are dropped and counted as `Dropped` in the status bar. |
 
 **Default save folders:** Unless you set **Save Directory** (key `saves_base_dir`), the app uses subfolders under `~/CAN Analyzer/saves/` — for example `traces/`, `monitor/`, `tx/`, and feature-specific folders for exports (Gateway, FTCAN, OBD-II, BAP, Bit Field, etc.). An empty `saves_base_dir` means “use the default root” (`~/CAN Analyzer/saves`).
 
@@ -595,6 +632,8 @@ Settings are **automatically saved** to `config.json` in the application directo
   "show_tx_panel_on_startup": true,
   "timestamp": true,
   "simulation_mode": false,
+  "max_tracer_rows": 20000,
+  "rx_queue_size": 50000,
   "can_buses": [
     {
       "name": "CAN1",
@@ -610,7 +649,8 @@ Settings are **automatically saved** to `config.json` in the application directo
       "channel": "can0",
       "baudrate": 250000,
       "interface": "socketcan",
-      "listen_only": true
+      "listen_only": true,
+      "bring_up": true
     }
   ]
 }
@@ -670,6 +710,7 @@ On **macOS**, the modifier is shown and works as **Command (⌘)**. Shortcuts ar
 | [docs/GATEWAY.md](docs/GATEWAY.md) | **CAN Gateway** — Complete documentation: bidirectional routes, blocking, modification, loop prevention |
 | [docs/INTERNATIONALIZATION.md](docs/INTERNATIONALIZATION.md) | Internationalization (i18n): adding and editing translations |
 | [docs/RELEASE_MANUAL.md](docs/RELEASE_MANUAL.md) | How to create a release manually on GitHub |
+| [docs/TESTING.md](docs/TESTING.md) | Test suite: headless Qt, virtual CAN, scaling guards, load benchmark |
 | [docs/TOOLS.md](docs/TOOLS.md) | Overview of tools and scripts in the repository |
 
 ### Protocol Documentation
