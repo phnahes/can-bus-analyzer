@@ -282,11 +282,11 @@ Example: 0x17333310
 **Extraction**:
 ```python
 base_id  = (can_id >> 16) & 0xFFFF
-lsg_hint = (can_id >> 8) & 0x3F
+lsg_hint = (can_id >> 8) & 0xFF
 endpoint = can_id & 0xFF
 ```
 
-**Important**: This layout is a heuristic observed in some vehicle networks. Not all extended ID BAP traffic follows this pattern. The decoder uses this as a hint for analysis, not as a strict rule.
+**Important**: This layout is a heuristic observed in some vehicle networks. Not all extended ID BAP traffic follows this pattern. The decoder uses this as a hint for analysis, not as a strict rule. On MQB the LSG can exceed `0x3F` (`0x45` = AID, `0x52`, `0x5B`), so the full byte must be kept — masking with `0x3F` aliases `0x45` to `0x05`.
 
 ---
 

@@ -62,7 +62,7 @@ LSG_MASK = 0x1F                # Bottom 5 bits of first header byte
 FCT_MASK = 0x3F                # Bottom 6 bits of second header byte
 
 # MQB CAN ID bit masks (29-bit extended ID)
-MQB_LSG_MASK = 0x3F            # Bits 8-13 contain LSG
+MQB_LSG_MASK = 0xFF            # Bits 8-15 contain the full LSG byte
 MQB_LSG_SHIFT = 8              # Shift to extract LSG from CAN ID
 MQB_ENDPOINT_MASK = 0xFF       # Bottom 8 bits contain endpoint address
 
@@ -187,7 +187,11 @@ class BAPDecoder:
         Extract BAP fields from MQB 29-bit CAN ID.
         
         MQB embeds LSG and endpoint in the extended CAN ID.
-        Example: 0x17333310 -> base=0x1733, lsg=0x33, endpoint=0x10
+        Example: 0x17334510 -> base=0x1733, lsg=0x45, endpoint=0x10
+
+        The LSG occupies the full byte at bits 8-15. Values above 0x3F are
+        common on MQB (0x45 = AID, 0x52, 0x5B), so masking with 0x3F would
+        alias them (0x45 -> 0x05) and break LSG filters/grouping.
         """
         return {
             "base_id": (can_id >> 16) & 0xFFFF,
