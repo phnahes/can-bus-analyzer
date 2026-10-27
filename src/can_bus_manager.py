@@ -8,6 +8,7 @@ Supports:
 - Connect/disconnect all or individual buses
 """
 
+import re
 import threading
 import time
 from typing import Optional, Callable, Dict, List
@@ -21,6 +22,16 @@ except ImportError:
     print("python-can not installed. Simulation mode activated.")
 
 from .models import CANMessage, GatewayConfig, GatewayRoute
+from .can_interface_setup import (
+    CAN_CHANNEL_RE,
+    InterfaceDownError,
+    bring_up,
+    build_up_command,
+    format_command,
+    get_link,
+    ip_available,
+    sys_is_linux,
+)
 
 
 @dataclass
@@ -32,6 +43,11 @@ class CANBusConfig:
     listen_only: bool = True
     interface: str = 'socketcan'  # socketcan, slcan, etc.
     receive_own_messages: bool = True  # if True, this channel sees its own TX (for display)
+    # SocketCAN: configure/bring the link up on connect (needs pkexec/sudo).
+    bring_up: bool = False
+    fd: bool = False
+    dbitrate: int = 0
+    tty_baudrate: int = 0  # SLCAN USB-serial speed (0 = python-can default)
     
     def __post_init__(self):
         """Validate configuration"""
@@ -58,12 +74,17 @@ class CANBusInstance:
         self._last_message_time = 0  # Track last message received time
         self._watchdog_timeout = 10.0  # Seconds without messages before checking connection
         self._watchdog_thread: Optional[threading.Thread] = None
+        self.last_error: Optional[Exception] = None  # Why connect() failed, if it did
+        self.interface: Optional[str] = None  # Interface actually used
+        self.actual_bitrate: Optional[int] = None  # Kernel bitrate (SocketCAN)
     
     def connect(self, simulation: bool = False) -> bool:
         """Connect to the CAN bus"""
         if self.connected:
             return True
-        
+
+        self.last_error = None
+
         try:
             if simulation or not CAN_AVAILABLE:
                 print(f"[{self.config.name}] {'Simulation mode' if simulation else 'CAN not available, simulation mode'}")
@@ -76,27 +97,17 @@ class CANBusInstance:
                 )
                 self.thread.start()
                 return True
-            
-            # Detect interface type from channel
-            interface = self.config.interface
-            channel = self.config.channel
-            is_serial = (channel.startswith('/dev/tty') or channel.startswith('/dev/cu.') or
-                        channel.startswith('COM'))
-            if is_serial:
-                interface = 'slcan'
-            elif channel in ['can0', 'can1', 'vcan0', 'vcan1']:
-                interface = 'socketcan'
-            
-            # receive_own_messages=True: the channel that sends also sees its own frames
-            # (so e.g. CAN2 TX appears in CAN2 receive pane). Set False to hide own TX.
-            receive_own = getattr(self.config, 'receive_own_messages', True)
-            self.bus = can.interface.Bus(
-                channel=self.config.channel,
-                interface=interface,
-                bitrate=self.config.baudrate,
-                receive_own_messages=receive_own
-            )
-            
+
+            interface = self._resolve_interface()
+            self.interface = interface
+
+            # SocketCAN: the kernel owns bit timing, so make sure the link is up
+            # (and, when asked, configured) before opening the socket.
+            if interface == 'socketcan':
+                self._prepare_socketcan()
+
+            self.bus = can.interface.Bus(**self._bus_kwargs(interface))
+
             self.connected = True
             self.running = True
             self._last_message_time = time.time()  # Initialize watchdog timer
@@ -123,8 +134,150 @@ class CANBusInstance:
             
         except Exception as e:
             print(f"[{self.config.name}] Connection failed: {e}")
+            self.last_error = e
             self.connected = False
             return False
+
+    def _resolve_interface(self) -> str:
+        """Pick the backend from the channel name, falling back to the config."""
+        channel = str(self.config.channel)
+        interface = self.config.interface or 'socketcan'
+
+        if (channel.startswith('/dev/tty') or channel.startswith('/dev/cu.')
+                or channel.startswith('COM')):
+            return 'slcan'
+        if CAN_CHANNEL_RE.match(channel):
+            return 'socketcan'
+        return interface
+
+    def _bus_kwargs(self, interface: str) -> Dict:
+        """Backend-specific arguments.
+
+        ``bitrate`` is deliberately not passed to SocketCAN: python-can stores
+        it and never applies it, which used to make the UI report a bitrate the
+        kernel was not using.
+        """
+        kwargs = {
+            'channel': self.config.channel,
+            'interface': interface,
+            'receive_own_messages': getattr(self.config, 'receive_own_messages', True),
+        }
+
+        if interface == 'socketcan':
+            if getattr(self.config, 'fd', False):
+                kwargs['fd'] = True
+            return kwargs
+
+        if interface in ('slcan', 'serial'):
+            kwargs['bitrate'] = self.config.baudrate
+            kwargs['listen_only'] = bool(self.config.listen_only)
+            tty_baudrate = getattr(self.config, 'tty_baudrate', 0)
+            if tty_baudrate:
+                kwargs['tty_baudrate'] = int(tty_baudrate)
+            return kwargs
+
+        # USB backends (gs_usb, candle, ...)
+        kwargs['bitrate'] = self.config.baudrate
+        if getattr(self.config, 'listen_only', False):
+            kwargs['listen_only'] = True
+        if getattr(self.config, 'fd', False):
+            kwargs['fd'] = True
+            kwargs['data_bitrate'] = int(self.config.dbitrate or self.config.baudrate)
+        return kwargs
+
+    def _prepare_socketcan(self):
+        """Validate (and optionally configure) the SocketCAN link before binding."""
+        if not sys_is_linux():
+            return
+
+        if not ip_available():
+            # No `ip` tool: let python-can try and report the real error.
+            print(
+                f"[{self.config.name}] Warning: 'ip' not found, skipping "
+                f"SocketCAN link check for {self.config.channel}"
+            )
+            return
+
+        channel = str(self.config.channel)
+        link = get_link(channel, use_cache=False)
+
+        wanted_fd = bool(getattr(self.config, 'fd', False))
+        argv = build_up_command(
+            channel,
+            self.config.baudrate,
+            dbitrate=getattr(self.config, 'dbitrate', 0) or None,
+            fd=wanted_fd,
+            listen_only=bool(self.config.listen_only),
+        )
+        command = format_command(argv)
+
+        if link is None:
+            raise InterfaceDownError(
+                channel,
+                command=command,
+                reason="not found",
+                detail=(
+                    f"Interface '{channel}' not found. Check that the adapter is "
+                    f"plugged in and that the kernel driver is loaded."
+                ),
+            )
+
+        if wanted_fd and not link.fd:
+            raise InterfaceDownError(
+                channel,
+                command=command,
+                reason="not configured for CAN FD",
+                detail=f"{channel}: CAN FD requested but the link is not FD ({link.summary})",
+            )
+
+        needs_setup = (not link.up) or (wanted_fd and not link.fd)
+
+        if not needs_setup:
+            self.actual_bitrate = link.bitrate
+            if link.bitrate and link.bitrate != self.config.baudrate:
+                print(
+                    f"[{self.config.name}] Warning: {channel} is up at "
+                    f"{link.bitrate} bps, config says {self.config.baudrate} bps "
+                    f"(SocketCAN bitrate is set by the kernel)"
+                )
+            if self.config.listen_only and not link.listen_only:
+                print(
+                    f"[{self.config.name}] Warning: listen-only requested but not "
+                    f"active on {channel}; use 'ip link set {channel} type can "
+                    f"listen-only on' to enforce it."
+                )
+            return
+
+        if not self.config.bring_up:
+            raise InterfaceDownError(
+                channel,
+                command=command,
+                reason="down" if not link.up else "not configured as requested",
+                detail=(
+                    f"{channel} is {link.summary}. Enable 'Bring interface up on "
+                    f"connect' in Settings or run the command manually."
+                ),
+            )
+
+        ok, output, argv = bring_up(
+            channel,
+            self.config.baudrate,
+            dbitrate=getattr(self.config, 'dbitrate', 0) or None,
+            fd=wanted_fd,
+            listen_only=bool(self.config.listen_only),
+        )
+        link = get_link(channel)
+
+        if not ok or link is None or not link.up:
+            raise InterfaceDownError(
+                channel,
+                command=format_command(argv),
+                reason="setup failed",
+                detail=output or "the interface did not come up",
+            )
+
+        print(f"[{self.config.name}] Interface configured: {channel} ({link.summary})")
+        self.actual_bitrate = link.bitrate
     
     def disconnect(self):
         """Disconnect from the CAN bus"""
@@ -369,6 +522,9 @@ class CANBusManager:
         
         # Statistics per route (for bidirectional tracking)
         self.route_stats: Dict[str, int] = {}  # key: "source->destination", value: count
+
+        # Last error per bus name (why connect() failed)
+        self.connect_errors: Dict[str, Exception] = {}
     
     def add_bus(self, config: CANBusConfig) -> bool:
         """Add a CAN bus to the manager"""
@@ -398,9 +554,12 @@ class CANBusManager:
     
     def connect_all(self, simulation: bool = False) -> Dict[str, bool]:
         """Connect all buses. Returns dict of {bus_name: success}"""
+        self.connect_errors = {}
         results = {}
         for name, bus in self.buses.items():
             results[name] = bus.connect(simulation=simulation)
+            if not results[name] and bus.last_error is not None:
+                self.connect_errors[name] = bus.last_error
         return results
     
     def connect_bus(self, name: str) -> bool:
@@ -494,8 +653,9 @@ class CANBusManager:
             'name': bus.config.name,
             'channel': bus.config.channel,
             'baudrate': bus.config.baudrate,
+            'actual_bitrate': bus.actual_bitrate,
             'listen_only': bus.config.listen_only,
-            'interface': bus.config.interface,
+            'interface': bus.interface or bus.config.interface,
             'connected': bus.connected
         }
     

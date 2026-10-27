@@ -374,7 +374,18 @@ class SettingsDialog(QDialog):
         serial_info.setStyleSheet("color: gray; font-size: 10px;")
         serial_info.setWordWrap(True)
         bus_layout.addWidget(serial_info)
-        
+
+        # Row 5: SocketCAN link setup
+        bring_up_check = QCheckBox(t('multican_bring_up'))
+        bring_up_check.setChecked(bus_config.get('bring_up', False))
+        bring_up_check.setToolTip(t('tooltip_bring_up'))
+        bus_layout.addWidget(bring_up_check)
+
+        socketcan_info = QLabel(t('multican_bring_up_info'))
+        socketcan_info.setStyleSheet("color: gray; font-size: 10px;")
+        socketcan_info.setWordWrap(True)
+        bus_layout.addWidget(socketcan_info)
+
         bus_widget.setLayout(bus_layout)
         
         # Store references to inputs
@@ -384,6 +395,7 @@ class SettingsDialog(QDialog):
         bus_widget.listen_only_check = listen_only_check
         bus_widget.com_baudrate_combo = com_baudrate_combo
         bus_widget.rts_hs_check = rts_hs_check
+        bus_widget.bring_up_check = bring_up_check
         
         # Add to layout and list
         self.can_buses_layout.insertWidget(len(self.can_bus_widgets), bus_widget)
@@ -412,7 +424,29 @@ class SettingsDialog(QDialog):
     
     def _scan_device_for_bus(self, channel_input):
         """Scan and select device for a specific CAN bus"""
+        # Linux: list real SocketCAN interfaces first (cheap, no root needed).
+        try:
+            from ..can_interface_setup import list_can_interfaces, sys_is_linux
+
+            links = list_can_interfaces() if sys_is_linux() else []
+        except Exception as e:
+            print(f"Could not list CAN interfaces: {e}")
+            links = []
+
+        if links:
+            existing = {channel_input.itemText(i) for i in range(channel_input.count())}
+            for link in links:
+                if link.name not in existing:
+                    channel_input.addItem(link.name)
+            channel_input.setToolTip(
+                "\n".join(f"{link.name}: {link.summary}" for link in links)
+            )
+            if channel_input.currentText() not in {link.name for link in links}:
+                channel_input.setCurrentText(links[0].name)
+
         if not self.usb_monitor:
+            if links:
+                return
             QMessageBox.warning(self, t('warning'), t('msg_usb_monitor_not_available'))
             return
         
@@ -458,6 +492,14 @@ class SettingsDialog(QDialog):
                     f"The baudrate has been updated in the configuration."
                 )
 
+    @staticmethod
+    def _parse_com_baudrate(value: str) -> int:
+        """'115200 bit/s' -> 115200 (0 when unparsable)."""
+        try:
+            return int(str(value).split()[0])
+        except (ValueError, IndexError):
+            return 0
+
     def _browse_saves_base_dir(self):
         """Browse for saves base directory."""
         start_dir = self.saves_base_dir_input.text().strip() or str(get_default_saves_root_dir())
@@ -502,7 +544,9 @@ class SettingsDialog(QDialog):
                 'baudrate': baudrate,
                 'interface': interface,
                 'listen_only': listen_only,
+                'bring_up': widget.bring_up_check.isChecked(),
                 'com_baudrate': com_baudrate,
+                'tty_baudrate': self._parse_com_baudrate(com_baudrate),
                 'rts_hs': rts_hs
             })
         

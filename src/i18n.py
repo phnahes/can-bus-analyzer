@@ -1367,6 +1367,55 @@ class I18n:
             'de': 'RX-Warteschlangengröße',
             'fr': 'Taille de la file RX'
         },
+        'iface_setup_title': {
+            'en': 'CAN interface not ready',
+            'pt': 'Interface CAN não está pronta',
+            'es': 'La interfaz CAN no está lista',
+            'de': 'CAN-Schnittstelle nicht bereit',
+            'fr': "L'interface CAN n'est pas prête"
+        },
+        'iface_setup_info': {
+            'en': 'SocketCAN interfaces must be configured and brought up outside the application. You can run the command below, or let the app do it with administrator rights.',
+            'pt': 'Interfaces SocketCAN precisam ser configuradas e ativadas fora da aplicação. Você pode rodar o comando abaixo ou deixar o app fazer isso com direitos de administrador.',
+            'es': 'Las interfaces SocketCAN deben configurarse y activarse fuera de la aplicación. Puede ejecutar el comando de abajo o dejar que la app lo haga con permisos de administrador.',
+            'de': 'SocketCAN-Schnittstellen müssen außerhalb der Anwendung konfiguriert und aktiviert werden. Sie können den Befehl unten ausführen oder die App dies mit Administratorrechten tun lassen.',
+            'fr': "Les interfaces SocketCAN doivent être configurées et activées en dehors de l'application. Vous pouvez exécuter la commande ci-dessous ou laisser l'application le faire avec les droits d'administrateur."
+        },
+        'iface_setup_needs_root': {
+            'en': 'Changing a CAN interface requires root. The app never runs sudo silently: you will get a normal authorization prompt.',
+            'pt': 'Alterar uma interface CAN exige root. O app nunca roda sudo silenciosamente: você verá um pedido de autorização normal.',
+            'es': 'Cambiar una interfaz CAN requiere root. La app nunca ejecuta sudo en silencio: verá una solicitud de autorización normal.',
+            'de': 'Das Ändern einer CAN-Schnittstelle erfordert root. Die App führt niemals still sudo aus: Sie erhalten eine normale Autorisierungsabfrage.',
+            'fr': "Modifier une interface CAN nécessite root. L'application n'exécute jamais sudo en silence : une demande d'autorisation normale s'affichera."
+        },
+        'iface_setup_copy': {
+            'en': 'Copy command',
+            'pt': 'Copiar comando',
+            'es': 'Copiar comando',
+            'de': 'Befehl kopieren',
+            'fr': 'Copier la commande'
+        },
+        'iface_setup_bring_up': {
+            'en': 'Bring up now',
+            'pt': 'Ativar agora',
+            'es': 'Activar ahora',
+            'de': 'Jetzt aktivieren',
+            'fr': 'Activer maintenant'
+        },
+        'iface_setup_failed': {
+            'en': 'Could not configure {channel}: {detail}',
+            'pt': 'Não foi possível configurar {channel}: {detail}',
+            'es': 'No se pudo configurar {channel}: {detail}',
+            'de': '{channel} konnte nicht konfiguriert werden: {detail}',
+            'fr': "Impossible de configurer {channel} : {detail}"
+        },
+        'iface_setup_failed_hint': {
+            'en': 'The interface could not be configured automatically. Run the command manually (see the dialog) and try connecting again.',
+            'pt': 'Não foi possível configurar a interface automaticamente. Rode o comando manualmente (veja o diálogo) e tente conectar de novo.',
+            'es': 'No se pudo configurar la interfaz automáticamente. Ejecute el comando manualmente (vea el diálogo) e intente conectar de nuevo.',
+            'de': 'Die Schnittstelle konnte nicht automatisch konfiguriert werden. Führen Sie den Befehl manuell aus und versuchen Sie erneut zu verbinden.',
+            'fr': "L'interface n'a pas pu être configurée automatiquement. Exécutez la commande manuellement (voir la boîte de dialogue) et réessayez."
+        },
         'tooltip_rx_queue_size': {
             'en': 'Frames buffered while the UI catches up. When full, new frames are dropped and shown as "Dropped" in the status bar.',
             'pt': 'Mensagens em buffer enquanto a interface acompanha. Quando enche, novas mensagens são descartadas e aparecem como "Dropped" na barra de status.',
@@ -1408,6 +1457,27 @@ class I18n:
             'es': 'Solo Escucha',
             'de': 'Nur Zuhören',
             'fr': 'Écoute Seulement'
+        },
+        'multican_bring_up': {
+            'en': 'Bring interface up on connect (SocketCAN)',
+            'pt': 'Ativar interface ao conectar (SocketCAN)',
+            'es': 'Activar la interfaz al conectar (SocketCAN)',
+            'de': 'Schnittstelle beim Verbinden aktivieren (SocketCAN)',
+            'fr': "Activer l'interface à la connexion (SocketCAN)"
+        },
+        'tooltip_bring_up': {
+            'en': 'Runs "ip link set <if> up type can bitrate ..." with administrator rights (pkexec). If disabled, the app only checks the link and shows the command when it is down.',
+            'pt': 'Executa "ip link set <if> up type can bitrate ..." com direitos de administrador (pkexec). Se desativado, o app apenas verifica o link e mostra o comando quando está down.',
+            'es': 'Ejecuta "ip link set <if> up type can bitrate ..." con permisos de administrador (pkexec). Si está desactivado, la app solo verifica el enlace y muestra el comando cuando está down.',
+            'de': 'Führt "ip link set <if> up type can bitrate ..." mit Administratorrechten (pkexec) aus. Wenn deaktiviert, prüft die App nur den Link und zeigt den Befehl, wenn er down ist.',
+            'fr': "Exécute « ip link set <if> up type can bitrate ... » avec les droits d'administrateur (pkexec). Si désactivé, l'app vérifie seulement le lien et affiche la commande lorsqu'il est down."
+        },
+        'multican_bring_up_info': {
+            'en': 'On Linux, SocketCAN bitrate and listen-only are set by the kernel, not by the app.',
+            'pt': 'No Linux, bitrate e listen-only do SocketCAN são definidos pelo kernel, não pelo app.',
+            'es': 'En Linux, el bitrate y el listen-only de SocketCAN los define el kernel, no la app.',
+            'de': 'Unter Linux werden Bitrate und Listen-Only von SocketCAN vom Kernel gesetzt, nicht von der App.',
+            'fr': "Sous Linux, le bitrate et le listen-only de SocketCAN sont définis par le noyau, pas par l'app."
         },
         'btn_add_can': {
             'en': 'Add CAN',
