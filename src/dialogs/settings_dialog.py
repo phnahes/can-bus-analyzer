@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QComboBox, QCheckBox, QDialogButtonBox, QPushButton,
     QGroupBox, QScrollArea, QWidget, QMessageBox, QFileDialog, QTabWidget,
-    QRadioButton,
+    QRadioButton, QSpinBox,
 )
 from PyQt6.QtCore import Qt
 
@@ -225,6 +225,47 @@ class SettingsDialog(QDialog):
         
         multican_group.setLayout(multican_layout)
         can_layout.addWidget(multican_group)
+
+        # --- Performance limits (UI can be slower than the bus) ---
+        perf_group = QGroupBox(t('settings_section_performance'))
+        perf_layout = QVBoxLayout()
+
+        perf_info = QLabel(t('settings_perf_info'))
+        perf_info.setStyleSheet(colors['info_text'])
+        perf_info.setWordWrap(True)
+        perf_layout.addWidget(perf_info)
+
+        tracer_row = QHBoxLayout()
+        tracer_row.addWidget(QLabel(t('label_max_tracer_rows') + ":"))
+        self.max_tracer_rows_input = QSpinBox()
+        self.max_tracer_rows_input.setRange(0, 1_000_000)
+        self.max_tracer_rows_input.setSingleStep(5000)
+        self.max_tracer_rows_input.setValue(
+            self.config.get('max_tracer_rows', 20000)
+        )
+        self.max_tracer_rows_input.setToolTip(t('tooltip_max_tracer_rows'))
+        self.max_tracer_rows_input.setMaximumWidth(140)
+        tracer_row.addWidget(self.max_tracer_rows_input)
+        tracer_row.addStretch()
+        perf_layout.addLayout(tracer_row)
+
+        queue_row = QHBoxLayout()
+        queue_row.addWidget(QLabel(t('label_rx_queue_size') + ":"))
+        self.rx_queue_size_input = QSpinBox()
+        self.rx_queue_size_input.setRange(1000, 1_000_000)
+        self.rx_queue_size_input.setSingleStep(5000)
+        self.rx_queue_size_input.setValue(
+            self.config.get('rx_queue_size', 50000)
+        )
+        self.rx_queue_size_input.setToolTip(t('tooltip_rx_queue_size'))
+        self.rx_queue_size_input.setMaximumWidth(140)
+        queue_row.addWidget(self.rx_queue_size_input)
+        queue_row.addStretch()
+        perf_layout.addLayout(queue_row)
+
+        perf_group.setLayout(perf_layout)
+        can_layout.addWidget(perf_group)
+
         can_layout.addStretch()
         tabs.addTab(can_tab, t('settings_tab_can_bus'))
         
@@ -485,5 +526,7 @@ class SettingsDialog(QDialog):
             'check_updates_on_startup': self.check_updates_on_startup_check.isChecked(),
             'show_tx_panel_on_startup': self.tx_startup_show_radio.isChecked(),
             'simulation_mode': self.simulation_mode_check.isChecked(),
+            'max_tracer_rows': self.max_tracer_rows_input.value(),
+            'rx_queue_size': self.rx_queue_size_input.value(),
             'can_buses': can_buses
         }

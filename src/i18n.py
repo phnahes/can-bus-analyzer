@@ -1332,6 +1332,48 @@ class I18n:
             'de': 'Multi-CAN-Konfiguration',
             'fr': 'Configuration Multi-CAN'
         },
+        'settings_section_performance': {
+            'en': 'Performance',
+            'pt': 'Desempenho',
+            'es': 'Rendimiento',
+            'de': 'Leistung',
+            'fr': 'Performances'
+        },
+        'settings_perf_info': {
+            'en': 'Display limits used when the bus is faster than the screen.',
+            'pt': 'Limites de exibição usados quando o barramento é mais rápido que a tela.',
+            'es': 'Límites de visualización usados cuando el bus es más rápido que la pantalla.',
+            'de': 'Anzeigegrenzen, wenn der Bus schneller als der Bildschirm ist.',
+            'fr': "Limites d'affichage lorsque le bus est plus rapide que l'écran."
+        },
+        'label_max_tracer_rows': {
+            'en': 'Tracer rows kept',
+            'pt': 'Linhas mantidas no Tracer',
+            'es': 'Filas mantenidas en Tracer',
+            'de': 'Behaltene Tracer-Zeilen',
+            'fr': 'Lignes conservées en Tracer'
+        },
+        'tooltip_max_tracer_rows': {
+            'en': 'Oldest rows are removed once the limit is reached (0 = unlimited). Saving and exporting still use every received frame.',
+            'pt': 'As linhas mais antigas são removidas ao atingir o limite (0 = ilimitado). Salvar e exportar continuam usando todas as mensagens recebidas.',
+            'es': 'Las filas más antiguas se eliminan al alcanzar el límite (0 = ilimitado). Guardar y exportar siguen usando todas las tramas recibidas.',
+            'de': 'Älteste Zeilen werden bei Erreichen des Limits entfernt (0 = unbegrenzt). Speichern/Exportieren nutzt weiterhin alle Frames.',
+            'fr': "Les lignes les plus anciennes sont supprimées une fois la limite atteinte (0 = illimité). L'enregistrement et l'export utilisent toujours toutes les trames reçues."
+        },
+        'label_rx_queue_size': {
+            'en': 'RX queue size',
+            'pt': 'Tamanho da fila RX',
+            'es': 'Tamaño de la cola RX',
+            'de': 'RX-Warteschlangengröße',
+            'fr': 'Taille de la file RX'
+        },
+        'tooltip_rx_queue_size': {
+            'en': 'Frames buffered while the UI catches up. When full, new frames are dropped and shown as "Dropped" in the status bar.',
+            'pt': 'Mensagens em buffer enquanto a interface acompanha. Quando enche, novas mensagens são descartadas e aparecem como "Dropped" na barra de status.',
+            'es': 'Tramas en búfer mientras la interfaz se pone al día. Cuando se llena, las nuevas se descartan y aparecen como "Dropped" en la barra de estado.',
+            'de': 'Gepufferte Frames, während die Oberfläche aufholt. Bei vollem Puffer werden neue Frames verworfen und als "Dropped" angezeigt.',
+            'fr': "Trames mises en mémoire tampon pendant que l'interface rattrape. Une fois pleine, les nouvelles trames sont ignorées et affichées comme « Dropped »."
+        },
         'multican_name': {
             'en': 'Name',
             'pt': 'Nome',

@@ -20,7 +20,12 @@ class StateInitializer:
         parent.can_bus: Optional[can.BusABC] = None
         parent.can_bus_manager = None
         parent.receive_thread: Optional[threading.Thread] = None
-        parent.message_queue = queue.Queue()
+        # Bounded: on overload we drop frames instead of stalling the event loop.
+        queue_size = 50000
+        if getattr(parent, 'config', None):
+            queue_size = parent.config.get('rx_queue_size', queue_size) or 50000
+        parent.message_queue = queue.Queue(maxsize=queue_size)
+        parent._dropped_frames = 0
         parent.received_messages: List = []
         parent.transmit_messages: List[Dict] = []
     

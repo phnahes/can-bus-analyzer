@@ -80,6 +80,17 @@ def make_msg():
     return _make
 
 
+class _RecordingStub:
+    def __init__(self):
+        self.messages = []
+
+    def add_message(self, msg):
+        self.messages.append(msg)
+
+    def get_message_count(self):
+        return len(self.messages)
+
+
 class FakeParent:
     """Stand-in for CANAnalyzerWindow in handler-level tests."""
 
@@ -94,6 +105,7 @@ class FakeParent:
         self.paused = False
         self.connected = True
         self.recording = False
+        self.recording_mgr = _RecordingStub()
         self.tracer_mode = False
         self.split_screen_mode = False
         self.receive_table_left = None
@@ -132,16 +144,22 @@ def fake_parent():
 
 
 @pytest.fixture
-def receive_table(qapp):
-    """A configured QTableWidget wired to a ReceiveTableManager (monitor mode)."""
+def make_table(qapp):
+    """Factory: a QTableWidget wired to a ReceiveTableManager."""
     from PyQt6.QtWidgets import QTableWidget
 
     from src.handlers.message_handler import MessageHandler
     from src.ui.receive_table_manager import ReceiveTableManager
 
-    parent = FakeParent()
-    handler = MessageHandler(parent)
-    manager = ReceiveTableManager(parent, handler)
-    table = QTableWidget()
-    manager.setup_table(table, tracer_mode=False)
-    yield table, manager, handler, parent
+    def _make(tracer=False, parent=None):
+        parent = parent or FakeParent()
+        handler = MessageHandler(parent)
+        manager = ReceiveTableManager(parent, handler)
+        table = QTableWidget()
+        manager.setup_table(table, tracer_mode=tracer)
+        parent.receive_table = table
+        parent.receive_table_mgr = manager
+        parent.tracer_mode = tracer
+        return table, manager, handler, parent
+
+    return _make

@@ -22,7 +22,9 @@ class ConfigManager:
         'listen_only': True,
         'com_baudrate': '115200 bit/s',
         'rts_hs': False,
-        'baudrate_reg': 'FFFFFF'
+        'baudrate_reg': 'FFFFFF',
+        'max_tracer_rows': 20000,
+        'rx_queue_size': 50000
     }
     
     def __init__(self, config_file: str = "config.json"):
