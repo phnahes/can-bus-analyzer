@@ -853,18 +853,26 @@ Contributions are welcome! Here's how you can help:
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
 
-**Latest Release: v1.2.5** - Cumulative release (v1.2.1 + v1.2.2 + v1.2.3 updates)
-- **FTCAN 2.0 Protocol Decoder**: Automatic decoding of FuelTech devices
-- **OBD-II Protocol Decoder**: Universal automotive diagnostics support
-- **FTCAN Analyzer**: Dedicated UI for FTCAN messages with live measures
-- **OBD-II Monitor**: Interactive PID selection, polling, and DTC reading
-- **Protocol Decoder Manager**: Enable/disable decoders, view statistics
-- **Comprehensive Documentation**: Complete technical specs for FTCAN and OBD-II
-- **Testing Tools**: Arduino OBD-II simulator, FTCAN simulator, OBD-II poller
-- **Improved Architecture**: Modular decoder system (core + adapter pattern)
-- **File Reorganization**: Decoders in `src/decoders/`, improved project structure
+**Latest Release: v1.2.5** - UI performance, SocketCAN link setup and honest Listen Only
+- **No more UI stalls under high-rate traffic**: frames are drained in bounded per-tick batches, monitor rows are indexed, and the Tracer keeps a ring buffer of the newest rows (configurable, default 20000)
+- **Frame counter that keeps counting**: the Tracer ID column no longer stops at the ring-buffer limit, and the status bar counts every received frame
+- **SocketCAN interface discovery**: *Scan Devices* lists the real `can*`/`vcan*` interfaces with state and bitrates (`ip -j -d link show type can`)
+- **Bring interface up on connect** (opt-in, per bus): shows the exact `ip link set … up type can …` command with a copy button, or runs it through `pkexec` — the app never runs sudo silently
+- **Honest settings**: SocketCAN bitrate is now read from the kernel (`500k→1000k` in the status bar), and `Listen Only` plus the SLCAN COM baudrate are really applied to the adapter
+- **Listen Only never fakes a send**: transmission is refused per bus and reported once, while the other interfaces of a multi-CAN setup keep sending
+- **Hardware-free test suite**: 125 headless tests (Qt offscreen, virtual buses, injected `ip`/`pkexec`), scaling guards, CI on Ubuntu + macOS, and a load benchmark (`tools/general/bench_ui_feed.py`)
+- **Fixed**: CSV log export/import and trace export, duplicate row numbers in the receive table, and split-screen columns drifting from the main table
 
 **Previous Releases:**
+
+**v1.2.4** - VAG UDS diagnostics
+- Read/clear DTCs (UDS `0x19`/`0x14`), ECU/module scan and VAG→SAE DTC mapping
+- OBD-II monitor in VAG UDS mode; `tools/general/vw/read_dtc.py` CLI
+
+**v1.2.3** - Cumulative release (v1.2.1 + v1.2.2 + v1.2.3)
+- **Settings rework**: General / CAN bus tabs, per-feature save folders (`saves_base_dir`), startup update check, About dialog
+- **FTCAN**: devices tab, WB-O2 scale config and the `wbo2_nano_config_tx.py` tool
+- **Tooling and docs**: `docs/BUILD.md`, centralized app identity, Diff mode restored when leaving Tracer
 
 **v0.4.0** - Protocol Decoders & Enhanced Documentation
 - FTCAN 2.0 and OBD-II protocol decoders
