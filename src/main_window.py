@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QLineEdit,
     QSpinBox, QCheckBox, QComboBox, QFileDialog,
-    QMessageBox, QSplitter, QGroupBox, QHeaderView, QMenu, QDialog,
+    QMessageBox, QSplitter, QGroupBox, QMenu, QDialog,
     QApplication, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QTimer
@@ -115,6 +115,9 @@ class CANAnalyzerWindow(QMainWindow):
         self.message_handler = MessageHandler(self)
         
         self.receive_table_mgr = ReceiveTableManager(self, self.message_handler)
+        self.receive_table_mgr.max_tracer_rows = self.config.get(
+            'max_tracer_rows', ReceiveTableManager.DEFAULT_MAX_TRACER_ROWS
+        )
         
         self.transmit_table_mgr = TransmitTableManager(self)
         
@@ -206,7 +209,10 @@ class CANAnalyzerWindow(QMainWindow):
                     'dlc': msg.dlc,
                     'target_bus': msg.source
                 }
-                return self.transmit_handler.send_single(msg_data, msg.source)
+                sent = self.transmit_handler.send_single(msg_data, msg.source)
+                if not sent:
+                    self._handle_send_result(False)
+                return sent
             return False
         except Exception as e:
             self.logger.error(f"Error sending playback message: {e}")
@@ -496,7 +502,19 @@ class CANAnalyzerWindow(QMainWindow):
     
     def _on_can_message_received(self, bus_name: str, msg: CANMessage):
         """Callback when a CAN message is received from any bus"""
-        self.message_queue.put(msg)
+        # Bounded queue: if the UI can't keep up we drop frames instead of
+        # growing memory without limit and freezing the app.
+        try:
+            self.message_queue.put_nowait(msg)
+        except queue.Full:
+            self._dropped_frames += 1
+            if self._dropped_frames in (1, 10, 100) or self._dropped_frames % 1000 == 0:
+                self.logger.warning(
+                    f"RX queue full: dropped {self._dropped_frames} frame(s) "
+                    f"(queue size={self.message_queue.maxsize})"
+                )
+            return
+
         # Debug: log receive flow (1st, 2nd, 3rd, then every 20th).
         # Guarded to avoid extra work when DEBUG is disabled.
         if self.logger.logger.isEnabledFor(logging.DEBUG):
@@ -853,7 +871,14 @@ class CANAnalyzerWindow(QMainWindow):
         n = self._table_add_count
         if n <= 5 or n % 30 == 0:
             self.logger.debug(f"Table: adding 0x{msg.can_id:03X} from '{msg.source}' (tracer, #{n})")
-        self.receive_table_mgr.add_message_tracer(self.receive_table, msg, highlight)
+
+        # When recording, remember the recorded index so playback still works
+        # after the Tracer ring buffer starts dropping old rows.
+        msg_index = None
+        if self.recording:
+            msg_index = self.recording_mgr.get_message_count() - 1
+
+        self.receive_table_mgr.add_message_tracer(self.receive_table, msg, highlight, msg_index=msg_index)
     
     def add_message_monitor_mode(self, msg: CANMessage, highlight: bool = True, target_table: QTableWidget = None):
         """Add message in Monitor mode (grouped by ID)"""
@@ -866,24 +891,15 @@ class CANAnalyzerWindow(QMainWindow):
         if n <= 5 or n % 30 == 0:
             self.logger.debug(f"Table: adding 0x{msg.can_id:03X} from '{msg.source}' (monitor, #{n})")
         table = target_table if target_table else self.receive_table
-        
+
+        # The sequential ID column is painted from the row index (no renumbering).
         self.receive_table_mgr.add_message_monitor(table, msg, self.colors, highlight)
-        
-        if table == self.receive_table:
-            self.update_sequential_ids()
-    
-    def update_sequential_ids(self):
-        """Update sequential IDs in column 0 of Monitor mode"""
-        if not self.tracer_mode:  # Only in Monitor mode
-            for row in range(self.receive_table.rowCount()):
-                id_item = QTableWidgetItem(str(row + 1))
-                id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.receive_table.setItem(row, 0, id_item)
     
     def update_message_count(self):
         """Update message counter"""
         if self.tracer_mode:
-            count = self.receive_table.rowCount()
+            # Ring buffer: keep showing the absolute frame count, not the rows.
+            count = self.receive_table_mgr.frame_count(self.receive_table)
         else:
             count = sum(self.message_counters.values())
         self.msg_count_label.setText(f"Messages: {count}")
@@ -960,12 +976,17 @@ class CANAnalyzerWindow(QMainWindow):
             # Add Message count
             if hasattr(self, 'receive_table') and hasattr(self, 'tracer_mode'):
                 if self.tracer_mode:
-                    count = self.receive_table.rowCount()
+                    count = self.receive_table_mgr.frame_count(self.receive_table)
                 else:
                     count = sum(self.message_counters.values())
                 status_parts.append(f"Messages: {count}")
             else:
                 status_parts.append("Messages: 0")
+
+            # Dropped frames (bounded RX queue) - only when it happened.
+            dropped = getattr(self, '_dropped_frames', 0)
+            if dropped:
+                status_parts.append(f"Dropped: {dropped}")
             
             # Update the connection_status label with all info
             if hasattr(self, 'connection_status'):
@@ -1035,6 +1056,38 @@ class CANAnalyzerWindow(QMainWindow):
         """Get data of a message from the transmit table"""
         return self.transmit_table_mgr.get_message_data(self.transmit_table, row)
     
+    def _notify_listen_only_blocked(self, buses):
+        """Warn once per bus that Listen Only prevented a transmission."""
+        if not buses:
+            return
+        if not hasattr(self, '_lo_notified'):
+            self._lo_notified = set()
+        pending = [bus for bus in buses if bus not in self._lo_notified]
+        if not pending:
+            return
+        self._lo_notified.update(pending)
+        self.show_notification(
+            t('notif_tx_blocked_listen_only', buses=", ".join(pending)), 3000
+        )
+
+    def _handle_send_result(self, success: bool):
+        """Notify about Listen Only and classify the outcome.
+
+        Returns 'blocked' (nothing was transmitted), 'partial' (some bus was
+        skipped) or None (normal success/failure).
+        """
+        handler = self.transmit_handler
+        blocked = getattr(handler, 'last_blocked_buses', []) if handler else []
+        error = getattr(handler, 'last_send_error', None) if handler else None
+
+        if blocked:
+            self._notify_listen_only_blocked(blocked)
+        if error == 'listen-only':
+            return 'blocked'
+        if blocked:
+            return 'partial'
+        return None
+
     def send_single(self):
         """Send a single message"""
         if not self.transmit_handler:
@@ -1068,8 +1121,10 @@ class CANAnalyzerWindow(QMainWindow):
                     self._increment_tx_count(self.editing_tx_row)
                 
                 self.show_notification(t('notif_message_sent', id=can_id), 1000)
+                self._handle_send_result(True)
             else:
-                self.show_notification(t('notif_error', error="Failed to send"), 2000)
+                if self._handle_send_result(False) != 'blocked':
+                    self.show_notification(t('notif_error', error="Failed to send"), 2000)
                 
         except Exception as e:
             self.logger.error(f"Send error: {e}")
@@ -1385,6 +1440,8 @@ class CANAnalyzerWindow(QMainWindow):
                 if self.transmit_handler.start_periodic(row, period_ms, msg_data):
                     started_count += 1
                     self.logger.info(f"Periodic Send: Started 0x{msg_data['id']:03X} every {period_ms}ms")
+                else:
+                    self._handle_send_result(False)
                 
             except Exception as e:
                 self.logger.error(f"Error starting periodic send for row {row}: {e}")
@@ -1546,16 +1603,20 @@ class CANAnalyzerWindow(QMainWindow):
         for index in selected_rows:
             row = index.row()
             
-            # Use row index directly if within bounds
-            if row < len(recorded_messages):
-                selected_messages.append(recorded_messages[row])
-            else:
-                # Fallback: try to get from UserRole
-                id_item = self.receive_table.item(row, 0)
-                if id_item:
-                    msg_index = id_item.data(Qt.ItemDataRole.UserRole)
-                    if msg_index is not None and msg_index < len(recorded_messages):
-                        selected_messages.append(recorded_messages[msg_index])
+            # Prefer the recorded index stored on the row: after the Tracer ring
+            # buffer drops old rows, the table row no longer matches the index.
+            msg_index = None
+            id_item = self.receive_table.item(row, 0)
+            if id_item is not None:
+                stored = id_item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(stored, int) and 0 <= stored < len(recorded_messages):
+                    msg_index = stored
+
+            if msg_index is None and row < len(recorded_messages):
+                msg_index = row
+
+            if msg_index is not None:
+                selected_messages.append(recorded_messages[msg_index])
         
         if selected_messages:
             self.logger.info(f"Playing {len(selected_messages)} selected message(s)")
@@ -1793,6 +1854,9 @@ class CANAnalyzerWindow(QMainWindow):
                         f"⚡ Trigger: [{rx_channel}]0x{trigger_id:03X} → [{tx_channel}]0x{tx_id:03X}",
                         2000
                     )
+                    self._handle_send_result(True)
+                else:
+                    self._handle_send_result(False)
                 
             except Exception as e:
                 self.logger.error(f"Error processing dialog trigger: {e}")
@@ -1850,6 +1914,9 @@ class CANAnalyzerWindow(QMainWindow):
                     # Increment count
                     self._increment_tx_count(row)
                     self.show_notification(f"⚡ Trigger TX: 0x{msg_data['can_id']:03X}", 2000)
+                    self._handle_send_result(True)
+                else:
+                    self._handle_send_result(False)
                 
             except Exception as e:
                 self.logger.error(f"Error checking trigger for row {row}: {e}")
@@ -2285,19 +2352,14 @@ class CANAnalyzerWindow(QMainWindow):
         self.logger.info("Single screen view restored")
     
     def setup_receive_table_for_widget(self, table_widget):
-        """Setup a receive table widget with proper configuration"""
-        if self.tracer_mode:
-            table_widget.setColumnCount(8)
-            table_widget.setHorizontalHeaderLabels(['ID', 'Time', t('col_channel'), 'PID', 'DLC', 'Data', 'ASCII', 'Comment'])
-            table_widget.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked)
-        else:
-            table_widget.setColumnCount(9)
-            table_widget.setHorizontalHeaderLabels(['ID', 'Count', t('col_channel'), 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment'])
-            table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        table_widget.verticalHeader().setVisible(False)
-        font = QFont("Courier New", 14)
-        table_widget.setFont(font)
+        """Setup a receive table widget with proper configuration
+
+        Columns/widths/delegates come from the manager (single source), so the
+        split-screen tables can never drift from the main one.
+        """
+        self.receive_table_mgr.setup_table(table_widget, self.tracer_mode)
+
+        table_widget.setFont(QFont("Courier New", 14))
         table_widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table_widget.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -2305,95 +2367,59 @@ class CANAnalyzerWindow(QMainWindow):
         table_widget.customContextMenuRequested.connect(
             lambda pos, table=table_widget: self.show_receive_context_menu_for_table(table, pos)
         )
-        
-        header = table_widget.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        
-        if self.tracer_mode:
-            header.resizeSection(0, 60)   # ID
-            header.resizeSection(1, 100)  # Time
-            header.resizeSection(2, 70)   # Channel
-            header.resizeSection(3, 110)  # PID - 12 characters
-            header.resizeSection(4, 60)   # DLC
-            header.resizeSection(5, 250)  # Data
-            header.resizeSection(6, 100)  # ASCII
-            header.resizeSection(7, 150)  # Comment
-        else:
-            header.resizeSection(0, 40)   # ID
-            header.resizeSection(1, 60)   # Count
-            header.resizeSection(2, 70)   # Channel
-            header.resizeSection(3, 110)  # PID - 12 characters
-            header.resizeSection(4, 50)   # DLC
-            header.resizeSection(5, 250)  # Data
-            header.resizeSection(6, 70)   # Period
-            header.resizeSection(7, 100)  # ASCII
-            header.resizeSection(8, 150)  # Comment
-        
-        header.setStretchLastSection(True)
     
     def _reload_messages_split_screen(self):
         """Reload all messages in split-screen mode"""
         if not self.split_screen_mode or not self.receive_table_left or not self.receive_table_right:
             return
-        
-        self.receive_table_left.setRowCount(0)
-        self.receive_table_right.setRowCount(0)
-        
-        for msg in self.received_messages:
+
+        tables = [self.receive_table_left, self.receive_table_right]
+        for table in tables:
+            table.setUpdatesEnabled(False)
+            table.setRowCount(0)
+            self.receive_table_mgr.reset_index(table)
+
+        try:
             if self.tracer_mode:
-                if msg.source == self.split_screen_left_channel:
-                    self._add_message_to_table(msg, self.receive_table_left, highlight=False)
-                elif msg.source == self.split_screen_right_channel:
-                    self._add_message_to_table(msg, self.receive_table_right, highlight=False)
+                left, right = [], []
+                for msg in self.received_messages:
+                    if msg.source == self.split_screen_left_channel:
+                        left.append(msg)
+                    elif msg.source == self.split_screen_right_channel:
+                        right.append(msg)
+                self.receive_table_mgr.add_batch_tracer(self.receive_table_left, left)
+                self.receive_table_mgr.add_batch_tracer(self.receive_table_right, right)
             else:
                 pass  # Will be handled by normal monitor logic
-    
+        finally:
+            for table in tables:
+                table.setUpdatesEnabled(True)
+
     def _reload_all_messages(self):
         """Reload all messages in single screen mode"""
-        self.receive_table.setRowCount(0)
+        table = self.receive_table
+        table.setUpdatesEnabled(False)
+        table.setRowCount(0)
+        self.receive_table_mgr.reset_index(table)
         self.message_counters.clear()
         self.message_last_timestamp.clear()
-        
-        for msg in self.received_messages:
+
+        try:
             if self.tracer_mode:
-                self.add_message_tracer_mode(msg, highlight=False)
+                self.receive_table_mgr.begin_batch()
+                for msg in self.received_messages:
+                    self.add_message_tracer_mode(msg, highlight=False)
+                self.receive_table_mgr.end_batch()
             else:
-                self.add_message_monitor_mode(msg, highlight=False)
+                for msg in self.received_messages:
+                    self.add_message_monitor_mode(msg, highlight=False)
+        finally:
+            table.setUpdatesEnabled(True)
     
     def _add_message_to_table(self, msg: CANMessage, table: QTableWidget, highlight: bool = True):
         """Add message to a specific table (for split-screen)"""
         if self.tracer_mode:
-            dt = datetime.fromtimestamp(msg.timestamp)
-            time_str = dt.strftime("%S.%f")[:-3]
-            pid_str = f"0x{msg.can_id:03X}"
-            data_str = " ".join([f"{b:02X}" for b in msg.data])
-            ascii_str = msg.to_ascii()
-            
-            row = table.rowCount()
-            table.insertRow(row)
-            
-            id_item = QTableWidgetItem(str(row + 1))
-            id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            dlc_item = QTableWidgetItem(str(msg.dlc))
-            dlc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            
-            table.setItem(row, 0, id_item)
-            table.setItem(row, 1, QTableWidgetItem(time_str))
-            
-            channel_item = QTableWidgetItem(msg.source)
-            channel_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row, 2, channel_item)
-            
-            table.setItem(row, 3, QTableWidgetItem(pid_str))
-            table.setItem(row, 4, dlc_item)
-            table.setItem(row, 5, QTableWidgetItem(data_str))
-            table.setItem(row, 6, QTableWidgetItem(ascii_str))
-            table.setItem(row, 7, QTableWidgetItem(msg.comment))
-            
-            table.scrollToBottom()
-        else:
-            pass
+            self.receive_table_mgr.add_message_tracer(table, msg, highlight)
     
     def closeEvent(self, event):
         """Event called when closing the window"""

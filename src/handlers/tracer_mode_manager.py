@@ -110,27 +110,18 @@ class TracerModeManager:
         
         if len(recorded_messages) == 0:
             return
-        
-        self.parent.receive_table.setRowCount(len(recorded_messages))
-        
-        for row_idx, msg in enumerate(recorded_messages):
-            dt = datetime.fromtimestamp(msg.timestamp)
-            time_str = dt.strftime("%S.%f")[:-3]
-            pid_str = f"0x{msg.can_id:03X}"
-            data_str = " ".join([f"{b:02X}" for b in msg.data])
-            ascii_str = msg.to_ascii()
-            
-            id_item = table_helpers.create_centered_item(str(row_idx + 1), user_data=row_idx)
-            
-            self.parent.receive_table.setItem(row_idx, 0, id_item)
-            self.parent.receive_table.setItem(row_idx, 1, QTableWidgetItem(time_str))
-            table_helpers.set_centered_item(self.parent.receive_table, row_idx, 2, msg.source)
-            
-            self.parent.receive_table.setItem(row_idx, 3, QTableWidgetItem(pid_str))
-            table_helpers.set_centered_item(self.parent.receive_table, row_idx, 4, str(msg.dlc))
-            self.parent.receive_table.setItem(row_idx, 5, QTableWidgetItem(data_str))
-            self.parent.receive_table.setItem(row_idx, 6, QTableWidgetItem(ascii_str))
-            self.parent.receive_table.setItem(row_idx, 7, QTableWidgetItem(msg.comment))
+
+        # Respect the ring-buffer limit and keep recorded indexes for playback.
+        manager = self.parent.receive_table_mgr
+        limit = getattr(manager, 'max_tracer_rows', 0) or 0
+        start_index = 0
+        if limit and len(recorded_messages) > limit:
+            start_index = len(recorded_messages) - limit
+            recorded_messages = recorded_messages[start_index:]
+
+        manager.repopulate_tracer(
+            self.parent.receive_table, recorded_messages, start_index=start_index
+        )
     
     def _populate_monitor_mode(self):
         """Populate table in monitor mode - preserves all received messages"""

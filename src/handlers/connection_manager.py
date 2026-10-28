@@ -3,8 +3,9 @@ Connection Manager - Handles CAN bus connection logic
 Extracted from main_window.py to reduce complexity
 """
 from typing import Optional, Callable, Dict, List, Any
-from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtWidgets import QDialog, QMessageBox
 from ..can_bus_manager import CANBusManager, CANBusConfig
+from ..can_interface_setup import InterfaceDownError
 from ..config import DEFAULT_CHANNEL
 
 try:
@@ -82,13 +83,22 @@ class ConnectionManager:
                     baudrate=bus_cfg['baudrate'],
                     listen_only=bus_cfg.get('listen_only', True),
                     interface=bus_cfg.get('interface', 'socketcan'),
-                    receive_own_messages=bus_cfg.get('receive_own_messages', True)
+                    receive_own_messages=bus_cfg.get('receive_own_messages', True),
+                    bring_up=bus_cfg.get('bring_up', False),
+                    fd=bus_cfg.get('fd', False),
+                    dbitrate=bus_cfg.get('dbitrate', 0),
+                    tty_baudrate=bus_cfg.get('tty_baudrate', 0),
                 )
                 self.can_bus_manager.add_bus(config)
             
             # Try real connection if not in simulation mode
             if not simulation_mode and CAN_AVAILABLE:
                 success, connected_buses = self._connect_real(can_buses, parent_widget)
+
+                # SocketCAN link down/not configured: offer to fix and retry once.
+                if not success and self._offer_interface_setup(can_buses, parent_widget):
+                    success, connected_buses = self._connect_real(can_buses, parent_widget)
+
                 if success:
                     self.connected = True
                     return True, self._format_status_message(can_buses, connected_buses, False), connected_buses
@@ -153,9 +163,51 @@ class ConnectionManager:
                 'channel': self.config.get('channel', 'can0'),
                 'baudrate': self.config.get('baudrate', 500000),
                 'interface': 'socketcan',
-                'listen_only': self.config.get('listen_only', True)
+                'listen_only': self.config.get('listen_only', True),
+                'bring_up': self.config.get('bring_up', False),
+                'fd': self.config.get('fd', False),
+                'dbitrate': self.config.get('dbitrate', 0)
             }]
         return can_buses
+
+    def _interface_setup_requests(self, can_buses: List[Dict]) -> List[Dict]:
+        """Build dialog requests from the buses that failed with InterfaceDownError."""
+        errors = getattr(self.can_bus_manager, 'connect_errors', {}) or {}
+        requests = []
+
+        for bus_name, error in errors.items():
+            if not isinstance(error, InterfaceDownError):
+                continue
+            bus_cfg = next((b for b in can_buses if b.get('name') == bus_name), None) or {}
+            requests.append({
+                'channel': error.channel,
+                'bitrate': bus_cfg.get('baudrate', 500000),
+                'dbitrate': bus_cfg.get('dbitrate', 0),
+                'fd': bus_cfg.get('fd', False),
+                'listen_only': bus_cfg.get('listen_only', False),
+                'command': error.command,
+                'detail': str(error),
+            })
+
+        return requests
+
+    def _offer_interface_setup(self, can_buses: List[Dict], parent_widget) -> bool:
+        """Show the interface setup dialog. Returns True when the user fixed it."""
+        requests = self._interface_setup_requests(can_buses)
+        if not requests or parent_widget is None:
+            return False
+
+        from ..dialogs import InterfaceSetupDialog
+
+        self.logger.warning(
+            "Interface not ready: " + "; ".join(
+                f"{r['channel']} ({r['detail']})" for r in requests
+            )
+        )
+
+        dialog = InterfaceSetupDialog(requests, parent_widget)
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        return accepted and dialog.configured
     
     def _connect_real(self, can_buses: List[Dict], parent_widget) -> tuple[bool, List[str]]:
         """
@@ -177,8 +229,11 @@ class ConnectionManager:
             if connected_buses:
                 self.logger.info(f"Real CAN connection established: {', '.join(connected_buses)}")
                 return True, connected_buses
-            else:
-                raise Exception("No CAN bus could be connected")
+
+            for bus_name, error in (getattr(self.can_bus_manager, 'connect_errors', {}) or {}).items():
+                self.logger.error(f"Bus '{bus_name}' failed: {error}")
+
+            raise Exception("No CAN bus could be connected")
                 
         except Exception as e:
             self.logger.error(f"Error connecting to real devices: {str(e)}")
@@ -221,6 +276,16 @@ class ConnectionManager:
             channel = bus_config.get('channel', 'N/A')
             listen_only = bus_config.get('listen_only', True)
             mode = "LO" if listen_only else "N"  # Compact: Listen-Only = LO, Normal = N
+
+            # SocketCAN owns the bit rate: show what the kernel is really using.
+            info = None
+            if self.can_bus_manager is not None:
+                info = self.can_bus_manager.get_bus_info(bus_name)
+            actual = (info or {}).get('actual_bitrate')
+            if actual and actual != bus_config['baudrate']:
+                baudrate_label = f"{baudrate_kb}k→{actual // 1000}k"
+            else:
+                baudrate_label = f"{baudrate_kb}k"
             
             is_conn = bus_name in connected_buses
             conn_icon = "✓" if is_conn else "✗"
@@ -235,12 +300,12 @@ class ConnectionManager:
                 short_channel = channel
             
             if is_simulation:
-                status_parts.append(f"{bus_name}:{baudrate_kb}k,SIM,{mode},{conn_icon}")
+                status_parts.append(f"{bus_name}:{baudrate_label},SIM,{mode},{conn_icon}")
             else:
                 # Limit channel name to 20 chars
                 if len(short_channel) > 20:
                     short_channel = short_channel[:17] + "..."
-                status_parts.append(f"{bus_name}:{baudrate_kb}k,{short_channel},{mode},{conn_icon}")
+                status_parts.append(f"{bus_name}:{baudrate_label},{short_channel},{mode},{conn_icon}")
         
         return " | ".join(status_parts)
     

@@ -22,6 +22,7 @@ from .filter_dialog import FilterDialog
 from .diff_dialog import DiffDialog
 from .trigger_dialog import TriggerDialog
 from .usb_device_dialog import USBDeviceSelectionDialog
+from .interface_setup_dialog import InterfaceSetupDialog
 from .modify_rule_dialog import ModifyRuleDialog
 from .gateway_dialog import GatewayDialog
 from .decoder_manager import DecoderManagerDialog
@@ -39,6 +40,7 @@ __all__ = [
     'DiffDialog',
     'TriggerDialog',
     'USBDeviceSelectionDialog',
+    'InterfaceSetupDialog',
     'ModifyRuleDialog',
     'GatewayDialog',
     'DecoderManagerDialog',

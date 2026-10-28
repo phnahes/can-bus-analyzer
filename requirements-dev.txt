@@ -11,6 +11,10 @@ pyinstaller>=6.0.0; sys_platform == 'linux'
 # Icon generation tools (only needed for creating icons)
 Pillow>=10.0.0
 
+# Test suite (headless: Qt offscreen + python-can virtual bus)
+pytest>=8.0
+pytest-cov>=5.0
+
 # Optional development tools
 # pylint>=3.0.0
 # black>=23.0.0

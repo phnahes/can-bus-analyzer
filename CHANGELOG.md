@@ -10,10 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Headless test suite** (`tests/`, `pytest.ini`, `.github/workflows/ci-test.yml`): Qt `offscreen`, python-can virtual/fake buses and injected `ip`/`pkexec` runners — runs on macOS and Linux without any CAN hardware. Includes ratio-based scaling guards and `docs/TESTING.md`
+- **`tools/general/bench_ui_feed.py`**: headless UI load benchmark (tick latency, rows, dropped frames) that reproduces the "cangen freezes the UI" report
+- **SocketCAN interface discovery** (`src/can_interface_setup.py`): *Scan Devices* lists real `can*`/`vcan*` interfaces with state (`ip -j -d link show type can`) instead of a fixed list
+- **Bring interface up on connect** (per bus, opt-in): the app checks the link state and either shows the exact `ip link set … up type can …` command (copy button) or runs it through `pkexec` — never silent sudo. New `InterfaceSetupDialog`
+- **Performance limits** in Settings: `max_tracer_rows` (default 20000, `0` = unlimited) and `rx_queue_size` (default 50000)
+- Dropped-frame counter in the status bar when the receive queue saturates
 
 ### Changed
+- **UI pipeline buffered per tick**: messages are drained with a 20 ms / 1000-frame budget, Tracer rows are inserted once per tick, and the message counter/status bar update once per tick instead of once per frame
+- Sequential ID column is painted from the row index (no renumbering of the table)
+- Monitor rows are found through a `(can_id, source) → row` index instead of scanning the whole table per frame
+- Tracer table keeps a ring buffer of the newest rows; saving/exporting still uses every received frame
+- `bitrate` is no longer passed to the SocketCAN backend (python-can ignores it); the status bar shows the kernel bitrate when it differs (`500k→1000k`)
+- `listen_only` and the SLCAN serial speed (COM Baudrate) are now actually passed to the backend
+- Playback uses the recorded index stored on the row, so selecting a row still plays the right frame after the ring buffer drops old ones
+- **Tracer ID column keeps counting**: the frame number no longer restarts at the ring-buffer limit (20000), and the status bar counts every received frame instead of the visible rows
+- Split-screen tables are configured by the same code as the main table (they could drift in columns, widths and painted columns)
 
 ### Fixed
+- **Duplicate row numbers**: the main receive table showed Qt's vertical row numbers *and* the ID column with the same numbers; the vertical header is now hidden like in every other table
+- **UI froze under high-rate traffic**: the sequential-ID column was rebuilt for every row on every frame (quadratic with unique IDs — what `cangen` with random IDs produces), plus two full-table scans per frame and an unbounded receive queue
+- **Listen Only claimed a successful transmission**: `send()` returned success whenever the bus object existed, while the adapter silently dropped the frame. Transmission is now refused per bus, and the UI reports `Listen Only em CANx: não transmitido` once per bus (other interfaces keep transmitting normally; periodic/trigger/playback follow the same rule)
+- CSV log export/import and trace export used python-can attribute names (`is_extended_id`) on `CANMessage` and always failed
 
 ---
 

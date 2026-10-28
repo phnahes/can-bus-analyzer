@@ -85,8 +85,8 @@ class FileHandler:
                         f"0x{msg.can_id:X}",
                         msg.dlc,
                         msg.to_hex_string(),
-                        msg.is_extended_id,
-                        msg.is_remote_frame,
+                        msg.is_extended,
+                        msg.is_rtr,
                         getattr(msg, 'source', 'N/A')
                     ])
             
@@ -122,12 +122,12 @@ class FileHandler:
                 for msg in messages:
                     source = getattr(msg, 'source', '1')
                     id_str = f"{msg.can_id:X}"
-                    if msg.is_extended_id:
+                    if msg.is_extended:
                         id_str += "x"
                     
                     data_str = " ".join(f"{b:02X}" for b in msg.data)
                     
-                    if msg.is_remote_frame:
+                    if msg.is_rtr:
                         f.write(f"{msg.timestamp:.6f} {source}  {id_str}             Rx   r {msg.dlc}\n")
                     else:
                         f.write(f"{msg.timestamp:.6f} {source}  {id_str}             Rx   d {msg.dlc} {data_str}\n")
@@ -194,8 +194,8 @@ class FileHandler:
                         can_id=int(row['CAN ID'], 16),
                         dlc=int(row['DLC']),
                         data=data,
-                        is_extended_id=row['Extended'].lower() == 'true',
-                        is_remote_frame=row['RTR'].lower() == 'true'
+                        is_extended=row['Extended'].lower() == 'true',
+                        is_rtr=row['RTR'].lower() == 'true'
                     )
                     
                     if 'Source' in row and row['Source'] != 'N/A':
