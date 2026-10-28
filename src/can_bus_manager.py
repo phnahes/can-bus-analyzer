@@ -77,6 +77,19 @@ class CANBusInstance:
         self.last_error: Optional[Exception] = None  # Why connect() failed, if it did
         self.interface: Optional[str] = None  # Interface actually used
         self.actual_bitrate: Optional[int] = None  # Kernel bitrate (SocketCAN)
+        self.link_listen_only = False  # SocketCAN link state, when known
+        self.last_send_error: Optional[str] = None  # Why send() refused, if it did
+
+    @property
+    def listen_only_active(self) -> bool:
+        """True when this bus must not transmit.
+
+        Covers both the requested mode (config) and the kernel state for
+        SocketCAN, so the UI never claims a frame was sent that cannot leave.
+        """
+        if self.config.listen_only:
+            return True
+        return bool(self.link_listen_only)
     
     def connect(self, simulation: bool = False) -> bool:
         """Connect to the CAN bus"""
@@ -232,6 +245,8 @@ class CANBusInstance:
 
         needs_setup = (not link.up) or (wanted_fd and not link.fd)
 
+        self.link_listen_only = link.listen_only
+
         if not needs_setup:
             self.actual_bitrate = link.bitrate
             if link.bitrate and link.bitrate != self.config.baudrate:
@@ -278,6 +293,7 @@ class CANBusInstance:
 
         print(f"[{self.config.name}] Interface configured: {channel} ({link.summary})")
         self.actual_bitrate = link.bitrate
+        self.link_listen_only = link.listen_only
     
     def disconnect(self):
         """Disconnect from the CAN bus"""
@@ -305,7 +321,15 @@ class CANBusInstance:
         """Send a CAN message (accepts CANMessage or can.Message)"""
         if not self.connected:
             return False
-        
+
+        self.last_send_error = None
+
+        # Listen Only: the frame would be dropped by the adapter/kernel, so
+        # refuse here instead of reporting a successful transmission.
+        if self.listen_only_active:
+            self.last_send_error = 'listen-only'
+            return False
+
         try:
             # Check if it's a python-can Message or our CANMessage
             # Use hasattr to check for arbitration_id (python-can) vs can_id (our dataclass)
@@ -602,6 +626,14 @@ class CANBusManager:
     def get_connected_buses(self) -> List[str]:
         """Get list of connected bus names"""
         return [name for name, bus in self.buses.items() if bus.connected]
+
+    def get_listen_only_buses(self, names: Optional[List[str]] = None) -> List[str]:
+        """Buses that must not transmit (Listen Only, by config or link state)."""
+        candidates = names if names is not None else list(self.buses.keys())
+        return [
+            name for name in candidates
+            if name in self.buses and self.buses[name].listen_only_active
+        ]
     
     def is_bus_connected(self, name: str) -> bool:
         """Check if a specific bus is connected"""

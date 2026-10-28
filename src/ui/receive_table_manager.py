@@ -89,18 +89,27 @@ class _DiffDataBoldDelegate(QStyledItemDelegate):
 
 
 class _RowNumberDelegate(QStyledItemDelegate):
-    """Paint the row number without storing it in an item.
+    """Paint the frame number without storing it in an item.
 
-    The sequential ID column is exactly ``row + 1``. Storing that text means
+    The ID column is the running frame counter. Storing that text means
     renumbering every row below an insertion (O(n) per new ID) and, in Tracer
     mode, after every ring-buffer drop. Painting it on demand makes renumbering
-    free.
+    free, and the offset keeps the counter absolute when old rows are dropped.
     """
+
+    def __init__(self, table, manager):
+        super().__init__(table)
+        self._table = table
+        self._manager = manager
+
+    def _label(self, row: int) -> str:
+        offset = self._manager.row_label_offset(self._table)
+        return str(row + 1 + offset)
 
     def paint(self, painter, option, index):
         opt = QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
-        opt.text = str(index.row() + 1)
+        opt.text = self._label(index.row())
         opt.displayAlignment = Qt.AlignmentFlag.AlignCenter
         widget = opt.widget
         style = widget.style() if widget is not None else QApplication.style()
@@ -133,6 +142,10 @@ class ReceiveTableManager:
         # Per-table row index: {(can_id, source): row} + sorted keys for
         # insertion, so adding a frame is O(1) instead of scanning the table.
         self._tables = weakref.WeakKeyDictionary()
+
+        # Tracer ring buffer: how many frames were dropped from the top, so the
+        # ID column can keep counting instead of restarting at 1.
+        self._row_offsets = weakref.WeakKeyDictionary()
 
         # Tracer batching: rows are buffered and inserted once per UI tick.
         self._batching = False
@@ -207,7 +220,9 @@ class ReceiveTableManager:
             table.setItemDelegateForColumn(5, _DiffDataBoldDelegate(table))
         
         # Sequential ID is painted from the row index (see _RowNumberDelegate).
-        table.setItemDelegateForColumn(0, _RowNumberDelegate(table))
+        # The Qt vertical header would show the same number again on the left.
+        table.verticalHeader().setVisible(False)
+        table.setItemDelegateForColumn(0, _RowNumberDelegate(table, self))
 
         # Table layout changed: drop any cached row index for it.
         self.reset_index(table)
@@ -225,6 +240,14 @@ class ReceiveTableManager:
             del self._tables[table]
         except KeyError:
             pass
+
+    def row_label_offset(self, table: QTableWidget) -> int:
+        """Frames dropped from the top of ``table`` (keeps the ID column absolute)."""
+        return self._row_offsets.get(table, 0)
+
+    def frame_count(self, table: QTableWidget) -> int:
+        """Total frames currently represented by ``table`` (rows + dropped)."""
+        return table.rowCount() + self.row_label_offset(table)
 
     def _table_state(self, table: QTableWidget) -> Dict:
         """Return (and lazily rebuild) the row index of ``table``."""
@@ -302,6 +325,9 @@ class ReceiveTableManager:
             return
 
         start = table.rowCount()
+        if start == 0:
+            # Table was emptied (reset/mode switch): the frame counter restarts.
+            self._row_offsets[table] = 0
         # QTableWidget has no insertRows: growing rowCount appends empty rows
         # in one operation (Tracer always appends).
         table.setRowCount(start + len(entries))
@@ -343,6 +369,8 @@ class ReceiveTableManager:
             # No QTableWidget::removeRows, but the underlying model has it and
             # it removes a block in one call.
             table.model().removeRows(0, overflow)
+            # Keep the ID column counting from where it left off.
+            self._row_offsets[table] = self.row_label_offset(table) + overflow
 
     def add_message_monitor(self, table: QTableWidget, msg: CANMessage, colors: Dict, highlight: bool = True):
         """
@@ -524,6 +552,7 @@ class ReceiveTableManager:
         """Clear table contents"""
         table.setRowCount(0)
         self.reset_index(table)
+        self._row_offsets[table] = 0
 
     def repopulate_tracer(self, table: QTableWidget, messages: list, start_index: int = 0):
         """
@@ -534,11 +563,12 @@ class ReceiveTableManager:
             messages: List of CANMessage objects
             start_index: Index of ``messages[0]`` in the recorded list (playback)
         """
+        table.setRowCount(0)
+        self._row_offsets[table] = 0
+        self.reset_index(table)
+
         if not messages:
             return
-
-        table.setRowCount(0)
-        self.reset_index(table)
 
         # Insert in chunks so a long log doesn't freeze the UI.
         chunk = 500

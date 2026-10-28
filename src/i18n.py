@@ -1416,6 +1416,13 @@ class I18n:
             'de': 'Die Schnittstelle konnte nicht automatisch konfiguriert werden. Führen Sie den Befehl manuell aus und versuchen Sie erneut zu verbinden.',
             'fr': "L'interface n'a pas pu être configurée automatiquement. Exécutez la commande manuellement (voir la boîte de dialogue) et réessayez."
         },
+        'notif_tx_blocked_listen_only': {
+            'en': 'Listen Only on {buses}: not transmitted',
+            'pt': 'Listen Only em {buses}: não transmitido',
+            'es': 'Listen Only en {buses}: no transmitido',
+            'de': 'Listen Only auf {buses}: nicht gesendet',
+            'fr': 'Listen Only sur {buses} : non transmis'
+        },
         'tooltip_rx_queue_size': {
             'en': 'Frames buffered while the UI catches up. When full, new frames are dropped and shown as "Dropped" in the status bar.',
             'pt': 'Mensagens em buffer enquanto a interface acompanha. Quando enche, novas mensagens são descartadas e aparecem como "Dropped" na barra de status.',

@@ -26,6 +26,7 @@ class StateInitializer:
             queue_size = parent.config.get('rx_queue_size', queue_size) or 50000
         parent.message_queue = queue.Queue(maxsize=queue_size)
         parent._dropped_frames = 0
+        parent._lo_notified = set()  # buses already warned about Listen Only TX
         parent.received_messages: List = []
         parent.transmit_messages: List[Dict] = []
     

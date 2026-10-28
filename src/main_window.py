@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QLineEdit,
     QSpinBox, QCheckBox, QComboBox, QFileDialog,
-    QMessageBox, QSplitter, QGroupBox, QHeaderView, QMenu, QDialog,
+    QMessageBox, QSplitter, QGroupBox, QMenu, QDialog,
     QApplication, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QTimer
@@ -209,7 +209,10 @@ class CANAnalyzerWindow(QMainWindow):
                     'dlc': msg.dlc,
                     'target_bus': msg.source
                 }
-                return self.transmit_handler.send_single(msg_data, msg.source)
+                sent = self.transmit_handler.send_single(msg_data, msg.source)
+                if not sent:
+                    self._handle_send_result(False)
+                return sent
             return False
         except Exception as e:
             self.logger.error(f"Error sending playback message: {e}")
@@ -895,7 +898,8 @@ class CANAnalyzerWindow(QMainWindow):
     def update_message_count(self):
         """Update message counter"""
         if self.tracer_mode:
-            count = self.receive_table.rowCount()
+            # Ring buffer: keep showing the absolute frame count, not the rows.
+            count = self.receive_table_mgr.frame_count(self.receive_table)
         else:
             count = sum(self.message_counters.values())
         self.msg_count_label.setText(f"Messages: {count}")
@@ -972,7 +976,7 @@ class CANAnalyzerWindow(QMainWindow):
             # Add Message count
             if hasattr(self, 'receive_table') and hasattr(self, 'tracer_mode'):
                 if self.tracer_mode:
-                    count = self.receive_table.rowCount()
+                    count = self.receive_table_mgr.frame_count(self.receive_table)
                 else:
                     count = sum(self.message_counters.values())
                 status_parts.append(f"Messages: {count}")
@@ -1052,6 +1056,38 @@ class CANAnalyzerWindow(QMainWindow):
         """Get data of a message from the transmit table"""
         return self.transmit_table_mgr.get_message_data(self.transmit_table, row)
     
+    def _notify_listen_only_blocked(self, buses):
+        """Warn once per bus that Listen Only prevented a transmission."""
+        if not buses:
+            return
+        if not hasattr(self, '_lo_notified'):
+            self._lo_notified = set()
+        pending = [bus for bus in buses if bus not in self._lo_notified]
+        if not pending:
+            return
+        self._lo_notified.update(pending)
+        self.show_notification(
+            t('notif_tx_blocked_listen_only', buses=", ".join(pending)), 3000
+        )
+
+    def _handle_send_result(self, success: bool):
+        """Notify about Listen Only and classify the outcome.
+
+        Returns 'blocked' (nothing was transmitted), 'partial' (some bus was
+        skipped) or None (normal success/failure).
+        """
+        handler = self.transmit_handler
+        blocked = getattr(handler, 'last_blocked_buses', []) if handler else []
+        error = getattr(handler, 'last_send_error', None) if handler else None
+
+        if blocked:
+            self._notify_listen_only_blocked(blocked)
+        if error == 'listen-only':
+            return 'blocked'
+        if blocked:
+            return 'partial'
+        return None
+
     def send_single(self):
         """Send a single message"""
         if not self.transmit_handler:
@@ -1085,8 +1121,10 @@ class CANAnalyzerWindow(QMainWindow):
                     self._increment_tx_count(self.editing_tx_row)
                 
                 self.show_notification(t('notif_message_sent', id=can_id), 1000)
+                self._handle_send_result(True)
             else:
-                self.show_notification(t('notif_error', error="Failed to send"), 2000)
+                if self._handle_send_result(False) != 'blocked':
+                    self.show_notification(t('notif_error', error="Failed to send"), 2000)
                 
         except Exception as e:
             self.logger.error(f"Send error: {e}")
@@ -1402,6 +1440,8 @@ class CANAnalyzerWindow(QMainWindow):
                 if self.transmit_handler.start_periodic(row, period_ms, msg_data):
                     started_count += 1
                     self.logger.info(f"Periodic Send: Started 0x{msg_data['id']:03X} every {period_ms}ms")
+                else:
+                    self._handle_send_result(False)
                 
             except Exception as e:
                 self.logger.error(f"Error starting periodic send for row {row}: {e}")
@@ -1814,6 +1854,9 @@ class CANAnalyzerWindow(QMainWindow):
                         f"⚡ Trigger: [{rx_channel}]0x{trigger_id:03X} → [{tx_channel}]0x{tx_id:03X}",
                         2000
                     )
+                    self._handle_send_result(True)
+                else:
+                    self._handle_send_result(False)
                 
             except Exception as e:
                 self.logger.error(f"Error processing dialog trigger: {e}")
@@ -1871,6 +1914,9 @@ class CANAnalyzerWindow(QMainWindow):
                     # Increment count
                     self._increment_tx_count(row)
                     self.show_notification(f"⚡ Trigger TX: 0x{msg_data['can_id']:03X}", 2000)
+                    self._handle_send_result(True)
+                else:
+                    self._handle_send_result(False)
                 
             except Exception as e:
                 self.logger.error(f"Error checking trigger for row {row}: {e}")
@@ -2306,19 +2352,14 @@ class CANAnalyzerWindow(QMainWindow):
         self.logger.info("Single screen view restored")
     
     def setup_receive_table_for_widget(self, table_widget):
-        """Setup a receive table widget with proper configuration"""
-        if self.tracer_mode:
-            table_widget.setColumnCount(8)
-            table_widget.setHorizontalHeaderLabels(['ID', 'Time', t('col_channel'), 'PID', 'DLC', 'Data', 'ASCII', 'Comment'])
-            table_widget.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked)
-        else:
-            table_widget.setColumnCount(9)
-            table_widget.setHorizontalHeaderLabels(['ID', 'Count', t('col_channel'), 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment'])
-            table_widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        
-        table_widget.verticalHeader().setVisible(False)
-        font = QFont("Courier New", 14)
-        table_widget.setFont(font)
+        """Setup a receive table widget with proper configuration
+
+        Columns/widths/delegates come from the manager (single source), so the
+        split-screen tables can never drift from the main one.
+        """
+        self.receive_table_mgr.setup_table(table_widget, self.tracer_mode)
+
+        table_widget.setFont(QFont("Courier New", 14))
         table_widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table_widget.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -2326,31 +2367,6 @@ class CANAnalyzerWindow(QMainWindow):
         table_widget.customContextMenuRequested.connect(
             lambda pos, table=table_widget: self.show_receive_context_menu_for_table(table, pos)
         )
-        
-        header = table_widget.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        
-        if self.tracer_mode:
-            header.resizeSection(0, 60)   # ID
-            header.resizeSection(1, 100)  # Time
-            header.resizeSection(2, 70)   # Channel
-            header.resizeSection(3, 110)  # PID - 12 characters
-            header.resizeSection(4, 60)   # DLC
-            header.resizeSection(5, 250)  # Data
-            header.resizeSection(6, 100)  # ASCII
-            header.resizeSection(7, 150)  # Comment
-        else:
-            header.resizeSection(0, 40)   # ID
-            header.resizeSection(1, 60)   # Count
-            header.resizeSection(2, 70)   # Channel
-            header.resizeSection(3, 110)  # PID - 12 characters
-            header.resizeSection(4, 50)   # DLC
-            header.resizeSection(5, 250)  # Data
-            header.resizeSection(6, 70)   # Period
-            header.resizeSection(7, 100)  # ASCII
-            header.resizeSection(8, 150)  # Comment
-        
-        header.setStretchLastSection(True)
     
     def _reload_messages_split_screen(self):
         """Reload all messages in split-screen mode"""

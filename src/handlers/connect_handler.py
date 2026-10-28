@@ -45,6 +45,9 @@ class ConnectHandler:
                 self.parent.can_bus_manager
             )
             self.parent.transmit_handler.on_count_updated = self.parent._update_tx_count
+
+            # New connection: allow the Listen Only warning again.
+            self.parent._lo_notified = set()
             
             # Update TX source combo
             self._update_tx_source_combo(connected_buses)

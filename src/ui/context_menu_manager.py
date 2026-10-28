@@ -289,6 +289,8 @@ class ContextMenuManager:
                 if self.parent.transmit_handler.send_single(msg_data, target_bus):
                     sent_count += 1
                     self.parent._increment_tx_count(row)
+                else:
+                    self.parent._handle_send_result(False)
                     
             except Exception as e:
                 self.parent.logger.error(f"Error sending message from row {row}: {e}")

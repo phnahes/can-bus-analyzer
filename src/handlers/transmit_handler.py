@@ -7,6 +7,7 @@ Separated from UI code for better testability and maintainability.
 
 import logging
 import threading
+import time
 from typing import List, Dict, Optional
 from ..logger import get_logger
 
@@ -42,6 +43,12 @@ class TransmitHandler:
         
         # Callbacks
         self.on_count_updated = None
+
+        # Result of the last send attempt (for the UI to report the truth)
+        self.last_send_error: Optional[str] = None
+        self.last_blocked_buses: List[str] = []
+        self._last_blocked_key = None
+        self._last_blocked_ts = 0.0
     
     def add_message(self, message_data: Dict) -> None:
         """
@@ -81,7 +88,21 @@ class TransmitHandler:
         if not self.can_bus_manager:
             self.logger.warning("Cannot send: not connected")
             return False
-        
+
+        self.last_send_error = None
+        self.last_blocked_buses = []
+
+        # Listen Only: never claim a frame was sent on a bus that cannot send.
+        # Other buses (multi-interface setups) are unaffected.
+        targets = [target_bus] if target_bus else self.can_bus_manager.get_bus_names()
+        blocked = self.can_bus_manager.get_listen_only_buses(targets)
+        if blocked:
+            self.last_blocked_buses = blocked
+            self._warn_blocked(blocked)
+            if len(blocked) >= len([t for t in targets if t]):
+                self.last_send_error = 'listen-only'
+                return False
+
         try:
             self.logger.debug(f"send_single: message_data={message_data}")
             self.logger.debug(f"send_single: target_bus={target_bus}")
@@ -138,6 +159,18 @@ class TransmitHandler:
             self.logger.error(f"Error sending message: {e}", exc_info=True)
             return False
     
+    def _warn_blocked(self, buses: List[str], min_interval_s: float = 5.0):
+        """Log a blocked transmission, but never once per frame (periodic TX)."""
+        key = tuple(sorted(buses))
+        now = time.monotonic()
+        if key == self._last_blocked_key and (now - self._last_blocked_ts) < min_interval_s:
+            return
+        self._last_blocked_key = key
+        self._last_blocked_ts = now
+        self.logger.warning(
+            f"TX blocked: Listen Only active on {', '.join(buses)}"
+        )
+
     def start_periodic(self, index: int, period_ms: int, message_data: Dict = None) -> bool:
         """
         Start periodic transmission of a message.
@@ -166,6 +199,17 @@ class TransmitHandler:
             message_data = self.transmit_messages[index]
             self.logger.debug(f"start_periodic: got message_data from list: {message_data}")
         
+        # Listen Only: don't start a timer that could never transmit.
+        if self.can_bus_manager is not None:
+            targets = ([message_data.get('target_bus')] if message_data.get('target_bus')
+                       else self.can_bus_manager.get_bus_names())
+            blocked = self.can_bus_manager.get_listen_only_buses(targets)
+            if blocked and len(blocked) >= len([t for t in targets if t]):
+                self.last_send_error = 'listen-only'
+                self.last_blocked_buses = blocked
+                self._warn_blocked(blocked)
+                return False
+
         # Create stop event
         stop_event = threading.Event()
         self.periodic_stop_events[index] = stop_event

@@ -269,7 +269,7 @@ def test_without_ip_tool_the_check_is_skipped(monkeypatch, linux, capsys):
 
 
 def test_send_converts_app_message_to_python_can_message():
-    instance = make_instance()
+    instance = make_instance(listen_only=False)
     fake = FakeBus()
     instance.bus = fake
     instance.connected = True
@@ -288,7 +288,7 @@ def test_send_converts_app_message_to_python_can_message():
 def test_send_accepts_python_can_message():
     import can
 
-    instance = make_instance()
+    instance = make_instance(listen_only=False)
     fake = FakeBus()
     instance.bus = fake
     instance.connected = True
@@ -296,6 +296,49 @@ def test_send_accepts_python_can_message():
     native = can.Message(arbitration_id=0x123, data=b"\xff", is_extended_id=False)
     assert instance.send(native) is True
     assert fake.sent[0] is native
+
+
+def test_listen_only_blocks_send_by_config():
+    instance = make_instance(listen_only=True)
+    fake = FakeBus()
+    instance.bus = fake
+    instance.connected = True
+
+    assert instance.send(CANMessage(timestamp=1.0, can_id=0x100, dlc=1, data=b"\x01")) is False
+    assert instance.last_send_error == "listen-only"
+    assert fake.sent == []  # nothing written to the adapter
+
+
+def test_listen_only_blocks_send_by_link_state():
+    """SocketCAN: the kernel link can be listen-only even if config is not."""
+    instance = make_instance(listen_only=False)
+    instance.link_listen_only = True
+    fake = FakeBus()
+    instance.bus = fake
+    instance.connected = True
+
+    assert instance.listen_only_active is True
+    assert instance.send(CANMessage(timestamp=1.0, can_id=0x100, dlc=1, data=b"\x01")) is False
+    assert fake.sent == []
+
+
+def test_send_clears_previous_error():
+    instance = make_instance(listen_only=False)
+    instance.bus = FakeBus()
+    instance.connected = True
+    instance.last_send_error = "listen-only"
+
+    assert instance.send(CANMessage(timestamp=1.0, can_id=0x100, dlc=1, data=b"\x01")) is True
+    assert instance.last_send_error is None
+
+
+def test_get_listen_only_buses_filters_by_mode():
+    manager = cbm.CANBusManager()
+    manager.add_bus(cbm.CANBusConfig(name="CAN1", channel="can0", baudrate=500000, listen_only=True))
+    manager.add_bus(cbm.CANBusConfig(name="CAN2", channel="can1", baudrate=500000, listen_only=False))
+
+    assert manager.get_listen_only_buses() == ["CAN1"]
+    assert manager.get_listen_only_buses(["CAN2"]) == []
 
 
 def test_receive_loop_forwards_with_source():

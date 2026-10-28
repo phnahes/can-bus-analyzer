@@ -160,3 +160,78 @@ def test_setup_table_resets_index(make_table, make_msg, colors, tracer):
         # Index is rebuilt from the widget, so it must match the rows on screen.
         state = manager._table_state(table)
         assert state["index"] == {(0x100, "CAN1"): 0}
+
+
+# ---------------------------------------------------------------------------
+# ID column: one number only (Qt vertical header hidden) and absolute counting
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tracer", [False, True])
+def test_vertical_header_is_hidden(make_table, tracer):
+    table, _, _, _ = make_table(tracer=tracer)
+
+    # Qt's row numbers would duplicate the ID column on the left.
+    assert table.verticalHeader().isHidden() is True
+
+
+def test_id_column_counter_is_absolute_after_ring_buffer(make_table, make_msg):
+    table, manager, _, _ = make_table(tracer=True)
+    manager.max_tracer_rows = 5
+
+    manager.begin_batch()
+    for i in range(8):
+        manager.add_message_tracer(table, make_msg(can_id=0x100, data=bytes([i])))
+    manager.end_batch()
+
+    assert table.rowCount() == 5
+    assert manager.row_label_offset(table) == 3
+    assert manager.frame_count(table) == 8
+
+    # What the delegate paints for the first visible row is frame 4, not 1.
+    delegate = table.itemDelegateForColumn(0)
+    assert delegate._label(0) == "4"
+    assert delegate._label(4) == "8"
+
+
+def test_clear_table_resets_the_counter(make_table, make_msg):
+    table, manager, _, _ = make_table(tracer=True)
+    manager.max_tracer_rows = 2
+    for i in range(5):
+        manager.add_message_tracer(table, make_msg())
+
+    manager.clear_table(table)
+
+    assert manager.row_label_offset(table) == 0
+    assert manager.frame_count(table) == 0
+
+
+def test_reload_resets_the_counter(make_table, make_msg):
+    table, manager, _, _ = make_table(tracer=True)
+    manager.max_tracer_rows = 2
+    for i in range(5):
+        manager.add_message_tracer(table, make_msg())
+
+    manager.repopulate_tracer(table, [make_msg(), make_msg()])
+
+    assert manager.row_label_offset(table) == 0
+    assert manager.frame_count(table) == 2
+
+
+@pytest.mark.parametrize("tracer,columns", [(True, 8), (False, 9)])
+def test_split_screen_table_uses_the_same_columns(make_table, tracer, columns):
+    """Split-screen tables must not drift from the main table config."""
+    from PyQt6.QtWidgets import QTableWidget
+
+    from src.main_window import CANAnalyzerWindow
+
+    _, _, _, parent = make_table(tracer=tracer)
+    parent.tracer_mode = tracer
+    table = QTableWidget()
+
+    CANAnalyzerWindow.setup_receive_table_for_widget(parent, table)
+
+    assert table.columnCount() == columns
+    assert table.horizontalHeaderItem(0).text() == "ID"
+    assert table.verticalHeader().isHidden() is True
+    assert isinstance(table.itemDelegateForColumn(0), _RowNumberDelegate)
