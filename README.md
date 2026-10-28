@@ -124,9 +124,10 @@ python can_analyzer.py
 - **Split-Screen Mode**: View messages from different channels side-by-side
 
 #### **Message Reception**
-- Reception panel with: ID, DLC, Data, Period, Count, ASCII, Comment
-- **Monitor Mode**: Groups by ID, shows Count (first column), Period (ms between messages)
+- Reception panel columns: ID (frame counter), Count, Channel, PID (CAN ID), DLC, Data, Period, ASCII, Comment
+- **Monitor Mode**: Groups by (PID, Channel), updating Count and Period (ms between messages) in place
 - **Tracer Mode**: Chronological list with timestamps
+- **High-rate safe display**: bounded per-tick updates, indexed monitor rows and a Tracer ring buffer (`max_tracer_rows`, default 20000) — the status bar counts every received frame and reports dropped ones if the RX queue saturates
 - **Protocol Decoders**: Automatic decoding of FTCAN 2.0, OBD-II, and VAG BAP messages
 
 #### **Message Transmission**
@@ -433,7 +434,7 @@ Configure in **Settings** dialog (Ctrl+,):
 
 **Operating Modes:**
 - **Normal Mode**: Receive and Transmit messages
-- **Listen Only**: Receive-only mode (no ACK transmission)
+- **Listen Only**: Receive-only mode (no ACK); transmissions to that bus are refused by the application
 - **Simulation Mode**: Use simulated data instead of real hardware
 
 ---
@@ -526,8 +527,9 @@ Work with multiple CAN buses simultaneously. Configure up to multiple CAN interf
 3. For each CAN bus:
    - **Name**: Identifier for the bus (e.g., "CAN1", "CAN2", "Engine", "Body")
    - **Device**: Physical device path (e.g., `/dev/ttyUSB0`, `can0`, `/dev/cu.usbserial-1`)
-   - **Baudrate**: CAN bus speed (125k, 250k, 500k, 1000k, or custom)
+   - **Baudrate**: CAN bus speed (125k, 250k, 500k, 1000k, or custom). On SocketCAN this is set by the kernel: the app reads the real value back and shows it in the status bar
    - **Listen Only**: Enable for passive monitoring (no ACK, no transmission)
+   - **Bring interface up on connect**: (SocketCAN, opt-in) configure and bring the link up with `pkexec` when connecting
    - **COM Baudrate**: Serial port speed for SLCAN adapters (115200, 230400, etc.)
    - **RTS HS**: Hardware handshake for serial adapters
 4. Click **Add CAN** to add more buses
@@ -537,8 +539,8 @@ Work with multiple CAN buses simultaneously. Configure up to multiple CAN interf
 #### **Interface Auto-Detection**
 
 The application automatically detects the interface type based on the device name:
-- **SocketCAN**: `can0`, `can1`, `vcan0` → uses `socketcan` interface
-- **SLCAN**: `/dev/ttyUSB*`, `/dev/cu.usbserial*` → uses `slcan` interface
+- **SocketCAN**: any `can*` or `vcan*` channel (e.g. `can0`, `can2`, `vcan0`) → uses `socketcan` interface
+- **SLCAN**: `/dev/ttyUSB*`, `/dev/cu.usbserial*`, `COM*` → uses `slcan` interface
 
 #### **Usage**
 
@@ -975,7 +977,7 @@ The application uses `python-can` library which abstracts the Lawicel SLCAN prot
 
 **Supported Interfaces:**
 - **SLCAN** (Serial CAN): For USB-serial adapters implementing Lawicel protocol
-- **SocketCAN**: Native Linux/macOS CAN interface
+- **SocketCAN**: Native Linux CAN interface (macOS uses SLCAN adapters)
 - **Virtual CAN**: For testing without hardware
 
 **Why python-can?**
@@ -986,7 +988,7 @@ The application uses `python-can` library which abstracts the Lawicel SLCAN prot
 - No need to implement low-level SLCAN commands manually
 
 The application automatically detects the interface type based on the device path:
-- `/dev/tty.*` or `/dev/cu.*` → SLCAN
+- `/dev/tty.*` or `/dev/cu.*` or `COM*` → SLCAN
 - `can*` or `vcan*` → SocketCAN
 
 ### Protocol Decoder Architecture
