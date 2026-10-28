@@ -1,6 +1,6 @@
 # CAN Analyzer
 
-[![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.2.5-blue.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 A comprehensive CAN bus analyzer with SLCAN support, protocol decoders, and real-time analysis. Built with Python and PyQt6. **Runs on macOS and Linux.**
@@ -853,7 +853,7 @@ Contributions are welcome! Here's how you can help:
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history and release notes.
 
-**Latest Release: v1.2.4** - Cumulative release (v1.2.1 + v1.2.2 + v1.2.3 updates)
+**Latest Release: v1.2.5** - Cumulative release (v1.2.1 + v1.2.2 + v1.2.3 updates)
 - **FTCAN 2.0 Protocol Decoder**: Automatic decoding of FuelTech devices
 - **OBD-II Protocol Decoder**: Universal automotive diagnostics support
 - **FTCAN Analyzer**: Dedicated UI for FTCAN messages with live measures
@@ -907,7 +907,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 
 ## Project Status
 
-**Version**: 1.2.4  
+**Version**: 1.2.5  
 **Status**: Stable  
 **Last Updated**: February 2026
 
@@ -936,7 +936,7 @@ This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**
 ### Recently Added / Updated
 - **FTCAN / WB-O2** (v1.2.1): Devices tab in FTCAN analyzer; special IDs for WB-O2 config/association; `tools/ftcan/wbo2_nano_config_tx.py` for scale presets over CAN
 - **Packaging docs** (v1.2.2): `docs/BUILD.md` documents local build, version bump, tag push, and CI release builds
-- **CAN Gateway Enhancements** (v1.2.4):
+- **CAN Gateway Enhancements** (v1.2.5):
   - ✅ **Bidirectional Gateway** with automatic loop prevention
   - ✅ **Visual Indicators** (🚫 blocked, ➡️ forwarded, ✏️ modified, 🔄 loop prevented)
   - ✅ **Directional Rules** for blocking and modification

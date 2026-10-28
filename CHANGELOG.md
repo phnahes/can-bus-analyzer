@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+---
+
+## [1.2.5] - 2026-10-27
+
+### Added
 - **Headless test suite** (`tests/`, `pytest.ini`, `.github/workflows/ci-test.yml`): Qt `offscreen`, python-can virtual/fake buses and injected `ip`/`pkexec` runners — runs on macOS and Linux without any CAN hardware. Includes ratio-based scaling guards and `docs/TESTING.md`
 - **`tools/general/bench_ui_feed.py`**: headless UI load benchmark (tick latency, rows, dropped frames) that reproduces the "cangen freezes the UI" report
 - **SocketCAN interface discovery** (`src/can_interface_setup.py`): *Scan Devices* lists real `can*`/`vcan*` interfaces with state (`ip -j -d link show type can`) instead of a fixed list
