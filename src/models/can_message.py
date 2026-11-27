@@ -6,6 +6,18 @@ from dataclasses import dataclass
 
 from ..config import DEFAULT_CHANNEL
 
+# Legal CAN FD payload lengths (DLC 9-15 map to 12/16/20/24/32/48/64).
+FD_PAYLOAD_LENGTHS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64)
+
+
+def pad_fd_payload(data: bytes) -> bytes:
+    """Zero-pad an FD payload to the next legal CAN FD length."""
+    length = len(data)
+    for valid in FD_PAYLOAD_LENGTHS:
+        if length <= valid:
+            return bytes(data) + b"\x00" * (valid - length)
+    return bytes(data[:64])
+
 
 @dataclass
 class CANMessage:
@@ -20,6 +32,8 @@ class CANMessage:
     channel: int = 1  # CAN channel (1 or 2)
     is_extended: bool = False  # 29-bit ID
     is_rtr: bool = False  # Remote Transmission Request
+    is_fd: bool = False  # CAN FD frame
+    bitrate_switch: bool = False  # CAN FD BRS
     source: str = DEFAULT_CHANNEL  # Source bus name (for multi-CAN support)
     gateway_processed: bool = False  # Flag to prevent gateway loops
     gateway_action: str = ""  # Gateway action: "blocked", "modified", "forwarded", ""
@@ -37,6 +51,8 @@ class CANMessage:
             'channel': self.channel,
             'is_extended': self.is_extended,
             'is_rtr': self.is_rtr,
+            'is_fd': self.is_fd,
+            'bitrate_switch': self.bitrate_switch,
             'source': self.source,
             'gateway_processed': self.gateway_processed,
             'gateway_action': self.gateway_action
@@ -56,6 +72,8 @@ class CANMessage:
             channel=data.get('channel', 1),
             is_extended=data.get('is_extended', False),
             is_rtr=data.get('is_rtr', False),
+            is_fd=data.get('is_fd', False),
+            bitrate_switch=data.get('bitrate_switch', False),
             source=data.get('source', DEFAULT_CHANNEL),
             gateway_processed=data.get('gateway_processed', False),
             gateway_action=data.get('gateway_action', '')

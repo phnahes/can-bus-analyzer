@@ -13,7 +13,7 @@ class FakeBus:
     def __init__(self):
         self.sent = []
 
-    def send(self, msg):
+    def send(self, msg, timeout=None):
         self.sent.append(msg)
 
     def recv(self, timeout=None):
@@ -72,6 +72,46 @@ def test_send_targeting_listen_only_bus_is_refused(warned):
     assert handler.send_single(MESSAGE, target_bus="CAN1") is False
     assert handler.last_send_error == "listen-only"
     assert handler.can_bus_manager.buses["CAN2"].bus.sent == []
+
+
+def test_send_fd_payload_sets_fd_and_brs(warned):
+    handler = make_handler([("CAN1", False)])
+    payload = bytes(range(64))
+    message = {
+        "id": 0x123, "dlc": 64, "data": payload, "extended": False,
+        "is_rtr": False, "is_fd": True, "bitrate_switch": True,
+    }
+
+    assert handler.send_single(message, target_bus="CAN1") is True
+
+    sent = handler.can_bus_manager.buses["CAN1"].bus.sent[0]
+    assert sent.is_fd is True
+    assert sent.bitrate_switch is True
+    assert bytes(sent.data) == payload
+
+
+def test_long_payload_is_sent_as_fd_even_without_the_flag(warned):
+    handler = make_handler([("CAN1", False)])
+    message = {"id": 0x123, "dlc": 12, "data": bytes(range(12)),
+               "extended": False, "is_rtr": False}
+
+    assert handler.send_single(message, target_bus="CAN1") is True
+
+    sent = handler.can_bus_manager.buses["CAN1"].bus.sent[0]
+    assert sent.is_fd is True
+    assert sent.bitrate_switch is False
+
+
+def test_fd_payload_is_padded_to_a_legal_length(warned):
+    handler = make_handler([("CAN1", False)])
+    message = {"id": 0x123, "dlc": 9, "data": b"\xAA" * 9,
+               "extended": False, "is_rtr": False, "is_fd": True}
+
+    assert handler.send_single(message, target_bus="CAN1") is True
+
+    sent = handler.can_bus_manager.buses["CAN1"].bus.sent[0]
+    assert len(sent.data) == 12
+    assert bytes(sent.data) == b"\xAA" * 9 + b"\x00" * 3
 
 
 def test_mixed_buses_send_only_on_the_normal_one(warned):

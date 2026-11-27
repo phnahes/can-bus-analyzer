@@ -15,9 +15,30 @@ from ..config import DEFAULT_CHANNEL
 from ..i18n import get_i18n, t
 from ..theme import get_adaptive_colors
 from ..baudrate_detect_dialog import BaudrateDetectDialog
+from ..candle_backend import is_candle_channel, list_channels as list_candle_channels
 from ..storage_paths import get_default_saves_root_dir
 
 from .usb_device_dialog import USBDeviceSelectionDialog
+
+
+def detect_interface(channel: str) -> str:
+    """Infer the backend from the device name (single source for the dialog)."""
+    channel = str(channel)
+    if is_candle_channel(channel):
+        return 'candle'
+    if (channel.startswith('/dev/tty') or channel.startswith('/dev/cu.')
+            or (channel.upper().startswith('COM') and len(channel) >= 4)):
+        return 'slcan'
+    if channel.startswith('can') or channel.startswith('vcan'):
+        return 'socketcan'
+    return 'socketcan'
+
+
+DRIVER_LABELS = {
+    'candle': 'gs_usb / candleLight (USB native — no COM port)',
+    'socketcan': 'SocketCAN (kernel interface)',
+    'slcan': 'SLCAN (USB-serial / COM)',
+}
 
 
 class SettingsDialog(QDialog):
@@ -320,10 +341,17 @@ class SettingsDialog(QDialog):
         btn_scan.clicked.connect(lambda: self._scan_device_for_bus(channel_input))
         row2.addWidget(btn_scan)
         bus_layout.addLayout(row2)
+
+        # Driver currently implied by the channel/device name.
+        driver_info = QLabel()
+        driver_info.setStyleSheet("color: gray; font-size: 10px;")
+        driver_info.setWordWrap(True)
+        bus_layout.addWidget(driver_info)
         
         # Row 3: Baudrate and Listen Only
         row3 = QHBoxLayout()
-        row3.addWidget(QLabel(t('multican_baudrate') + ":"))
+        baudrate_label = QLabel(t('multican_baudrate') + ":")
+        row3.addWidget(baudrate_label)
         baudrate_combo = QComboBox()
         baudrate_combo.addItems(["125 Kbit/s", "250 Kbit/s", "500 Kbit/s", "1000 Kbit/s"])
         baudrate = bus_config.get('baudrate', 500000)
@@ -345,6 +373,36 @@ class SettingsDialog(QDialog):
         listen_only_check.setChecked(bus_config.get('listen_only', True))
         row3.addWidget(listen_only_check)
         bus_layout.addLayout(row3)
+
+        # Row 3b: CAN FD (candle/gs_usb and SocketCAN; not SLCAN yet)
+        fd_row = QHBoxLayout()
+        fd_check = QCheckBox(t('multican_fd'))
+        fd_check.setChecked(bool(bus_config.get('fd', False)))
+        fd_check.setToolTip(t('tooltip_multican_fd'))
+        fd_row.addWidget(fd_check)
+
+        fd_row.addWidget(QLabel(t('multican_data_bitrate') + ":"))
+        dbitrate_combo = QComboBox()
+        # 2 Mbit/s is deliberately absent: it caused bit errors and a firmware
+        # reboot on CANable 2.5 FW 38.3.4 during validation.
+        dbitrate_combo.addItems(["1 Mbit/s", "4 Mbit/s", "5 Mbit/s", "8 Mbit/s"])
+        dbitrate_combo.setToolTip(
+            "CAN FD data phase. 5 Mbit/s is the safe default; 2 Mbit/s is "
+            "known to crash the CANable 2.5 firmware."
+        )
+        dbitrate = int(bus_config.get('dbitrate', 0) or 5_000_000)
+        dbitrate_text = f"{dbitrate // 1_000_000} Mbit/s"
+        if dbitrate_combo.findText(dbitrate_text) < 0:
+            dbitrate_combo.addItem(dbitrate_text)
+        dbitrate_combo.setCurrentText(dbitrate_text)
+        dbitrate_combo.setMaximumWidth(110)
+        dbitrate_combo.setEnabled(fd_check.isChecked())
+        fd_check.stateChanged.connect(
+            lambda state, combo=dbitrate_combo: combo.setEnabled(bool(state))
+        )
+        fd_row.addWidget(dbitrate_combo)
+        fd_row.addStretch()
+        bus_layout.addLayout(fd_row)
         
         # Row 4: Serial-specific settings (COM Baudrate, RTS HS)
         row4 = QHBoxLayout()
@@ -393,13 +451,59 @@ class SettingsDialog(QDialog):
         bus_widget.channel_input = channel_input
         bus_widget.baudrate_combo = baudrate_combo
         bus_widget.listen_only_check = listen_only_check
+        bus_widget.fd_check = fd_check
+        bus_widget.dbitrate_combo = dbitrate_combo
         bus_widget.com_baudrate_combo = com_baudrate_combo
         bus_widget.rts_hs_check = rts_hs_check
         bus_widget.bring_up_check = bring_up_check
+        bus_widget.driver_info = driver_info
+        bus_widget.serial_info = serial_info
+        bus_widget.socketcan_info = socketcan_info
+        bus_widget.baudrate_label = baudrate_label
+
+        # Keep the driver label and the enabled fields in sync with the device.
+        channel_input.currentTextChanged.connect(
+            lambda text, widget=bus_widget: self._update_bus_driver(widget)
+        )
+        # CAN FD has a nominal (arbitration) bitrate and a data bitrate.
+        fd_check.stateChanged.connect(
+            lambda state, widget=bus_widget: self._update_baudrate_label(widget)
+        )
+        self._update_bus_driver(bus_widget)
+        self._update_baudrate_label(bus_widget)
         
         # Add to layout and list
         self.can_buses_layout.insertWidget(len(self.can_bus_widgets), bus_widget)
         self.can_bus_widgets.append(bus_widget)
+
+    def _update_bus_driver(self, bus_widget):
+        """Show the inferred driver and disable fields that do not apply."""
+        channel = bus_widget.channel_input.currentText().strip()
+        interface = detect_interface(channel)
+        bus_widget.driver_info.setText(
+            "Driver: " + DRIVER_LABELS.get(interface, "Unknown")
+        )
+
+        is_serial = interface == 'slcan'
+        is_socketcan = interface == 'socketcan'
+        is_fd_capable = interface in ('candle', 'socketcan')
+
+        bus_widget.com_baudrate_combo.setEnabled(is_serial)
+        bus_widget.rts_hs_check.setEnabled(is_serial)
+        bus_widget.serial_info.setVisible(is_serial)
+
+        bus_widget.bring_up_check.setEnabled(is_socketcan)
+        bus_widget.socketcan_info.setVisible(is_socketcan)
+
+        bus_widget.fd_check.setEnabled(is_fd_capable)
+        if not is_fd_capable and bus_widget.fd_check.isChecked():
+            bus_widget.fd_check.setChecked(False)
+
+    def _update_baudrate_label(self, bus_widget):
+        """In CAN FD the classic field is the arbitration (nominal) rate."""
+        key = ('multican_nominal_bitrate' if bus_widget.fd_check.isChecked()
+               else 'multican_baudrate')
+        bus_widget.baudrate_label.setText(t(key) + ":")
     
     def _add_new_can_bus(self):
         """Add a new CAN bus configuration"""
@@ -445,6 +549,21 @@ class SettingsDialog(QDialog):
                 channel_input.setCurrentText(links[0].name)
 
         if not self.usb_monitor:
+            # No serial monitor: still offer gs_usb channels discovered here.
+            candle_channels = list_candle_channels()
+            if candle_channels:
+                existing = {channel_input.itemText(i) for i in range(channel_input.count())}
+                for channel in candle_channels:
+                    if channel.channel not in existing:
+                        channel_input.addItem(channel.channel)
+                channel_input.setToolTip(
+                    "\n".join(
+                        f"{ch.channel}: {ch.label} ({ch.description})"
+                        for ch in candle_channels
+                    )
+                )
+                channel_input.setCurrentText(candle_channels[0].channel)
+                return
             if links:
                 return
             QMessageBox.warning(self, t('warning'), t('msg_usb_monitor_not_available'))
@@ -524,19 +643,13 @@ class SettingsDialog(QDialog):
             baudrate_text = widget.baudrate_combo.currentText()
             baudrate = int(baudrate_text.split()[0]) * 1000
             listen_only = widget.listen_only_check.isChecked()
+            fd = widget.fd_check.isChecked()
+            dbitrate = int(widget.dbitrate_combo.currentText().split()[0]) * 1_000_000
             com_baudrate = widget.com_baudrate_combo.currentText()
             rts_hs = widget.rts_hs_check.isChecked()
             
             # Auto-detect interface based on channel
-            channel_upper = channel.upper()
-            if (channel.startswith('/dev/tty.') or channel.startswith('/dev/cu.') or
-                    channel.startswith('/dev/ttyUSB') or channel.startswith('/dev/ttyACM') or
-                    (channel_upper.startswith('COM') and len(channel) >= 4)):
-                interface = 'slcan'
-            elif channel.startswith('can') or channel.startswith('vcan'):
-                interface = 'socketcan'
-            else:
-                interface = 'socketcan'  # default
+            interface = detect_interface(channel)
             
             can_buses.append({
                 'name': name,
@@ -544,6 +657,8 @@ class SettingsDialog(QDialog):
                 'baudrate': baudrate,
                 'interface': interface,
                 'listen_only': listen_only,
+                'fd': fd,
+                'dbitrate': dbitrate,
                 'bring_up': widget.bring_up_check.isChecked(),
                 'com_baudrate': com_baudrate,
                 'tty_baudrate': self._parse_com_baudrate(com_baudrate),

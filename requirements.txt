@@ -1,3 +1,6 @@
 python-can>=4.3.1
+# gs_usb / candleLight adapters on macOS/Windows (CAN FD, multi-channel).
+# On Linux the kernel driver already exposes the same hardware as SocketCAN.
+python-can-candle>=1.2.4
 pyserial>=3.5
 PyQt6>=6.6.0

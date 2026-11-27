@@ -124,7 +124,7 @@ python can_analyzer.py
 - **Split-Screen Mode**: View messages from different channels side-by-side
 
 #### **Message Reception**
-- Reception panel columns: ID (frame counter), Count, Channel, PID (CAN ID), DLC, Data, Period, ASCII, Comment
+- Reception panel columns: ID (frame counter), Count, Channel, PID (CAN ID), DLC, Data, Period, ASCII, Comment, FD, BRS
 - **Monitor Mode**: Groups by (PID, Channel), updating Count and Period (ms between messages) in place
 - **Tracer Mode**: Chronological list with timestamps
 - **High-rate safe display**: bounded per-tick updates, indexed monitor rows and a Tracer ring buffer (`max_tracer_rows`, default 20000) — the status bar counts every received frame and reports dropped ones if the RX queue saturates
@@ -292,6 +292,7 @@ can-bus-analyzer/
 │   ├── INTERNATIONALIZATION.md # Adding and editing translations
 │   ├── RELEASE_MANUAL.md       # How to create a release manually on GitHub
 │   ├── TOOLS.md                # Overview of tools and scripts
+│   ├── reports/                # Validation reports (gs_usb / CAN FD)
 │   ├── ftcan/                  # FTCAN protocol documentation
 │   │   └── README.md           # Complete FTCAN 2.0 specification
 │   └── decoders/               # Protocol decoder documentation
@@ -305,6 +306,7 @@ can-bus-analyzer/
 │   ├── general/                # General CAN tools
 │   │   ├── README.md           # Documentation for general tools
 │   │   ├── send_can_message.py # Send CAN messages via command line
+│   │   ├── stress_candle.py    # gs_usb/CAN FD loopback stress test
 │   │   ├── baudrate_detect.py  # Auto-detect CAN baudrate
 │   │   └── obd2_poller.py      # OBD-II polling tool
 │   ├── arduino/                # Arduino examples and simulators
@@ -331,6 +333,8 @@ can-bus-analyzer/
 │   ├── utils.py                # Helpers (formatting, filtering)
 │   ├── can_interface.py        # CAN bus connection and message send/receive
 │   ├── can_bus_manager.py      # Multi-CAN bus management
+│   ├── candle_backend.py       # gs_usb / candleLight channel discovery
+│   ├── candle_session.py       # Shared CandleBus + per-channel multiplexing
 │   ├── config_manager.py       # Configuration file management
 │   ├── protocol_decoder.py     # Protocol decoder base class
 │   ├── theme.py                # UI theme management
@@ -373,6 +377,8 @@ can-bus-analyzer/
 ### Supported CAN Adapters
 
 - USB-CAN adapters (via python-can SLCAN)
+- gs_usb / candleLight adapters (candleLight, CANnectivity, CANable 2.x) via
+  `python-can-candle` — no kernel driver needed on macOS/Windows
 - Serial CAN adapters (via pyserial)
 - SocketCAN (Linux)
 - Virtual CAN (vcan) for testing
@@ -392,6 +398,40 @@ The application includes **automatic device detection** on all supported OSes:
 |---------|------------------------------|-----------|
 | **macOS**  | `/dev/cu.usbserial*`, `/dev/cu.usbmodem*` | — |
 | **Linux**  | `/dev/ttyUSB0`, `/dev/ttyACM0`           | `can0`, `vcan0` |
+
+### gs_usb / candleLight adapters (macOS, Windows)
+
+Adapters running candleLight, CANnectivity or CANable 2.x firmware speak the
+`gs_usb` protocol. On Linux the kernel driver exposes them as `canN`; on macOS
+and Windows there is no such driver, so the app talks to the adapter directly
+through python-can's `candle` backend (`python-can-candle`, installed with the
+requirements).
+
+Press **Scan Devices** and each channel appears as `<serial>:<index>` (for
+example `2088339B413250013:0`). Select it, set the **Nominal bitrate** (shown as
+**Baudrate** for classical CAN), and **Connect**. No serial port is created, so
+the adapter does not show up under `/dev/cu.*`. The Settings dialog shows the
+detected driver under the device (`gs_usb / candleLight`) and disables the
+serial-only fields (COM Baudrate, RTS HS).
+
+CAN FD is enabled per bus with **CAN FD** plus a **Data bitrate** (1/4/5/8 Mbit/s).
+This setting is honored by the candle and SocketCAN backends; SLCAN FD still
+needs a `BitTimingFd` and is not wired yet. In the transmit panel, tick **FD**
+and type the payload in the hex field (up to 64 bytes); **BRS** enables the
+data-phase bitrate switch. Payloads are zero-padded to the next legal CAN FD
+length (e.g. 9 bytes → 12). Monitor and Tracer show separate **FD** and **BRS**
+columns, so an FD frame is identifiable even with 8 bytes or without BRS.
+
+Both channels of a dual adapter can be used at the same time (for example
+CAN1 on channel 0 and CAN2 on channel 1, or a gateway between them): the app
+opens the USB device once and multiplexes the channels internally.
+
+On the CANable 2.5 firmware used for validation, 1, 4, 5 and 8 Mbit/s data
+phases ran clean. **2 Mbit/s produced bit errors and rebooted the adapter**
+(FW 38.3.4), so it is not offered in Settings by default — use 5 Mbit/s unless
+your adapter/firmware documents otherwise. The full validation report (setup,
+20k-frame stress results, app/UI numbers and open issues) is in
+[`docs/reports/2026-11-26-gs_usb-can-fd.md`](docs/reports/2026-11-26-gs_usb-can-fd.md).
 
 ### SocketCAN on Linux (interface state)
 
@@ -416,12 +456,16 @@ On Linux the app therefore:
 - reports the bitrate the kernel is really using in the status bar
   (`500k→1000k` when they differ).
 
-CAN FD (for adapters running candleLight/CANnectivity firmware) is configured
-on the link, and is not supported by the app yet:
+CAN FD on SocketCAN is configured on the link:
 
 ```bash
 sudo ip link set dev can0 up type can bitrate 500000 dbitrate 5000000 fd on
 ```
+
+With **CAN FD** enabled, the app includes `dbitrate ... fd on` when it brings
+the interface up (or shows that command), and opens the socket in FD mode.
+Received FD frames (up to 64 bytes) are displayed by the monitor and tracer,
+and the transmit panel can send 64-byte FD frames with optional BRS.
 
 ### Connection Settings
 
@@ -429,8 +473,8 @@ Configure in **Settings** dialog (Ctrl+,):
 
 **Device Configuration:**
 - **CAN Device**: Select your adapter (e.g., `/dev/tty.usbserial`, `can0`)
-- **COM Baudrate**: Serial communication speed (default: 115200 bps)
-- **CAN Baudrate**: CAN bus speed (125K, 250K, 500K, 1M)
+- **COM Baudrate**: Serial communication speed (default: 115200 bps). SLCAN only; disabled for SocketCAN and gs_usb/candle
+- **CAN Baudrate**: CAN bus speed (125K, 250K, 500K, 1M). With **CAN FD** ticked the label becomes **Nominal bitrate**, and the FD **Data bitrate** (1/4/5/8 Mbit/s) is configured separately
 
 **Operating Modes:**
 - **Normal Mode**: Receive and Transmit messages
@@ -526,12 +570,13 @@ Work with multiple CAN buses simultaneously. Configure up to multiple CAN interf
 2. Navigate to **Multi-CAN Configuration** section
 3. For each CAN bus:
    - **Name**: Identifier for the bus (e.g., "CAN1", "CAN2", "Engine", "Body")
-   - **Device**: Physical device path (e.g., `/dev/ttyUSB0`, `can0`, `/dev/cu.usbserial-1`)
-   - **Baudrate**: CAN bus speed (125k, 250k, 500k, 1000k, or custom). On SocketCAN this is set by the kernel: the app reads the real value back and shows it in the status bar
-   - **Listen Only**: Enable for passive monitoring (no ACK, no transmission)
+   - **Device**: Physical device path (e.g., `/dev/ttyUSB0`, `can0`, `/dev/cu.usbserial-1`, or a gs_usb channel such as `2088339B413250013:0`)
+   - **Baudrate / Nominal bitrate**: CAN bus speed (125k, 250k, 500k, 1000k, or custom). The label changes to **Nominal bitrate** when **CAN FD** is ticked. On SocketCAN this is set by the kernel: the app reads the real value back and shows it in the status bar
+   - **CAN FD + Data bitrate**: FD frames with up to 64 bytes and optional BRS; the data phase uses 1/4/5/8 Mbit/s
+   - **Listen Only**: Enable for passive monitoring (no ACK, no transmission). For a two-channel loopback with no other node, leave **both** channels in Normal mode — Listen Only does not ACK and the transmitter will go bus-off
    - **Bring interface up on connect**: (SocketCAN, opt-in) configure and bring the link up with `pkexec` when connecting
-   - **COM Baudrate**: Serial port speed for SLCAN adapters (115200, 230400, etc.)
-   - **RTS HS**: Hardware handshake for serial adapters
+   - **COM Baudrate**: Serial port speed for SLCAN adapters (115200, 230400, etc.); disabled automatically for SocketCAN and gs_usb/candle
+   - **RTS HS**: Hardware handshake for serial adapters; disabled automatically for non-serial interfaces
 4. Click **Add CAN** to add more buses
 5. Use **Scan Devices** to auto-detect available devices
 6. Click **OK** to save
@@ -598,7 +643,7 @@ Tips for day-to-day use and common workflows.
 
 ### Saving and Loading
 
-- **Receive:** Save/Load Monitor or Tracer log (JSON, CSV, or trace format) from the File menu or toolbar.
+- **Receive:** Save/Load Monitor or Tracer log (JSON, CSV, or trace format) from the File menu or toolbar. JSON and CSV preserve the CAN FD/BRS flags; the ASC-like trace export is classical-only. JSON logs are written with one message per line (still a single valid JSON document), which keeps diffs/grep readable; fully-indented logs saved by older versions still load unchanged
 - **Transmit:** Save/Load the transmit list (JSON) to reuse message sets.
 - **Default folders:** Open/save dialogs start in per-feature subfolders under `~/CAN Analyzer/saves/` (or under your custom **Save Directory** in Settings). See [Configuration](#configuration).
 - **Settings** (including multi-CAN, theme, saves path, and startup options) are stored in `config.json` and persist between runs.

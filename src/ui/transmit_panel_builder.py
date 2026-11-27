@@ -54,10 +54,11 @@ class TransmitPanelBuilder:
         from ..i18n import t
         
         table = QTableWidget()
-        table.setColumnCount(18)
+        table.setColumnCount(21)
         table.setHorizontalHeaderLabels([
             'PID', 'DLC', 'RTR', 'Period', 'TX Mode', 'Trigger ID', 'Trigger Data',
-            'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'Count', 'Comment', t('col_channel')
+            'D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'Count', 'Comment',
+            t('col_channel'), 'FD', 'BRS', 'FD Data'
         ])
 
         # Support Delete/Backspace to remove selected TX rows when table is focused.
@@ -96,6 +97,9 @@ class TransmitPanelBuilder:
         header_tx.resizeSection(15, 60)
         header_tx.resizeSection(16, 150)
         header_tx.resizeSection(17, 70)
+        header_tx.resizeSection(18, 40)
+        header_tx.resizeSection(19, 40)
+        header_tx.resizeSection(20, 280)
         
         return table
     
@@ -158,6 +162,15 @@ class TransmitPanelBuilder:
             byte_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
             parent.tx_data_bytes.append(byte_input)
             row1.addWidget(byte_input)
+
+        # FD payload: one hex field replaces the 8 byte fields when FD is on.
+        parent.tx_fd_data_input = QLineEdit()
+        parent.tx_fd_data_input.setPlaceholderText("00 11 22 ... (up to 64 bytes)")
+        parent.tx_fd_data_input.setMaxLength(64 * 3)
+        parent.tx_fd_data_input.setMinimumWidth(260)
+        parent.tx_fd_data_input.setVisible(False)
+        parent.tx_fd_data_input.textChanged.connect(parent.on_fd_data_changed)
+        row1.addWidget(parent.tx_fd_data_input)
         
         row1.addWidget(QLabel("│"))
         row1.addWidget(QLabel("Period:"))
@@ -185,6 +198,16 @@ class TransmitPanelBuilder:
         parent.tx_rtr_check.setToolTip("Remote Transmission Request - solicita dados sem enviar payload")
         parent.tx_rtr_check.stateChanged.connect(parent.on_rtr_changed)
         row2.addWidget(parent.tx_rtr_check)
+
+        parent.tx_fd_check = QCheckBox("FD")
+        parent.tx_fd_check.setToolTip("CAN FD frame (up to 64 bytes). Needs an FD-capable bus/backend.")
+        parent.tx_fd_check.stateChanged.connect(parent.on_fd_changed)
+        row2.addWidget(parent.tx_fd_check)
+
+        parent.tx_brs_check = QCheckBox("BRS")
+        parent.tx_brs_check.setToolTip("CAN FD Bit Rate Switch (data phase at the data bitrate)")
+        parent.tx_brs_check.setEnabled(False)
+        row2.addWidget(parent.tx_brs_check)
         
         row2.addWidget(QLabel("│"))
         row2.addWidget(QLabel("Comment:"))

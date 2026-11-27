@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QStyleOptionViewItem,
     QApplication,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QTextDocument, QAbstractTextDocumentLayout, QFontMetrics
+from PyQt6.QtCore import Qt, QRect
+from PyQt6.QtGui import QFont, QFontMetrics
 from typing import Optional, Dict
 import bisect
 import weakref
@@ -23,9 +23,25 @@ from ..models.can_message import CANMessage
 
 
 class _DiffDataBoldDelegate(QStyledItemDelegate):
-    """Paint Data column with per-byte bold based on a list of changed indices."""
+    """Paint the Data column with per-byte bold, on a single line.
+
+    The previous implementation rendered HTML through QTextDocument.  A bold
+    token can be wider than its normal counterpart, so the document wrapped to
+    a second line and the text spilled into the next row.  Painting tokens with
+    QPainter keeps everything on one line and lets the cell clip/elide.
+    """
 
     CHANGED_INDICES_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+
+    @staticmethod
+    def _changed_set(changed) -> set:
+        result = set()
+        for value in changed:
+            try:
+                result.add(int(value))
+            except Exception:
+                continue
+        return result
 
     def paint(self, painter, option, index):
         changed = index.data(self.CHANGED_INDICES_ROLE) or []
@@ -33,53 +49,68 @@ class _DiffDataBoldDelegate(QStyledItemDelegate):
             super().paint(painter, option, index)
             return
 
-        text = index.data(Qt.ItemDataRole.DisplayRole) or ""
-        tokens = [t for t in str(text).split(" ") if t != ""]
+        changed_set = self._changed_set(changed)
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        tokens = [token for token in text.split(" ") if token]
 
-        # Coerce to ints safely (Qt can sometimes give list[str] back).
-        changed_set = set()
-        for v in changed:
-            try:
-                changed_set.add(int(v))
-            except Exception:
-                continue
+        # Background, selection and focus, without the default text.
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        opt.text = ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
 
-        # Respect selection background/foreground.
-        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
-        if is_selected:
-            painter.save()
-            painter.fillRect(option.rect, option.palette.highlight())
-            painter.restore()
-            text_color = option.palette.highlightedText().color().name()
+        if option.state & QStyle.StateFlag.State_Selected:
+            color = option.palette.highlightedText().color()
         else:
-            text_color = option.palette.text().color().name()
+            color = option.palette.text().color()
 
-        def esc(s: str) -> str:
-            return (
-                s.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace('"', "&quot;")
-            )
+        normal_font = option.font
+        bold_font = QFont(normal_font)
+        bold_font.setBold(True)
+        normal_metrics = QFontMetrics(normal_font)
+        bold_metrics = QFontMetrics(bold_font)
+        space = normal_metrics.horizontalAdvance(" ")
 
-        parts = []
-        for i, tok in enumerate(tokens):
-            safe = esc(tok)
-            parts.append(f"<b>{safe}</b>" if i in changed_set else safe)
-
-        html = f"<span style='color: {text_color};'>{'&nbsp;'.join(parts)}</span>"
-
-        doc = QTextDocument()
-        doc.setDefaultFont(option.font)
-        doc.setHtml(html)
-        doc.setTextWidth(option.rect.width())
+        rect = option.rect.adjusted(4, 0, -4, 0)
+        x = rect.left()
+        baseline_rect_height = rect.height()
 
         painter.save()
-        painter.translate(option.rect.topLeft())
-        clip = option.rect.translated(-option.rect.topLeft())
-        painter.setClipRect(clip)
-        ctx = QAbstractTextDocumentLayout.PaintContext()
-        doc.documentLayout().draw(painter, ctx)
+        painter.setClipRect(option.rect)
+        painter.setPen(color)
+
+        truncated = False
+        for i, token in enumerate(tokens):
+            is_changed = i in changed_set
+            font = bold_font if is_changed else normal_font
+            metrics = bold_metrics if is_changed else normal_metrics
+            width = metrics.horizontalAdvance(token)
+
+            if x + width > rect.right():
+                truncated = True
+                break
+
+            painter.setFont(font)
+            painter.drawText(
+                QRect(x, rect.top(), width, baseline_rect_height),
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                token,
+            )
+            x += width + space
+
+        if truncated and x < rect.right():
+            ellipsis = "…"
+            width = normal_metrics.horizontalAdvance(ellipsis)
+            if x + width <= rect.right():
+                painter.setFont(normal_font)
+                painter.drawText(
+                    QRect(x, rect.top(), width, baseline_rect_height),
+                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                    ellipsis,
+                )
+
         painter.restore()
 
     def sizeHint(self, option, index):
@@ -167,9 +198,12 @@ class ReceiveTableManager:
         # This is a workaround since PyQt doesn't provide a way to query connections
         
         if tracer_mode:
-            # Tracer mode: ID, Time, Channel, PID, DLC, Data, ASCII, Comment
-            table.setColumnCount(8)
-            table.setHorizontalHeaderLabels(['ID', 'Time', t('col_channel'), 'PID', 'DLC', 'Data', 'ASCII', 'Comment'])
+            # Tracer mode: ID, Time, Channel, PID, DLC, Data, ASCII, Comment, FD, BRS
+            table.setColumnCount(10)
+            table.setHorizontalHeaderLabels([
+                'ID', 'Time', t('col_channel'), 'PID', 'DLC', 'Data', 'ASCII',
+                'Comment', 'FD', 'BRS'
+            ])
             
             # Tracer mode: allow editing (Comment only)
             table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked)
@@ -187,13 +221,19 @@ class ReceiveTableManager:
             header.resizeSection(5, 250)  # Data
             header.resizeSection(6, 100)  # ASCII
             header.resizeSection(7, 150)  # Comment
-            
-            # Allow last column to expand when space is available
-            header.setStretchLastSection(True)
+            header.resizeSection(8, 45)   # FD
+            header.resizeSection(9, 45)   # BRS
+
+            # Comment expands; FD/BRS stay compact on the right.
+            header.setStretchLastSection(False)
+            header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
         else:
-            # Monitor mode: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment
-            table.setColumnCount(9)
-            table.setHorizontalHeaderLabels(['ID', 'Count', t('col_channel'), 'PID', 'DLC', 'Data', 'Period', 'ASCII', 'Comment'])
+            # Monitor mode: ID, Count, Channel, PID, DLC, Data, Period, ASCII, Comment, FD, BRS
+            table.setColumnCount(11)
+            table.setHorizontalHeaderLabels([
+                'ID', 'Count', t('col_channel'), 'PID', 'DLC', 'Data', 'Period',
+                'ASCII', 'Comment', 'FD', 'BRS'
+            ])
             
             # Monitor mode: do not allow editing (data is updated automatically)
             table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -212,9 +252,12 @@ class ReceiveTableManager:
             header.resizeSection(6, 70)   # Period
             header.resizeSection(7, 100)  # ASCII
             header.resizeSection(8, 150)  # Comment
-            
-            # Allow last column to expand when space is available
-            header.setStretchLastSection(True)
+            header.resizeSection(9, 45)   # FD
+            header.resizeSection(10, 45)  # BRS
+
+            # Comment expands; FD/BRS stay compact on the right.
+            header.setStretchLastSection(False)
+            header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
 
             # Diff highlighting: paint changed bytes as bold in the Data column.
             table.setItemDelegateForColumn(5, _DiffDataBoldDelegate(table))
@@ -353,9 +396,19 @@ class ReceiveTableManager:
             table.setItem(row, 2, channel_item)
             table.setItem(row, 3, QTableWidgetItem(row_data['pid']))
             table.setItem(row, 4, dlc_item)
-            table.setItem(row, 5, QTableWidgetItem(row_data['data']))
+            data_item = QTableWidgetItem(row_data['data'])
+            data_item.setToolTip(row_data['data'])
+            table.setItem(row, 5, data_item)
             table.setItem(row, 6, QTableWidgetItem(row_data['ascii']))
             table.setItem(row, 7, QTableWidgetItem(row_data['comment']))
+
+            fd_item = QTableWidgetItem("✓" if row_data.get('is_fd') else "")
+            fd_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 8, fd_item)
+
+            brs_item = QTableWidgetItem("✓" if row_data.get('bitrate_switch') else "")
+            brs_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 9, brs_item)
 
         self._enforce_row_cap(table)
 
@@ -443,10 +496,19 @@ class ReceiveTableManager:
         table.setItem(insert_row, 4, dlc_item)
         data_item = QTableWidgetItem(row_data['data'])
         data_item.setData(_DiffDataBoldDelegate.CHANGED_INDICES_ROLE, changed_indices)
+        data_item.setToolTip(row_data['data'])
         table.setItem(insert_row, 5, data_item)
         table.setItem(insert_row, 6, QTableWidgetItem(row_data['period']))
         table.setItem(insert_row, 7, QTableWidgetItem(row_data['ascii']))
         table.setItem(insert_row, 8, QTableWidgetItem(row_data['comment']))
+
+        fd_item = QTableWidgetItem("✓" if row_data.get('is_fd') else "")
+        fd_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        table.setItem(insert_row, 9, fd_item)
+
+        brs_item = QTableWidgetItem("✓" if row_data.get('bitrate_switch') else "")
+        brs_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        table.setItem(insert_row, 10, brs_item)
 
         # Highlight if needed
         if highlight and row_data['should_highlight']:
@@ -465,9 +527,18 @@ class ReceiveTableManager:
 
         data_item = QTableWidgetItem(row_data['data'])
         data_item.setData(_DiffDataBoldDelegate.CHANGED_INDICES_ROLE, changed_indices)
+        data_item.setToolTip(row_data['data'])
         table.setItem(row, 5, data_item)
         table.setItem(row, 6, QTableWidgetItem(row_data['period']))
         table.setItem(row, 7, QTableWidgetItem(row_data['ascii']))
+
+        fd_item = QTableWidgetItem("✓" if row_data.get('is_fd') else "")
+        fd_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        table.setItem(row, 9, fd_item)
+
+        brs_item = QTableWidgetItem("✓" if row_data.get('bitrate_switch') else "")
+        brs_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        table.setItem(row, 10, brs_item)
 
         if highlight and row_data['should_highlight']:
             count_item.setBackground(colors['highlight'])

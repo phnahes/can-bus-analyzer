@@ -16,6 +16,8 @@ hidden_imports = [
     'serial.tools.list_ports',
     'can',
     'can.interface',
+    'candle',
+    'candle_api',
     'src.main_window',
     'src.config_manager',
     'src.dialogs_new',

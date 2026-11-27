@@ -10,10 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **gs_usb / candleLight backend** (`candle`, via `python-can-candle`): adapters running candleLight, CANnectivity or CANable 2.x firmware are now usable without a kernel driver on macOS/Windows. *Scan Devices* lists every channel as `<serial>:<index>`, and the bus is opened with the selected bitrate, listen-only flag and optional CAN FD data bitrate
+- **CAN FD transmit**: FD checkbox, 64-byte hex payload field and BRS option in the transmit panel; FD flag and BRS survive add/edit, the transmit list save/load round-trip, playback and gateway forwarding. Payloads are padded to legal CAN FD lengths
+- **CAN FD frames in the message model** (`is_fd`, `bitrate_switch`), preserved in JSON and CSV logs and restored when loading (legacy files default to Classical CAN)
+- **Multi-channel gs_usb sessions**: both channels of a dual adapter can be connected at once (e.g. CAN1/CAN2 or a gateway between them). One CandleBus is opened per USB device and incoming frames are dispatched per channel; TX echoes are filtered so they are not displayed or forwarded as RX
+- **CAN FD controls per bus** in Settings (FD + data bitrate 1/4/5/8 Mbit/s), honored by the candle and SocketCAN backends
+- **FD/BRS columns** in Monitor and Tracer, so FD frames are identifiable even when the payload is ≤ 8 bytes or BRS is off (DLC alone was not enough)
+- **`tools/general/stress_candle.py`**: loopback stress tool for gs_usb adapters (classical/FD, BRS, 64-byte payloads, configurable bitrates) with lost/corrupted/throughput reporting
+- **Loaded traces fill the playback buffer** even when live recording is not active, and large logs are inserted in one batch; *Load Tracer Log* now enables Play without requiring a prior recording session
 
 ### Changed
+- JSON receive logs are written with **one message per line** (the file is still a single valid JSON document); fully-indented logs saved by older versions continue to load unchanged
+- **Backward compatible logs**: JSON without `is_fd`/`bitrate_switch`, CSV without the FD/BRS columns, and transmit lists without those fields load as Classical CAN instead of failing
+- Settings no longer drop `fd`, `dbitrate` or a manually chosen interface when saving the CAN bus list
+- Settings shows the detected driver per bus (SocketCAN, SLCAN or gs_usb/candle) and disables the fields that do not apply: COM Baudrate/RTS HS outside SLCAN, link bring-up outside SocketCAN, and CAN FD on SLCAN
+- With **CAN FD** ticked, the classic bitrate field is labelled **Nominal bitrate** (it is the arbitration rate); the label returns to **Baudrate** for classical CAN
+- CAN FD data-bitrate presets are **1/4/5/8 Mbit/s**. 2 Mbit/s was removed from the defaults because it produced bit errors and rebooted the validated CANable 2.5 (FW 38.3.4); existing configs that already contain it are preserved with a warning tooltip
+- Playback stops itself after 5 consecutive send failures (bus-off, missing ACK, Listen Only peer) instead of blocking on every frame, and is stopped automatically on disconnect; the per-send timeout is 0.2 s instead of python-can's 1 s default
 
 ### Fixed
+- FD payloads longer than 8 bytes are sent as FD frames instead of failing or being truncated
+- Incoming frames longer than 8 bytes are forwarded by the gateway as FD frames
+- Diff highlighting no longer wraps bold (changed) bytes into a second line and spills into the next row; the Data column is painted on one line and elided, with the full payload in the tooltip
 
 ---
 

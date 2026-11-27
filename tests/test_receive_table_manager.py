@@ -34,6 +34,22 @@ def test_monitor_rows_stay_sorted(make_table, make_msg, colors):
     assert _pids(table) == ["0x100", "0x200", "0x300"]
 
 
+def test_monitor_shows_fd_and_brs_flags(make_table, make_msg, colors):
+    table, manager, _, _ = make_table()
+
+    manager.add_message_monitor(
+        table,
+        make_msg(can_id=0x200, data=bytes(range(16)), is_fd=True, bitrate_switch=True),
+        colors,
+    )
+    manager.add_message_monitor(table, make_msg(can_id=0x100, data=b"\x01"), colors)
+
+    assert table.item(0, 9).text() == ""
+    assert table.item(0, 10).text() == ""
+    assert table.item(1, 9).text() == "✓"
+    assert table.item(1, 10).text() == "✓"
+
+
 def test_monitor_same_id_different_channel_sorted_by_channel(make_table, make_msg, colors):
     table, manager, _, _ = make_table()
 
@@ -86,6 +102,21 @@ def test_tracer_single_message_appends(make_table, make_msg):
     assert table.rowCount() == 1
     assert table.item(0, 3).text() == "0x123"
     assert table.item(0, 5).text() == "AA BB"
+
+
+def test_tracer_shows_fd_and_brs_flags(make_table, make_msg):
+    table, manager, _, _ = make_table(tracer=True)
+
+    manager.add_message_tracer(
+        table,
+        make_msg(can_id=0x200, data=bytes(range(16)), is_fd=True, bitrate_switch=True),
+    )
+    manager.add_message_tracer(table, make_msg(can_id=0x100, data=b"\x01"))
+
+    assert table.item(0, 8).text() == "✓"
+    assert table.item(0, 9).text() == "✓"
+    assert table.item(1, 8).text() == ""
+    assert table.item(1, 9).text() == ""
 
 
 def test_tracer_batch_inserts_once(make_table, make_msg):
@@ -218,7 +249,7 @@ def test_reload_resets_the_counter(make_table, make_msg):
     assert manager.frame_count(table) == 2
 
 
-@pytest.mark.parametrize("tracer,columns", [(True, 8), (False, 9)])
+@pytest.mark.parametrize("tracer,columns", [(True, 10), (False, 11)])
 def test_split_screen_table_uses_the_same_columns(make_table, tracer, columns):
     """Split-screen tables must not drift from the main table config."""
     from PyQt6.QtWidgets import QTableWidget

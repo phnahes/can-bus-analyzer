@@ -206,6 +206,8 @@ class CANAnalyzerWindow(QMainWindow):
                     'data': msg.data,
                     'is_extended': msg.is_extended,
                     'is_rtr': msg.is_rtr,
+                    'is_fd': getattr(msg, 'is_fd', False),
+                    'bitrate_switch': getattr(msg, 'bitrate_switch', False),
                     'dlc': msg.dlc,
                     'target_bus': msg.source
                 }
@@ -245,8 +247,20 @@ class CANAnalyzerWindow(QMainWindow):
         self.playback_label.setText("Ready")
     
     def _on_playback_error_ui(self, error: str):
-        """Handle playback error"""
-        self.playback_label.setText(f"Error: {error}")
+        """Handle a playback that stopped because it could not transmit."""
+        self.playback_active = False
+        self.playback_paused = False
+        self.clear_playback_highlight()
+
+        has_recorded = self.recording_mgr.get_message_count() > 0
+        self.btn_play_all.setText("▶ Play All")
+        self.btn_play_all.setChecked(False)
+        self.btn_play_all.setEnabled(has_recorded)
+        self.btn_play_selected.setEnabled(has_recorded)
+        self.btn_stop_play.setEnabled(False)
+        self.playback_label.setText("Error")
+
+        self.logger.error(f"Playback error: {error}")
         MessageBoxHelper.show_warning(self, "Playback Error", error)
     
     def _on_recording_start_ui(self):
@@ -602,6 +616,11 @@ class CANAnalyzerWindow(QMainWindow):
     
     def disconnect(self):
         """Disconnect from CAN bus"""
+        # Stop playback first: it sends frames and must not keep failing /
+        # spamming warnings while the buses are being torn down.
+        if self.playback_mgr.is_playback_active() or self.playback_active:
+            self.stop_playback()
+
         # Stop periodic send without blocking: tell transmit handler we're
         # disconnecting so send_single returns immediately instead of blocking on bus
         if self.transmit_handler:
@@ -629,6 +648,9 @@ class CANAnalyzerWindow(QMainWindow):
         self.btn_pause.setEnabled(False)
         self.btn_gateway.setEnabled(False)
         self.btn_record.setEnabled(False)
+        self.btn_play_all.setEnabled(False)
+        self.btn_play_selected.setEnabled(False)
+        self.btn_stop_play.setEnabled(False)
         
         # Update tracer channel dropdown after disconnection
         self.update_tracer_channel_selector()
@@ -1003,19 +1025,61 @@ class CANAnalyzerWindow(QMainWindow):
     
     def on_dlc_changed(self, value):
         """Enable/disable data fields based on DLC"""
+        if self.tx_fd_check.isChecked():
+            return  # FD length follows the payload field
         # Don't enable data fields if RTR is checked
         is_rtr = self.tx_rtr_check.isChecked()
         for i in range(8):
             self.tx_data_bytes[i].setEnabled(i < value and not is_rtr)
             if i >= value:
                 self.tx_data_bytes[i].setText("00")
-    
+
+    def on_fd_changed(self, state):
+        """Switch the data editor between 8 byte fields and one FD payload."""
+        is_fd = bool(state)
+        if is_fd and self.tx_rtr_check.isChecked():
+            # RTR frames carry no data; FD and RTR cannot be combined.
+            self.tx_rtr_check.setChecked(False)
+
+        for byte_input in self.tx_data_bytes:
+            byte_input.setVisible(not is_fd)
+        self.tx_fd_data_input.setVisible(is_fd)
+        self.tx_brs_check.setEnabled(is_fd)
+
+        if is_fd:
+            self.tx_dlc_input.setMaximum(64)
+            self.tx_dlc_input.setEnabled(False)
+            self.on_fd_data_changed(self.tx_fd_data_input.text())
+        else:
+            self.tx_brs_check.setChecked(False)
+            self.tx_dlc_input.setMaximum(8)
+            self.tx_dlc_input.setEnabled(not self.tx_rtr_check.isChecked())
+
+    def on_fd_data_changed(self, text):
+        """Keep DLC in sync with the FD payload length."""
+        if not self.tx_fd_check.isChecked():
+            return
+        length = len(self._parse_hex_payload(text))
+        self.tx_dlc_input.setValue(min(length, 64))
+
+    def _parse_hex_payload(self, text):
+        """Parse a spaced hex payload; ignore incomplete/odd nibbles."""
+        clean = ''.join(str(text).split()).replace('0x', '').replace('0X', '')
+        if len(clean) % 2:
+            clean = clean[:-1]
+        try:
+            return bytes.fromhex(clean)
+        except ValueError:
+            return b''
+
     def on_rtr_changed(self, state):
         """Handle RTR checkbox state change"""
         is_rtr = self.tx_rtr_check.isChecked()
-        
+
         if is_rtr:
             # RTR frames don't carry data
+            if self.tx_fd_check.isChecked():
+                self.tx_fd_check.setChecked(False)
             self.tx_dlc_input.setValue(0)
             self.tx_dlc_input.setEnabled(False)
             for i in range(8):
@@ -1023,15 +1087,17 @@ class CANAnalyzerWindow(QMainWindow):
                 self.tx_data_bytes[i].setText("00")
         else:
             # Re-enable DLC and data fields
-            self.tx_dlc_input.setEnabled(True)
+            self.tx_dlc_input.setEnabled(not self.tx_fd_check.isChecked())
             dlc = self.tx_dlc_input.value()
             for i in range(8):
                 self.tx_data_bytes[i].setEnabled(i < dlc)
     
     def get_data_from_bytes(self):
-        """Get data bytes from individual fields"""
+        """Get data bytes from the FD payload field or the 8 byte fields."""
+        if self.tx_fd_check.isChecked():
+            return self._parse_hex_payload(self.tx_fd_data_input.text())[:64]
         data_bytes = []
-        dlc = self.tx_dlc_input.value()
+        dlc = min(self.tx_dlc_input.value(), 8)
         for i in range(dlc):
             byte_str = self.tx_data_bytes[i].text()
             if not byte_str or len(byte_str) == 0:
@@ -1040,9 +1106,20 @@ class CANAnalyzerWindow(QMainWindow):
         return bytes.fromhex(''.join(data_bytes))
     
     def set_data_to_bytes(self, data_str):
-        """Set data bytes in individual fields"""
+        """Set data bytes in the byte fields, or in the FD payload field."""
         data_clean = data_str.replace(' ', '')
-        
+        try:
+            data = bytes.fromhex(data_clean)
+        except ValueError:
+            data = b''
+
+        if self.tx_fd_check.isChecked() or len(data) > 8:
+            self.tx_fd_check.setChecked(True)
+            payload = ' '.join(f"{byte:02X}" for byte in data[:64])
+            self.tx_fd_data_input.setText(payload)
+            self.tx_dlc_input.setValue(len(data[:64]))
+            return
+
         for i in range(8):
             if i * 2 < len(data_clean):
                 byte_hex = data_clean[i*2:i*2+2]
@@ -1097,13 +1174,17 @@ class CANAnalyzerWindow(QMainWindow):
         try:
             can_id = int(self.tx_id_input.text(), 16)
             is_rtr = self.tx_rtr_check.isChecked()
+            is_fd = self.tx_fd_check.isChecked() and not is_rtr
             
             # RTR frames don't carry data, only request it
             if is_rtr:
                 dlc = 0
                 data = bytes()
+            elif is_fd:
+                data = self.get_data_from_bytes()[:64]
+                dlc = len(data)
             else:
-                dlc = self.tx_dlc_input.value()
+                dlc = min(self.tx_dlc_input.value(), 8)
                 data = self.get_data_from_bytes()[:dlc]
             
             msg_data = {
@@ -1111,7 +1192,9 @@ class CANAnalyzerWindow(QMainWindow):
                 'dlc': dlc,
                 'data': data,
                 'extended': self.tx_29bit_check.isChecked(),
-                'is_rtr': is_rtr
+                'is_rtr': is_rtr,
+                'is_fd': is_fd,
+                'bitrate_switch': self.tx_brs_check.isChecked() and is_fd,
             }
             
             target_bus = self.tx_source_combo.currentText() if self.can_bus_manager else None

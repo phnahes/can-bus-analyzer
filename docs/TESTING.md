@@ -24,16 +24,24 @@ directory and dialogs are built from dictionaries.
 | File | Covers |
 |------|--------|
 | `tests/conftest.py` | `qapp` (offscreen), `FakeParent`, table/handler factories |
-| `test_models.py` | `CANMessage` dict roundtrip, ASCII/bits, filters |
-| `test_log_roundtrip.py` | JSON/CSV/trace save + load |
-| `test_receive_table_manager.py` | Monitor row index, sorted insert, Tracer batching and ring buffer |
+| `test_models.py` | `CANMessage` dict roundtrip (classic/FD), ASCII/bits, FD padding, filters |
+| `test_log_roundtrip.py` | JSON/CSV/trace save + load, one-line JSON, legacy logs, playback buffer |
+| `test_receive_table_manager.py` | Monitor row index, sorted insert, Tracer batching/ring buffer, FD/BRS columns |
+| `test_playback_handler.py` | Playback fail-fast on consecutive send failures |
 | `test_ui_update_handler.py` | Tick budget, batching, pause, bounded queue/drop counter |
 | `test_can_interface_setup.py` | `ip -j -d link` parsing, command building, `pkexec` path, EBUSY retry |
-| `test_can_bus_manager.py` | Backend selection, per-backend kwargs, connect errors, send/receive |
+| `test_can_bus_manager.py` | Backend selection, per-backend kwargs, FD send/padding, connect errors |
+| `test_candle_backend.py` | gs_usb channel discovery, labels, broken/missing hardware |
+| `test_candle_session.py` | Shared CandleBus, per-channel dispatch, TX echo filtering |
 | `test_connection_manager.py` | Interface-down dialog wiring, kernel vs configured bitrate |
 | `test_interface_setup_dialog.py` | Dialog states (copy command, bring up, failures) |
-| `test_settings_dialog.py` | New settings round-trip (performance limits, bring-up flag) |
+| `test_settings_dialog.py` | Settings round-trip, driver labels, disabled fields, nominal-bitrate label |
 | `test_perf_regression.py` | **slow**: per-frame cost must not grow with the row count |
+
+## Real-hardware Linux validation
+
+See [TESTING_LINUX.md](TESTING_LINUX.md) for the SocketCAN + CAN FD handoff
+(kernel/gs_usb checks, link setup, loopback stress and UI checks).
 
 ## Load benchmark
 

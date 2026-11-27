@@ -119,8 +119,21 @@ For GitHub Releases, we upload only `CAN-Analyzer-*.zip` as the release asset, s
 - **PyInstaller** >= 6.0.0 (Linux)
 - **Pillow** >= 10.0.0 (for icon generation)
 
+### Native gs_usb / CAN FD dependency
+
+`requirements.txt` includes **`python-can-candle`** (with the native
+`candle-api` module) for candleLight/CANnectivity/CANable adapters. The
+packaging configs already include `candle` and `candle_api`:
+
+- `setup.py` → py2app `packages`
+- `can_analyzer.spec` → PyInstaller `hiddenimports`
+
+After building, open the packaged app on a machine with a gs_usb adapter and
+press **Scan Devices**. If the channels do not appear, the native module or its
+dylib was not bundled/signed correctly.
+
 ### System Requirements
-- **macOS**: 10.14+ (for running from source) or any recent version (for .app bundle)
+- **macOS**: 10.14+ (for running from source) or any recent version (for .app bundle). The gs_usb/candle native wheel used on Apple Silicon requires macOS 11+
 - **Linux**: Modern distribution with Python 3.9+ and Qt/GUI support
 
 ### Output
