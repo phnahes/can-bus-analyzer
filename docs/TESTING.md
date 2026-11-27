@@ -38,6 +38,11 @@ directory and dialogs are built from dictionaries.
 | `test_settings_dialog.py` | Settings round-trip, driver labels, disabled fields, nominal-bitrate label |
 | `test_perf_regression.py` | **slow**: per-frame cost must not grow with the row count |
 
+## Real-hardware Linux validation
+
+See [TESTING_LINUX.md](TESTING_LINUX.md) for the SocketCAN + CAN FD handoff
+(kernel/gs_usb checks, link setup, loopback stress and UI checks).
+
 ## Load benchmark
 
 `tools/general/bench_ui_feed.py` pushes synthetic frames through the real
