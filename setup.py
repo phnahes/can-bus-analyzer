@@ -24,7 +24,7 @@ OPTIONS = {
         'NSHighResolutionCapable': True,
         'NSRequiresAquaSystemAppearance': False,
     },
-    'packages': ['PyQt6', 'serial', 'can', 'src'],
+    'packages': ['PyQt6', 'serial', 'can', 'candle', 'candle_api', 'src'],
     'includes': [
         'PyQt6.QtCore',
         'PyQt6.QtGui',

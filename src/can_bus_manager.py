@@ -21,7 +21,7 @@ except ImportError:
     CAN_AVAILABLE = False
     print("python-can not installed. Simulation mode activated.")
 
-from .models import CANMessage, GatewayConfig, GatewayRoute
+from .models import CANMessage, GatewayConfig, GatewayRoute, pad_fd_payload
 from .can_interface_setup import (
     CAN_CHANNEL_RE,
     InterfaceDownError,
@@ -32,6 +32,12 @@ from .can_interface_setup import (
     ip_available,
     sys_is_linux,
 )
+from .candle_backend import is_candle_channel
+from .candle_session import acquire_channel as acquire_candle_channel
+
+#: USB/backend send timeout. Keeps a stuck/ACK-less bus from blocking a
+#: playback thread for python-can's 1 s default on every frame.
+SEND_TIMEOUT_S = 0.2
 
 
 @dataclass
@@ -119,7 +125,13 @@ class CANBusInstance:
             if interface == 'socketcan':
                 self._prepare_socketcan()
 
-            self.bus = can.interface.Bus(**self._bus_kwargs(interface))
+            if interface == 'candle':
+                bus_kwargs = self._bus_kwargs(interface)
+                bus_kwargs.pop('channel', None)
+                bus_kwargs.pop('interface', None)
+                self.bus = acquire_candle_channel(self.config.channel, bus_kwargs)
+            else:
+                self.bus = can.interface.Bus(**self._bus_kwargs(interface))
 
             self.connected = True
             self.running = True
@@ -161,6 +173,11 @@ class CANBusInstance:
             return 'slcan'
         if CAN_CHANNEL_RE.match(channel):
             return 'socketcan'
+        if is_candle_channel(channel):
+            return 'candle'
+        if interface == 'candle':
+            # Numeric channels are valid for the candle backend (device index).
+            return 'candle'
         return interface
 
     def _bus_kwargs(self, interface: str) -> Dict:
@@ -179,6 +196,21 @@ class CANBusInstance:
         if interface == 'socketcan':
             if getattr(self.config, 'fd', False):
                 kwargs['fd'] = True
+            return kwargs
+
+        if interface == 'candle':
+            # gs_usb via python-can-candle: works without a kernel driver on
+            # macOS/Windows, supports CAN FD and multi-channel adapters.
+            kwargs['bitrate'] = int(self.config.baudrate)
+            kwargs['listen_only'] = bool(getattr(self.config, 'listen_only', False))
+            # python-can would otherwise cast values from its config files.
+            kwargs['ignore_config'] = True
+            fd = bool(getattr(self.config, 'fd', False))
+            kwargs['fd'] = fd
+            if fd:
+                kwargs['data_bitrate'] = int(
+                    getattr(self.config, 'dbitrate', 0) or 5_000_000
+                )
             return kwargs
 
         if interface in ('slcan', 'serial'):
@@ -340,11 +372,19 @@ class CANBusInstance:
                 msg_data = msg.data
             elif hasattr(msg, 'can_id'):
                 # Our CANMessage dataclass, convert to python-can Message
+                data = bytes(msg.data[:msg.dlc])
+                is_fd = bool(getattr(msg, 'is_fd', False) or len(data) > 8)
+                if is_fd:
+                    data = pad_fd_payload(data)
                 can_msg = can.Message(
                     arbitration_id=msg.can_id,
-                    data=msg.data[:msg.dlc],
+                    data=data,
                     is_extended_id=msg.is_extended,
-                    is_remote_frame=msg.is_rtr
+                    is_remote_frame=msg.is_rtr,
+                    # Received FD frames (up to 64 bytes) are forwarded as FD;
+                    # Classical CAN cannot carry more than 8 bytes.
+                    is_fd=is_fd,
+                    bitrate_switch=bool(getattr(msg, 'bitrate_switch', False)) and is_fd,
                 )
                 msg_id = msg.can_id
                 msg_data = msg.data
@@ -353,7 +393,7 @@ class CANBusInstance:
                 return False
             
             if self.bus:
-                self.bus.send(can_msg)
+                self.bus.send(can_msg, timeout=SEND_TIMEOUT_S)
                 return True
             else:
                 # Simulation mode (no print needed, logger handles it)
@@ -379,6 +419,8 @@ class CANBusInstance:
                             data=bytes(message.data),
                             is_extended=message.is_extended_id,
                             is_rtr=message.is_remote_frame,
+                            is_fd=bool(getattr(message, 'is_fd', False)),
+                            bitrate_switch=bool(getattr(message, 'bitrate_switch', False)),
                             channel=self.config.channel if isinstance(self.config.channel, int) else 1,
                             source=self.config.name  # Mark source bus
                         )
@@ -803,6 +845,8 @@ class CANBusManager:
                     channel=forwarded_msg.channel,
                     is_extended=forwarded_msg.is_extended,
                     is_rtr=forwarded_msg.is_rtr,
+                    is_fd=getattr(forwarded_msg, 'is_fd', False),
+                    bitrate_switch=getattr(forwarded_msg, 'bitrate_switch', False),
                     source=forwarded_msg.source,
                     gateway_processed=True  # Mark as processed
                 )

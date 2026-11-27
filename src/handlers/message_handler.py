@@ -206,7 +206,9 @@ class MessageHandler:
             'ascii': ascii_str,
             'comment': msg.comment,
             'msg_index': len(self.recorded_messages) - 1,  # For UserRole
-            'gateway_action': msg.gateway_action
+            'gateway_action': msg.gateway_action,
+            'is_fd': bool(getattr(msg, 'is_fd', False)),
+            'bitrate_switch': bool(getattr(msg, 'bitrate_switch', False)),
         }
     
     def calculate_period(self, msg: CANMessage, counter_key: tuple) -> str:
@@ -279,7 +281,9 @@ class MessageHandler:
             'comment': msg.comment,
             'can_id': msg.can_id,
             'should_highlight': count > 1,
-            'gateway_action': msg.gateway_action
+            'gateway_action': msg.gateway_action,
+            'is_fd': bool(getattr(msg, 'is_fd', False)),
+            'bitrate_switch': bool(getattr(msg, 'bitrate_switch', False)),
         }
     
     def update_counter(self, msg: CANMessage) -> tuple:

@@ -28,9 +28,12 @@ class TransmitTableManager:
     def clear_fields(self):
         """Clear all transmit edit fields (defaults from config: period, TX mode)"""
         self.parent.tx_id_input.setText("000")
-        self.parent.tx_dlc_input.setValue(8)
         self.parent.tx_29bit_check.setChecked(False)
         self.parent.tx_rtr_check.setChecked(False)
+        self.parent.tx_fd_check.setChecked(False)
+        self.parent.tx_brs_check.setChecked(False)
+        self.parent.tx_fd_data_input.clear()
+        self.parent.tx_dlc_input.setValue(8)
         for i in range(8):
             self.parent.tx_data_bytes[i].setText("00")
         self.parent.tx_period_input.setText(str(DEFAULT_TX_PERIOD_MS))
@@ -92,12 +95,26 @@ class TransmitTableManager:
             trigger_data = self.parent.trigger_data_input.text()
             table.setItem(row, 6, QTableWidgetItem(trigger_data if trigger_data else ""))
             
-            # 7-14: Data bytes (D0-D7)
+            # 7-14: Data bytes (D0-D7) — first 8 bytes, kept for compatibility
+            is_fd = bool(self.parent.tx_fd_check.isChecked())
+            brs = bool(self.parent.tx_brs_check.isChecked()) and is_fd
+            full_data = self.parent.get_data_from_bytes()
             for i in range(8):
-                byte_val = self.parent.tx_data_bytes[i].text() if i < dlc else ""
+                byte_val = f"{full_data[i]:02X}" if i < len(full_data) else ""
                 byte_item = QTableWidgetItem(byte_val)
                 byte_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(row, 7 + i, byte_item)
+
+            # 18-20: FD flag, BRS flag and the full payload (up to 64 bytes)
+            fd_item = QTableWidgetItem("✓" if is_fd else "")
+            fd_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 18, fd_item)
+
+            brs_item = QTableWidgetItem("✓" if brs else "")
+            brs_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 19, brs_item)
+
+            table.setItem(row, 20, QTableWidgetItem(full_data.hex().upper()))
             
             # 15: Count - keep existing value if editing
             if self.editing_row >= 0:
@@ -143,13 +160,22 @@ class TransmitTableManager:
             # 0: ID
             self.parent.tx_id_input.setText(table.item(current_row, 0).text())
             
+            # 2: RTR
+            rtr_item = table.item(current_row, 2)
+            is_rtr = bool(rtr_item and rtr_item.text() == "✓")
+
+            # 18/19: FD and BRS
+            fd_item = table.item(current_row, 18)
+            brs_item = table.item(current_row, 19)
+            is_fd = bool(fd_item and fd_item.text() == "✓")
+            is_brs = bool(brs_item and brs_item.text() == "✓")
+            self.parent.tx_fd_check.setChecked(is_fd)
+            self.parent.tx_brs_check.setChecked(is_brs and is_fd)
+            self.parent.tx_rtr_check.setChecked(is_rtr)
+
             # 1: DLC
             dlc = int(table.item(current_row, 1).text())
             self.parent.tx_dlc_input.setValue(dlc)
-            
-            # 2: RTR
-            rtr_item = table.item(current_row, 2)
-            self.parent.tx_rtr_check.setChecked(rtr_item and rtr_item.text() == "✓")
             
             # 3: Period
             period = table.item(current_row, 3).text()
@@ -169,13 +195,18 @@ class TransmitTableManager:
             trigger_data_item = table.item(current_row, 6)
             self.parent.trigger_data_input.setText(trigger_data_item.text() if trigger_data_item else "")
             
-            # 7-14: Data bytes (D0-D7)
-            for i in range(8):
-                byte_item = table.item(current_row, 7 + i)
-                if byte_item and byte_item.text():
-                    self.parent.tx_data_bytes[i].setText(byte_item.text())
-                else:
-                    self.parent.tx_data_bytes[i].setText("00")
+            # 7-20: payload (D0-D7 for classic, full hex for FD)
+            fd_data_item = table.item(current_row, 20)
+            if is_fd and fd_data_item and fd_data_item.text():
+                data_hex = fd_data_item.text()
+            else:
+                data_hex = ''.join(
+                    (table.item(current_row, 7 + i).text()
+                     if table.item(current_row, 7 + i) else "")
+                    for i in range(min(dlc, 8))
+                )
+            self.parent.set_data_to_bytes(data_hex)
+            self.parent.tx_dlc_input.setValue(dlc)
             
             # 16: Comment
             comment_item = table.item(current_row, 16)
@@ -244,7 +275,13 @@ class TransmitTableManager:
             rtr_item = table.item(row, 2)
             rtr_text = rtr_item.text() if rtr_item else ""
             is_rtr = rtr_item and rtr_item.text() == "✓"
-            logger.debug(f"get_message_data[{row}]: rtr_item={rtr_item}, rtr_text='{rtr_text}', is_rtr={is_rtr}")
+
+            # FD / BRS
+            fd_item = table.item(row, 18)
+            brs_item = table.item(row, 19)
+            is_fd = bool(fd_item and fd_item.text() == "✓")
+            is_brs = bool(brs_item and brs_item.text() == "✓") and is_fd
+            logger.debug(f"get_message_data[{row}]: is_fd={is_fd}, brs={is_brs}")
             
             # Period
             period_item = table.item(row, 3)
@@ -264,17 +301,22 @@ class TransmitTableManager:
             trigger_data_item = table.item(row, 6)
             trigger_data = trigger_data_item.text() if trigger_data_item else ""
             
-            # Data bytes (D0-D7)
-            data_bytes = []
-            for i in range(dlc):
-                byte_item = table.item(row, 7 + i)
-                if byte_item and byte_item.text():
-                    data_bytes.append(byte_item.text())
-                else:
-                    data_bytes.append("00")
-            
-            logger.debug(f"get_message_data[{row}]: data_bytes={data_bytes}")
-            data = bytes.fromhex(''.join(data_bytes))
+            # Data: full payload column for FD, D0-D7 otherwise
+            if is_fd:
+                fd_data_item = table.item(row, 20)
+                data_hex = fd_data_item.text() if fd_data_item else ""
+                data = bytes.fromhex(data_hex.replace(' ', '')) if data_hex else bytes()
+                dlc = len(data)
+            else:
+                data_bytes = []
+                for i in range(min(dlc, 8)):
+                    byte_item = table.item(row, 7 + i)
+                    if byte_item and byte_item.text():
+                        data_bytes.append(byte_item.text())
+                    else:
+                        data_bytes.append("00")
+                logger.debug(f"get_message_data[{row}]: data_bytes={data_bytes}")
+                data = bytes.fromhex(''.join(data_bytes))
             logger.debug(f"get_message_data[{row}]: data={data.hex()}")
             
             # Comment
@@ -290,6 +332,8 @@ class TransmitTableManager:
                 'can_id': can_id,
                 'dlc': dlc,
                 'data': data,
+                'is_fd': is_fd,
+                'bitrate_switch': is_brs,
                 'extended': can_id > 0x7FF,
                 'is_rtr': is_rtr,
                 'period': period,
@@ -341,9 +385,13 @@ class TransmitTableManager:
             row = table.rowCount()
             table.insertRow(row)
             
+            data_str = item.get('data', '').replace(' ', '')
+            is_fd = bool(item.get('is_fd', item.get('fd', False)))
+            is_brs = bool(item.get('bitrate_switch', item.get('brs', False))) and is_fd
+            if is_fd:
+                dlc = len(data_str.replace(' ', '')) // 2
+
             table.setItem(row, 0, QTableWidgetItem(item.get('id', '000')))
-            
-            dlc = item.get('dlc', 8)
             table.setItem(row, 1, QTableWidgetItem(str(dlc)))
             
             rtr = "✓" if item.get('rtr', False) else ""
@@ -356,7 +404,6 @@ class TransmitTableManager:
             table.setItem(row, 5, QTableWidgetItem(item.get('trigger_id', '')))
             table.setItem(row, 6, QTableWidgetItem(item.get('trigger_data', '')))
             
-            data_str = item.get('data', '0000000000000000')
             for i in range(8):
                 if i * 2 < len(data_str):
                     byte_hex = data_str[i*2:i*2+2]
@@ -365,6 +412,16 @@ class TransmitTableManager:
                     byte_item = QTableWidgetItem("")
                 byte_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(row, 7 + i, byte_item)
+
+            fd_item = QTableWidgetItem("✓" if is_fd else "")
+            fd_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 18, fd_item)
+
+            brs_item = QTableWidgetItem("✓" if is_brs else "")
+            brs_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(row, 19, brs_item)
+
+            table.setItem(row, 20, QTableWidgetItem(data_str.upper()))
             
             table.setItem(row, 15, QTableWidgetItem(str(item.get('count', 0))))
             table.setItem(row, 16, QTableWidgetItem(item.get('comment', '')))

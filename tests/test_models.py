@@ -30,6 +30,31 @@ def test_can_message_from_dict_tolerates_legacy_fields():
     assert restored.can_id == 0x123
     assert restored.source  # default populated
     assert restored.comment == ""
+    assert restored.is_fd is False
+    assert restored.bitrate_switch is False
+
+
+def test_can_message_fd_fields_roundtrip(make_msg):
+    msg = make_msg(can_id=0x100, data=bytes(range(64)), dlc=64)
+    msg.is_fd = True
+    msg.bitrate_switch = True
+
+    restored = CANMessage.from_dict(msg.to_dict())
+
+    assert restored.is_fd is True
+    assert restored.bitrate_switch is True
+    assert restored.dlc == 64
+    assert restored.data == bytes(range(64))
+
+
+def test_pad_fd_payload_uses_legal_lengths():
+    from src.models import pad_fd_payload
+
+    assert len(pad_fd_payload(b"\x01" * 8)) == 8
+    assert len(pad_fd_payload(b"\x01" * 9)) == 12
+    assert len(pad_fd_payload(b"\x01" * 13)) == 16
+    assert len(pad_fd_payload(b"\x01" * 33)) == 48
+    assert len(pad_fd_payload(b"\x01" * 64)) == 64
 
 
 def test_ascii_renders_printable_bytes_and_dots(make_msg):

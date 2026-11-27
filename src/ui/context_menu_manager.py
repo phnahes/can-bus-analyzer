@@ -188,6 +188,16 @@ class ContextMenuManager:
                 # Count and Comment
                 self.parent.transmit_table.setItem(tx_row, 15, QTableWidgetItem("0"))
                 self.parent.transmit_table.setItem(tx_row, 16, QTableWidgetItem(""))
+
+                # FD flag, BRS (not shown in RX tables) and full payload
+                is_fd = dlc > 8 or len(data_clean) > 16
+                fd_item = QTableWidgetItem("✓" if is_fd else "")
+                fd_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.parent.transmit_table.setItem(tx_row, 18, fd_item)
+                self.parent.transmit_table.setItem(tx_row, 19, QTableWidgetItem(""))
+                self.parent.transmit_table.setItem(
+                    tx_row, 20, QTableWidgetItem(data_clean.upper())
+                )
                 
                 # Source
                 source_item = QTableWidgetItem(channel_str)

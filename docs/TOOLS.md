@@ -22,6 +22,20 @@ python3 tools/send_can_message.py
 python3 tools/send_can_message.py --listen --debug
 ```
 
+**`tools/general/stress_candle.py`** - gs_usb / candleLight loopback stress test
+- Classical CAN and CAN FD (64 bytes, optional BRS)
+- Sends sequence-numbered frames on one channel and verifies all of them on the other
+- Reports sent/received/lost/corrupted frames, fps and payload throughput
+- Requires `python-can-candle` and the two channels wired/terminated
+
+```bash
+# CAN FD, 1M nominal / 8M data, 64 bytes, BRS, 20k frames
+python3 tools/general/stress_candle.py
+
+# Classical CAN at 1 Mbit/s
+python3 tools/general/stress_candle.py --classic --nominal-bitrate 1000000
+```
+
 #### **Arduino Tools**
 
 **`arduino_msg_generator.ino`** - Configurable CAN message generator

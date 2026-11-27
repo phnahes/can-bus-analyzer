@@ -10,6 +10,10 @@ from ..models.can_message import CANMessage
 
 class PlaybackHandler:
     """Manages playback of recorded CAN messages"""
+
+    #: Abort playback after this many consecutive send failures. Without it a
+    #: bus-off/ACK-less bus would block for python-can's timeout on every frame.
+    MAX_CONSECUTIVE_FAILURES = 5
     
     def __init__(self, 
                  send_callback: Callable[[CANMessage], bool],
@@ -151,6 +155,8 @@ class PlaybackHandler:
             total = len(messages)
             sent_count = 0
             failed_count = 0
+            consecutive_failures = 0
+            aborted = False
             
             # Set pause event initially (not paused)
             self.pause_event.set()
@@ -178,12 +184,23 @@ class PlaybackHandler:
                     success = self.send_callback(msg)
                     if success:
                         sent_count += 1
+                        consecutive_failures = 0
                     else:
                         failed_count += 1
+                        consecutive_failures += 1
                         self.logger.warning(f"Failed to send message {i+1}/{total}")
                 except Exception as e:
                     failed_count += 1
+                    consecutive_failures += 1
                     self.logger.error(f"Error sending message {i+1}/{total}: {e}")
+
+                if consecutive_failures >= self.MAX_CONSECUTIVE_FAILURES:
+                    aborted = True
+                    self.logger.error(
+                        f"Playback aborted after {consecutive_failures} consecutive "
+                        f"send failures (bus-off, missing ACK or disconnected bus)"
+                    )
+                    break
                 
                 # Update progress
                 if self.on_playback_progress:
@@ -200,6 +217,18 @@ class PlaybackHandler:
                 else:
                     # Small delay between messages
                     time.sleep(0.01)
+
+            if aborted:
+                self.is_playing = False
+                self.is_paused = False
+                if self.on_playback_error:
+                    self.on_playback_error(
+                        "Playback stopped after repeated send failures.\n\n"
+                        "Check that the bus is terminated and that another node is "
+                        "ACKing. A Listen Only interface does not ACK frames. If the "
+                        "adapter entered bus-off, disconnect and connect again."
+                    )
+                return
             
             # Playback complete
             self.logger.info(f"Playback complete: {sent_count} sent, {failed_count} failed")

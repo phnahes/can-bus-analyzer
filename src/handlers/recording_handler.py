@@ -86,6 +86,10 @@ class RecordingHandler:
     def get_message_count(self) -> int:
         """Get number of recorded messages"""
         return len(self.recorded_messages)
+
+    def set_recorded_messages(self, messages: List[CANMessage]):
+        """Replace the playback buffer (used when loading a saved log)."""
+        self.recorded_messages = list(messages)
     
     def clear_recording(self):
         """Clear all recorded messages"""

@@ -30,7 +30,7 @@ if [ "$(uname)" = "Darwin" ]; then
 else
     python -c "import PyInstaller" 2>/dev/null || NEED_INSTALL=1
 fi
-python -c "import PyQt6, can, serial" 2>/dev/null || NEED_INSTALL=1
+python -c "import PyQt6, can, serial, candle, candle_api" 2>/dev/null || NEED_INSTALL=1
 if [ -n "$NEED_INSTALL" ]; then
     echo -e "${YELLOW}Installing dependencies (requirements-dev.txt)...${NC}"
     pip install -r requirements-dev.txt

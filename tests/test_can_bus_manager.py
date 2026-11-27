@@ -26,7 +26,7 @@ class FakeBus:
         time.sleep(0.005)
         return None
 
-    def send(self, msg):
+    def send(self, msg, timeout=None):
         self.sent.append(msg)
 
     def shutdown(self):
@@ -58,12 +58,44 @@ def make_instance(**overrides):
         ("/dev/cu.usbserial-1", "socketcan", "slcan"),
         ("COM4", "socketcan", "slcan"),
         ("0", "gs_usb", "gs_usb"),
+        ("2088339B413250013:0", "socketcan", "candle"),
+        ("2088339B413250013:1", "slcan", "candle"),
         ("can0", "slcan", "socketcan"),  # channel wins over a stale interface
     ],
 )
 def test_resolve_interface(channel, configured, expected):
     instance = make_instance(channel=channel, interface=configured)
     assert instance._resolve_interface() == expected
+
+
+def test_candle_kwargs_are_passed_to_the_backend():
+    instance = make_instance(
+        channel="2088339B413250013:0", interface="socketcan", listen_only=True
+    )
+    kwargs = instance._bus_kwargs("candle")
+
+    assert kwargs["interface"] == "candle"
+    assert kwargs["channel"] == "2088339B413250013:0"
+    assert kwargs["bitrate"] == 500000
+    assert kwargs["listen_only"] is True
+    assert kwargs["fd"] is False
+    assert kwargs["ignore_config"] is True
+    assert "data_bitrate" not in kwargs
+
+
+def test_candle_fd_kwargs_include_data_bitrate():
+    instance = make_instance(
+        channel="2088339B413250013:0", fd=True, dbitrate=5_000_000
+    )
+    kwargs = instance._bus_kwargs("candle")
+
+    assert kwargs["fd"] is True
+    assert kwargs["data_bitrate"] == 5_000_000
+
+
+def test_candle_fd_defaults_to_5m_data_bitrate():
+    instance = make_instance(channel="ABC:0", fd=True)
+    assert instance._bus_kwargs("candle")["data_bitrate"] == 5_000_000
 
 
 def test_socketcan_kwargs_do_not_pass_bitrate():
@@ -283,6 +315,38 @@ def test_send_converts_app_message_to_python_can_message():
     assert sent.arbitration_id == 0x18DAF110
     assert sent.is_extended_id is True
     assert bytes(sent.data) == b"\x01\x02"
+    assert sent.is_fd is False
+
+
+def test_send_fd_payload_is_marked_as_fd():
+    instance = make_instance(listen_only=False, fd=True, dbitrate=5_000_000)
+    fake = FakeBus()
+    instance.bus = fake
+    instance.connected = True
+
+    payload = bytes(range(64))
+    msg = CANMessage(timestamp=1.0, can_id=0x100, dlc=64, data=payload)
+    assert instance.send(msg) is True
+
+    sent = fake.sent[0]
+    assert bytes(sent.data) == payload
+    assert sent.is_fd is True
+
+
+def test_send_pads_short_fd_payload_to_legal_length():
+    instance = make_instance(listen_only=False, fd=True, dbitrate=5_000_000)
+    fake = FakeBus()
+    instance.bus = fake
+    instance.connected = True
+
+    msg = CANMessage(timestamp=1.0, can_id=0x100, dlc=9, data=b"\xAA" * 9,
+                     is_fd=True, bitrate_switch=True)
+    assert instance.send(msg) is True
+
+    sent = fake.sent[0]
+    assert len(sent.data) == 12
+    assert bytes(sent.data) == b"\xAA" * 9 + b"\x00" * 3
+    assert sent.bitrate_switch is True
 
 
 def test_send_accepts_python_can_message():

@@ -147,6 +147,34 @@ You can now use this baudrate to connect:
 
 ---
 
+### `stress_candle.py`
+
+Loopback stress test for gs_usb / candleLight adapters (CANable 2.x,
+CANnectivity, candleLight). Opens both channels of one adapter as a single
+`CandleBus`, sends sequence-numbered frames from one channel and verifies all
+of them on the other. The two channels must be wired together (CAN-H/CAN-L)
+and terminated.
+
+**Features:**
+- Classical CAN and CAN FD (64 bytes, optional BRS)
+- Configurable nominal/data bitrates and payload size
+- Reports sent/received/lost/corrupted frames, fps and payload throughput
+
+**Basic Usage:**
+```bash
+# CAN FD, 1M/8M, 64 bytes, BRS, 20k frames
+python3 stress_candle.py
+
+# 5 Mbit/s data phase, 100k frames
+python3 stress_candle.py --data-bitrate 5000000 --frames 100000
+
+# Classical CAN at 1 Mbit/s
+python3 stress_candle.py --classic --nominal-bitrate 1000000
+
+# Choose device and channels
+python3 stress_candle.py --serial 2088339B413250013 --tx 0 --rx 1
+```
+
 ### `obd2_poller.py`
 
 Automatic OBD-II data poller and decoder.

@@ -1451,6 +1451,13 @@ class I18n:
             'de': 'Baudrate',
             'fr': 'Baudrate'
         },
+        'multican_nominal_bitrate': {
+            'en': 'Nominal bitrate',
+            'pt': 'Bitrate nominal',
+            'es': 'Bitrate nominal',
+            'de': 'Nominale Bitrate',
+            'fr': 'Débit nominal'
+        },
         'multican_interface': {
             'en': 'Interface',
             'pt': 'Interface',
@@ -1464,6 +1471,27 @@ class I18n:
             'es': 'Solo Escucha',
             'de': 'Nur Zuhören',
             'fr': 'Écoute Seulement'
+        },
+        'multican_fd': {
+            'en': 'CAN FD',
+            'pt': 'CAN FD',
+            'es': 'CAN FD',
+            'de': 'CAN FD',
+            'fr': 'CAN FD'
+        },
+        'multican_data_bitrate': {
+            'en': 'Data bitrate',
+            'pt': 'Bitrate de dados',
+            'es': 'Bitrate de datos',
+            'de': 'Datenbitrate',
+            'fr': 'Débit de données'
+        },
+        'tooltip_multican_fd': {
+            'en': 'Open the bus in CAN FD mode (64-byte frames, BRS). Used by the candle/gs_usb and SocketCAN backends.',
+            'pt': 'Abre o barramento em modo CAN FD (frames de 64 bytes, BRS). Usado pelos backends candle/gs_usb e SocketCAN.',
+            'es': 'Abre el bus en modo CAN FD (tramas de 64 bytes, BRS). Lo usan los backends candle/gs_usb y SocketCAN.',
+            'de': 'Öffnet den Bus im CAN-FD-Modus (64-Byte-Frames, BRS). Wird von candle/gs_usb und SocketCAN verwendet.',
+            'fr': 'Ouvre le bus en mode CAN FD (trames de 64 octets, BRS). Utilisé par les backends candle/gs_usb et SocketCAN.'
         },
         'multican_bring_up': {
             'en': 'Bring interface up on connect (SocketCAN)',

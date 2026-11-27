@@ -30,8 +30,13 @@ class FileHandler:
     
     def save_log_json(self, filename: str, messages: List[CANMessage]) -> bool:
         """
-        Save messages to JSON format.
-        
+        Save messages to JSON format, one message object per line.
+
+        The file remains a single valid JSON document (the header is pretty
+        printed and each entry of ``messages`` occupies one line), which makes
+        diffs and grep much friendlier than fully indented JSON. Legacy,
+        fully-indented logs still load through ``json.load``.
+
         Args:
             filename: Output filename
             messages: List of CAN messages
@@ -40,15 +45,23 @@ class FileHandler:
             bool: True if saved successfully
         """
         try:
-            data = {
-                'version': '1.0',
-                'timestamp': datetime.now().isoformat(),
-                'message_count': len(messages),
-                'messages': [msg.to_dict() for msg in messages]
-            }
-            
-            with open(filename, 'w') as f:
-                json.dump(data, f, indent=2)
+            timestamp = datetime.now().isoformat()
+            last = len(messages) - 1
+
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write('{\n')
+                f.write('  "version": "1.0",\n')
+                f.write(f'  "timestamp": {json.dumps(timestamp)},\n')
+                f.write(f'  "message_count": {len(messages)},\n')
+                f.write('  "messages": [\n')
+                for index, msg in enumerate(messages):
+                    line = json.dumps(
+                        msg.to_dict(),
+                        separators=(', ', ': '),
+                    )
+                    f.write(f'    {line}{"," if index < last else ""}\n')
+                f.write('  ]\n')
+                f.write('}\n')
             
             self.logger.info(f"Saved {len(messages)} messages to {filename}")
             return True
@@ -75,7 +88,7 @@ class FileHandler:
                 # Header
                 writer.writerow([
                     'Timestamp', 'CAN ID', 'DLC', 'Data', 
-                    'Extended', 'RTR', 'Source'
+                    'Extended', 'RTR', 'Source', 'FD', 'BRS'
                 ])
                 
                 # Data
@@ -87,7 +100,9 @@ class FileHandler:
                         msg.to_hex_string(),
                         msg.is_extended,
                         msg.is_rtr,
-                        getattr(msg, 'source', 'N/A')
+                        getattr(msg, 'source', 'N/A'),
+                        msg.is_fd,
+                        msg.bitrate_switch,
                     ])
             
             self.logger.info(f"Saved {len(messages)} messages to {filename}")
@@ -195,7 +210,9 @@ class FileHandler:
                         dlc=int(row['DLC']),
                         data=data,
                         is_extended=row['Extended'].lower() == 'true',
-                        is_rtr=row['RTR'].lower() == 'true'
+                        is_rtr=row['RTR'].lower() == 'true',
+                        is_fd=str(row.get('FD', '')).strip().lower() in ('1', 'true', 'yes'),
+                        bitrate_switch=str(row.get('BRS', '')).strip().lower() in ('1', 'true', 'yes'),
                     )
                     
                     if 'Source' in row and row['Source'] != 'N/A':

@@ -59,10 +59,19 @@ class LoadLogHandler:
             
             self.logger.info(f"Load Log: {len(messages)} messages loaded")
             
-            # Add messages to recording and display
-            for msg in messages:
-                self.parent.recording_mgr.add_message(msg)
-                self.parent.add_message_tracer_mode(msg)
+            # Store in the playback buffer and display. Loading a log must work
+            # even when live recording is not active. Large traces are inserted
+            # in one batch, otherwise every row costs a QTableWidget event.
+            self.parent.recording_mgr.set_recorded_messages(messages)
+            manager = getattr(self.parent, 'receive_table_mgr', None)
+            if manager is not None:
+                manager.begin_batch()
+            try:
+                for msg in messages:
+                    self.parent.add_message_tracer_mode(msg)
+            finally:
+                if manager is not None:
+                    manager.end_batch()
             
             # Enable playback buttons if messages were loaded
             if self.parent.recording_mgr.get_message_count() > 0:

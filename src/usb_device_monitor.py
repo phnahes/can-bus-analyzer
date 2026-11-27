@@ -9,6 +9,11 @@ import glob
 import threading
 import time
 from typing import List, Dict, Optional, Callable
+from .candle_backend import (
+    find_channel as find_candle_channel,
+    is_candle_channel,
+    list_channels as list_candle_channels,
+)
 from .logger import get_logger
 
 
@@ -91,6 +96,28 @@ class USBDeviceMonitor:
         self.on_device_disconnected: Optional[Callable[[USBDeviceInfo], None]] = None
         
     def get_available_devices(self) -> List[USBDeviceInfo]:
+        """
+        Return list of available USB/Serial and gs_usb (candle) channels.
+        """
+        devices = self.get_serial_devices()
+        devices.extend(self.get_candle_devices())
+        return devices
+
+    def get_candle_devices(self) -> List[USBDeviceInfo]:
+        """List gs_usb channels as selectable devices (macOS/Windows/Linux)."""
+        devices: List[USBDeviceInfo] = []
+        for channel in list_candle_channels():
+            devices.append(
+                USBDeviceInfo(
+                    channel.channel,
+                    name=channel.label,
+                    description=channel.description,
+                )
+            )
+            self.logger.debug(f"Found device (candle): {devices[-1]}")
+        return devices
+
+    def get_serial_devices(self) -> List[USBDeviceInfo]:
         """
         Return list of available USB/Serial devices.
         Uses pyserial's list_ports on all platforms when available.
@@ -234,6 +261,8 @@ class USBDeviceMonitor:
         Returns:
             True se o dispositivo está disponível
         """
+        if is_candle_channel(device_path):
+            return find_candle_channel(device_path) is not None
         return os.path.exists(device_path) and os.access(device_path, os.R_OK | os.W_OK)
     
     def get_device_info(self, device_path: str) -> Optional[USBDeviceInfo]:
@@ -248,7 +277,12 @@ class USBDeviceMonitor:
         """
         if device_path in self.known_devices:
             return self.known_devices[device_path]
-        
+
+        if is_candle_channel(device_path):
+            channel = find_candle_channel(device_path)
+            return USBDeviceInfo(channel.channel, name=channel.label,
+                                 description=channel.description) if channel else None
+
         # Try to create info for unknown device
         if os.path.exists(device_path):
             return USBDeviceInfo(device_path)

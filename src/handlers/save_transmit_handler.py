@@ -70,6 +70,8 @@ class SaveTransmitHandler:
                 'id': f"{msg_data['can_id']:03X}",
                 'dlc': msg_data['dlc'],
                 'rtr': msg_data['is_rtr'],
+                'fd': msg_data.get('is_fd', False),
+                'brs': msg_data.get('bitrate_switch', False),
                 'data': msg_data['data'].hex().upper(),
                 'period': msg_data['period'],
                 'tx_mode': tx_mode_item.text() if tx_mode_item else 'off',

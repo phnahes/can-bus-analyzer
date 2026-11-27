@@ -56,6 +56,7 @@ The **CAN Gateway** feature allows you to bridge and control message flow betwee
 | **Static Blocking** | Block specific message IDs from being forwarded |
 | **Dynamic Blocking** | Automatically cycle through ID ranges, blocking each temporarily |
 | **Message Modification** | Change message IDs and data bytes during forwarding |
+| **CAN FD passthrough** | Forwards FD frames up to 64 bytes and preserves the BRS flag; no classic↔FD translation |
 | **Directional Rules** | Apply different rules based on route direction |
 | **Loop Prevention** | Automatic detection and prevention of infinite message loops |
 | **Visual Indicators** | Real-time feedback showing gateway actions in the UI |

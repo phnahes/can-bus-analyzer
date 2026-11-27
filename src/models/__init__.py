@@ -9,7 +9,7 @@ This package contains all data models organized by domain:
 """
 
 # CAN Message and Filter
-from .can_message import CANMessage, CANFilter
+from .can_message import CANMessage, CANFilter, pad_fd_payload
 
 # Configuration
 from .config import CANConfig
@@ -30,6 +30,7 @@ __all__ = [
     # CAN Message
     'CANMessage',
     'CANFilter',
+    'pad_fd_payload',
     
     # Configuration
     'CANConfig',

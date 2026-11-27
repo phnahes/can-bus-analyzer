@@ -10,6 +10,7 @@ import threading
 import time
 from typing import List, Dict, Optional
 from ..logger import get_logger
+from ..models import pad_fd_payload
 
 try:
     import can
@@ -125,11 +126,20 @@ class TransmitHandler:
                 data = b''
             
             # Create CAN message
+            is_rtr = message_data.get('is_rtr', message_data.get('rtr', False))
+            is_fd = bool(message_data.get('is_fd', False) or len(data) > 8) and not is_rtr
+            if is_fd:
+                data = pad_fd_payload(data)
+            bitrate_switch = bool(
+                message_data.get('bitrate_switch', message_data.get('brs', False))
+            ) and is_fd
             can_msg = can.Message(
                 arbitration_id=arbitration_id,
                 data=data,
                 is_extended_id=is_extended,
-                is_remote_frame=message_data.get('is_rtr', False)
+                is_remote_frame=is_rtr,
+                is_fd=is_fd,
+                bitrate_switch=bitrate_switch,
             )
             
             self.logger.debug(f"send_single: can_msg.arbitration_id=0x{can_msg.arbitration_id:03X}")
